@@ -12,194 +12,68 @@ export default function EventLogsTab() {
   const [autoScroll, setAutoScroll] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchType, setSearchType] = useState<'message' | 'level' | 'category' | 'timestamp'>('message');
-  const [, forceUpdate] = useState({});
   const componentId = useMemo(() => `event-logs-${Date.now()}`, []);
 
   const filteredLogs = useMemo(() => {
     const logs = logStore.getLogs(); // Already sorted newest first
     return logs.filter((log) => {
-      const matchesLevel = !logLevel || log.level === logLevel || logLevel === 'all';
-      let matchesSearch = true;
-
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-
-        switch (searchType) {
-          case 'message':
-            matchesSearch =
-              log.message?.toLowerCase().includes(query) || JSON.stringify(log.details)?.toLowerCase()?.includes(query);
-            break;
-          case 'level':
-            matchesSearch = log.level?.toLowerCase().includes(query);
-            break;
-          case 'category':
-            matchesSearch = log.category?.toLowerCase().includes(query);
-            break;
-          case 'timestamp':
-            matchesSearch = new Date(log.timestamp).toLocaleString().toLowerCase().includes(query);
-            break;
-        }
+      if (logLevel !== 'all' && log.level !== logLevel) {
+        return false;
       }
 
-      return matchesLevel && matchesSearch;
+      if (!searchQuery) {
+        return true;
+      }
+
+      const query = searchQuery.toLowerCase();
+
+      switch (searchType) {
+        case 'message':
+          return log.message.toLowerCase().includes(query);
+        case 'level':
+          return log.level.toLowerCase().includes(query);
+        case 'category':
+          return log.category.toLowerCase().includes(query);
+        case 'timestamp':
+          return log.timestamp.toLowerCase().includes(query);
+        default:
+          return true;
+      }
     });
   }, [logLevel, searchQuery, searchType]);
 
-  // Component Lifecycle Logging
-  useEffect(() => {
-    // Start performance measurement
-    logStore.startPerformanceMetric(componentId);
-
-    // Log component mount
-    logStore.logLifecycle('EventLogsTab', 'mounted', {
-      settings: {
-        showLogs,
-        logLevel,
-        autoScroll,
-      },
-    });
-
-    // Initialize system logging
-    logStore.logSystem('Event logging initialized', {
-      version: process.env.NEXT_PUBLIC_APP_VERSION,
-      environment: process.env.NODE_ENV,
-      timestamp: new Date().toISOString(),
-      featureFlags: {
-        showLogs,
-        autoScroll,
-      },
-    });
-
-    return () => {
-      logStore.logLifecycle('EventLogsTab', 'unmounted');
-      logStore.endPerformanceMetric(componentId, 'component-lifecycle');
-    };
-  }, [componentId, showLogs, logLevel, autoScroll]);
-
-  // Monitor Performance
+  // Performance monitoring
   useEffect(() => {
     let frameCount = 0;
     let lastTime = performance.now();
+    const targetFPS = 60;
+    const measurementInterval = 1000; // 1 second
 
     const measureFPS = () => {
-      const now = performance.now();
+      const currentTime = performance.now();
       frameCount++;
 
-      if (now - lastTime >= 1000) {
-        const fps = Math.round((frameCount * 1000) / (now - lastTime));
-        const metric = logStore.getMetric(componentId);
+      if (currentTime - lastTime >= measurementInterval) {
+        const fps = Math.round((frameCount * 1000) / (currentTime - lastTime));
 
-        if (metric) {
-          metric.fps = fps;
+        if (fps < targetFPS * 0.8) {
+          // If FPS drops below 80% of target
+          logStore.logSystem('event-logs-fps-drop', {
+            fps,
+            targetFPS,
+            component: 'EventLogsTab',
+          });
         }
 
         frameCount = 0;
-        lastTime = now;
+        lastTime = currentTime;
       }
-
-      requestAnimationFrame(measureFPS);
     };
 
     const frameId = requestAnimationFrame(measureFPS);
 
     return () => cancelAnimationFrame(frameId);
   }, [componentId]);
-
-  // Log state changes
-  useEffect(() => {
-    logStore.logLifecycle('EventLogsTab', 'state-updated', {
-      logLevel,
-      autoScroll,
-      searchQuery,
-    });
-  }, [logLevel, autoScroll, searchQuery]);
-
-  // Auto-scroll effect
-  useEffect(() => {
-    const container = document.querySelector('.logs-container');
-
-    if (container && autoScroll) {
-      container.scrollTop = container.scrollHeight; // Scroll to bottom instead of top
-    }
-  }, [filteredLogs, autoScroll]);
-
-  // Enhanced handlers with logging
-  const handleClearAllLogs = useCallback(() => {
-    const startTime = performance.now();
-
-    if (confirm('Are you sure you want to clear all logs?')) {
-      try {
-        logStore.logUserAction('clear-all-logs', 'EventLogsTab');
-        logStore.clearLogs();
-        toast.success('Logs cleared successfully');
-        forceUpdate({});
-
-        logStore.logSystem('All logs cleared', {
-          duration: performance.now() - startTime,
-        });
-      } catch (error) {
-        logStore.logError('Failed to clear all logs', error);
-        toast.error('Failed to clear all logs');
-      }
-    }
-  }, []);
-
-  const handleExportLogs = useCallback(() => {
-    const startTime = performance.now();
-
-    try {
-      logStore.logUserAction('export-logs', 'EventLogsTab', {
-        logCount: filteredLogs.length,
-      });
-
-      const logText = logStore.getLogs().map(formatLogEntry).join('\n\n');
-
-      const blob = new Blob([logText], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `event-logs-${new Date().toISOString()}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      logStore.logSystem('Logs exported', {
-        duration: performance.now() - startTime,
-        size: blob.size,
-      });
-
-      toast.success('Logs exported successfully');
-    } catch (error) {
-      logStore.logError('Failed to export logs', error);
-      toast.error('Failed to export logs');
-    }
-  }, [filteredLogs.length]);
-
-  const handleLogLevelChange = useCallback(
-    (event: React.ChangeEvent<HTMLSelectElement>) => {
-      const newLevel = event.target.value as LogEntry['level'] | 'all';
-      logStore.logUserAction('change-log-level', 'EventLogsTab', {
-        previousLevel: logLevel,
-        newLevel,
-      });
-      setLogLevel(newLevel);
-    },
-    [logLevel],
-  );
-
-  const handleSearchTypeChange = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
-    const newSearchType = event.target.value as 'message' | 'level' | 'category' | 'timestamp';
-    setSearchType(newSearchType);
-  }, []);
-
-  const handleSearchChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const newQuery = event.target.value;
-    logStore.logUserAction('search-logs', 'EventLogsTab', {
-      query: newQuery,
-    });
-    setSearchQuery(newQuery);
-  }, []);
 
   const handleAutoScrollChange = useCallback((checked: boolean) => {
     logStore.logUserAction('toggle-auto-scroll', 'EventLogsTab', {
@@ -208,95 +82,65 @@ export default function EventLogsTab() {
     setAutoScroll(checked);
   }, []);
 
-  // Enhanced log formatting
-  const formatLogEntry = useCallback((log: LogEntry) => {
-    const timestamp = new Date(log.timestamp).toLocaleString();
-    const level = log.level.toUpperCase();
-    const duration = log.duration ? ` (${log.duration.toFixed(2)}ms)` : '';
-    const context = log.context ? `\nContext: ${JSON.stringify(log.context, null, 2)}` : '';
-
-    return `[${level}] ${timestamp}${duration}\n${log.message}${context}${
-      log.details ? '\nDetails: ' + JSON.stringify(log.details, null, 2) : ''
-    }`;
+  const handleSearchQueryChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(event.target.value);
   }, []);
 
-  const renderLogDetails = useCallback((log: LogEntry) => {
-    if (!log.details) {
-      return null;
-    }
+  const handleSearchTypeChange = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
+    setSearchType(event.target.value as 'message' | 'level' | 'category' | 'timestamp');
+  }, []);
 
-    if (log.level === 'error' && log.details.endpoint) {
-      return (
-        <div className="mt-2 space-y-2">
-          <div className="flex flex-col space-y-1">
-            <span className="text-xs text-bolt-elements-textSecondary">Endpoint: {log.details.endpoint}</span>
-            {log.details.status && (
-              <span className="text-xs text-bolt-elements-textSecondary">Status: {log.details.status}</span>
-            )}
-            {log.details.suggestion && (
-              <div className="text-xs text-yellow-500 bg-yellow-500/10 p-2 rounded-md mt-1">
-                Suggestion: {log.details.suggestion}
-              </div>
-            )}
-            {log.context?.docsLink && (
-              <a
-                href={log.context.docsLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-blue-500 hover:underline"
-              >
-                Documentation
-              </a>
-            )}
-          </div>
-          <pre className="text-xs text-bolt-elements-textSecondary overflow-x-auto whitespace-pre-wrap break-all bg-bolt-elements-bg-depth-2 p-2 rounded-md">
-            {JSON.stringify(log.details, null, 2)}
-          </pre>
-        </div>
-      );
-    }
+  const handleLogLevelChange = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
+    setLogLevel(event.target.value as LogEntry['level'] | 'all');
+  }, []);
 
-    return (
-      <pre className="mt-2 text-xs text-bolt-elements-textSecondary overflow-x-auto whitespace-pre-wrap break-all">
-        {JSON.stringify(log.details, null, 2)}
-      </pre>
-    );
+  const handleClearLogs = useCallback(() => {
+    logStore.clearLogs();
+    toast.success('Logs cleared');
+  }, []);
+
+  const handleExportLogs = useCallback(() => {
+    const logs = logStore.getLogs();
+    const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `event-logs-${new Date().toISOString()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('Logs exported');
   }, []);
 
   return (
-    <div className="p-4 h-full flex flex-col">
-      <div className="flex flex-col space-y-4 mb-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <h3 className="text-lg font-medium text-bolt-elements-textPrimary">Event Logs</h3>
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-bolt-elements-textSecondary whitespace-nowrap">Show Actions</span>
-              <Switch checked={showLogs} onCheckedChange={(checked) => logStore.showLogs.set(checked)} />
-            </div>
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-bolt-elements-textSecondary whitespace-nowrap">Auto-scroll</span>
-              <Switch checked={autoScroll} onCheckedChange={handleAutoScrollChange} />
-            </div>
-          </div>
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-4 p-4 border-b border-gray-200 dark:border-gray-800">
+        <div className="flex items-center gap-2">
+          <span>Show Logs</span>
+          <Switch checked={showLogs} onCheckedChange={(checked) => logStore.showLogs.set(checked)} />
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={logLevel}
-            onChange={handleLogLevelChange}
-            className="flex-1 p-2 rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-prompt-background text-bolt-elements-textPrimary focus:outline-none focus:ring-2 focus:ring-bolt-elements-focus transition-all lg:max-w-[20%] text-sm min-w-[100px]"
-          >
-            <option value="all">All</option>
-            <option value="info">Info</option>
-            <option value="warning">Warning</option>
-            <option value="error">Error</option>
-            <option value="debug">Debug</option>
-            <option value="performance">Performance</option>
-          </select>
+        <div className="flex items-center gap-2">
+          <span>Auto Scroll</span>
+          <Switch checked={autoScroll} onCheckedChange={handleAutoScrollChange} />
+        </div>
+        <select
+          value={logLevel}
+          onChange={handleLogLevelChange}
+          className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-700 dark:bg-gray-800"
+        >
+          <option value="all">All Levels</option>
+          <option value="info">Info</option>
+          <option value="warning">Warning</option>
+          <option value="error">Error</option>
+          <option value="debug">Debug</option>
+          <option value="performance">Performance</option>
+        </select>
+        <div className="flex items-center gap-2">
           <select
             value={searchType}
             onChange={handleSearchTypeChange}
-            className="flex-1 p-2 rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-prompt-background text-bolt-elements-textPrimary focus:outline-none focus:ring-2 focus:ring-bolt-elements-focus transition-all lg:max-w-[20%] text-sm min-w-[100px]"
+            className="px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-700 dark:bg-gray-800"
           >
             <option value="message">Message</option>
             <option value="level">Level</option>
@@ -306,78 +150,46 @@ export default function EventLogsTab() {
           <div className="flex-1 min-w-[200px]">
             <input
               type="text"
-              placeholder="Search logs..."
               value={searchQuery}
-              onChange={handleSearchChange}
-              className="w-full bg-white dark:bg-bolt-elements-background-depth-4 relative px-2 py-1.5 rounded-md focus:outline-none placeholder-bolt-elements-textTertiary text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary border border-bolt-elements-borderColor"
+              onChange={handleSearchQueryChange}
+              placeholder="Search logs..."
+              className="w-full px-2 py-1 text-sm border border-gray-300 rounded dark:border-gray-700 dark:bg-gray-800"
             />
           </div>
-          {showLogs && (
-            <div className="flex items-center gap-2 flex-nowrap">
-              <IconButton
-                onClick={handleExportLogs}
-                icon="i-ph:export"
-                label="Export Logs"
-                className="rounded-lg px-4 py-2 bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text hover:bg-bolt-elements-button-primary-backgroundHover"
-              />
-              <IconButton
-                onClick={handleClearAllLogs}
-                icon="i-ph:trash"
-                label="Clear All Logs"
-                className="rounded-lg px-4 py-2 bg-bolt-elements-button-danger-background text-bolt-elements-button-danger-text hover:bg-bolt-elements-button-danger-backgroundHover"
-              />
-            </div>
-          )}
+        </div>
+        <div className="flex items-center gap-2 ml-auto">
+          <IconButton
+            className="text-gray-500 hover:text-gray-700"
+            icon="i-ph:trash"
+            onClick={handleClearLogs}
+            title="Clear Logs"
+          />
+          <IconButton
+            className="text-gray-500 hover:text-gray-700"
+            icon="i-ph:download"
+            onClick={handleExportLogs}
+            title="Export Logs"
+          />
         </div>
       </div>
-
-      <div className="bg-bolt-elements-bg-depth-1 rounded-lg p-4 h-[calc(100vh - 250px)] min-h-[400px] overflow-y-auto logs-container">
-        {filteredLogs.length === 0 ? (
-          <div className="text-center text-bolt-elements-textSecondary py-8">No logs found</div>
-        ) : (
-          filteredLogs.map((log, index) => (
+      <div className="flex-1 overflow-auto">
+        <pre className="p-4 text-sm">
+          {filteredLogs.map((log) => (
             <div
-              key={index}
-              className="text-sm mb-3 font-mono border-b border-bolt-elements-borderColor pb-2 last:border-0"
+              key={log.id}
+              className={classNames('mb-2', {
+                'text-red-500': log.level === 'error',
+                'text-yellow-500': log.level === 'warning',
+                'text-blue-500': log.level === 'debug',
+                'text-purple-500': log.level === 'performance',
+              })}
             >
-              <div className="flex items-start space-x-2 flex-wrap">
-                <span className={`font-bold ${getLevelColor(log.level)} whitespace-nowrap`}>
-                  [{log.level.toUpperCase()}]
-                </span>
-                <span className="text-bolt-elements-textSecondary whitespace-nowrap">
-                  {new Date(log.timestamp).toLocaleString()}
-                </span>
-                <span
-                  className={classNames(
-                    'text-bolt-elements-textPrimary break-all',
-                    log.details?.actionRequired && 'font-semibold',
-                  )}
-                >
-                  {log.message}
-                </span>
-              </div>
-              {renderLogDetails(log)}
+              [{log.timestamp}] [{log.level.toUpperCase()}] {log.message}
+              {log.details && <div className="ml-4 text-gray-500">{JSON.stringify(log.details, null, 2)}</div>}
             </div>
-          ))
-        )}
+          ))}
+        </pre>
       </div>
     </div>
   );
-}
-
-function getLevelColor(level: LogEntry['level']): string {
-  switch (level) {
-    case 'info':
-      return 'text-blue-500';
-    case 'warning':
-      return 'text-yellow-500';
-    case 'error':
-      return 'text-red-500';
-    case 'debug':
-      return 'text-gray-500';
-    case 'performance':
-      return 'text-green-500';
-    default:
-      return 'text-bolt-elements-textPrimary';
-  }
 }

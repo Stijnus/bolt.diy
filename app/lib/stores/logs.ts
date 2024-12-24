@@ -25,6 +25,15 @@ export interface LogEntry {
     severity?: 'low' | 'medium' | 'high';
     docsLink?: string;
   };
+  route?: string;
+  component?: string;
+  session?: string;
+  featureFlags?: Record<string, boolean>;
+  browser?: string;
+  os?: string;
+  device?: string;
+  severity?: 'low' | 'medium' | 'high';
+  docsLink?: string;
 }
 
 interface PerformanceMetrics {

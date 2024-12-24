@@ -9,7 +9,7 @@ import ProvidersTab from './providers/ProvidersTab';
 import { useSettings } from '~/lib/hooks/useSettings';
 import FeaturesTab from './features/FeaturesTab';
 import DebugTab from './debug/DebugTab';
-import EventLogsTab from './event-logs/EventLogsTab';
+import EventLogsTab from '~/components/settings/event-logs/EventLogsTab';
 import ConnectionsTab from './connections/ConnectionsTab';
 import DataTab from './data/DataTab';
 import UpdatesTab from './updates/UpdatesTab';
