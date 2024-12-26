@@ -1,17 +1,18 @@
-import { NextResponse } from 'next/server';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { json } from '@remix-run/node';
+import type { ActionFunction } from '@remix-run/node';
 
 const execAsync = promisify(exec);
 
-export async function POST() {
+export const action: ActionFunction = async () => {
   try {
     // Execute git pull
     const { stdout: pullOutput, stderr: pullError } = await execAsync('git pull upstream main');
 
     if (pullError) {
       console.error('Git pull error:', pullError);
-      return NextResponse.json({ error: 'Git pull failed' }, { status: 500 });
+      return json({ error: 'Git pull failed' }, { status: 500 });
     }
 
     // Install dependencies
@@ -19,10 +20,10 @@ export async function POST() {
 
     if (installError) {
       console.error('Dependencies installation error:', installError);
-      return NextResponse.json({ error: 'Dependencies installation failed' }, { status: 500 });
+      return json({ error: 'Dependencies installation failed' }, { status: 500 });
     }
 
-    return NextResponse.json({
+    return json({
       success: true,
       message: 'Update completed successfully',
       details: {
@@ -32,9 +33,6 @@ export async function POST() {
     });
   } catch (error) {
     console.error('Update failed:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error occurred' },
-      { status: 500 },
-    );
+    return json({ error: error instanceof Error ? error.message : 'Unknown error occurred' }, { status: 500 });
   }
-}
+};
