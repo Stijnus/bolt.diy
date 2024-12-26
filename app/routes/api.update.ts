@@ -16,18 +16,29 @@ export const action: ActionFunction = async () => {
     await execAsync('git stash');
     console.log('Changes stashed');
 
-    // Fetch latest changes
+    // Fetch latest changes from upstream
     const { stderr: fetchError } = await execAsync('git fetch upstream');
 
     if (fetchError) {
       console.error('Git fetch error:', fetchError);
+
+      // Try to recover by popping the stash
+      await execAsync('git stash pop');
+
       return json({ error: 'Git fetch failed: ' + fetchError }, { status: 500 });
     }
 
     console.log('Fetch completed successfully');
 
-    // Pull from main with rebase
-    const { stdout: pullOutput, stderr: pullError } = await execAsync('git pull upstream main --rebase');
+    // Configure git pull strategy based on branch
+    if (currentBranch === 'main') {
+      await execAsync('git config pull.rebase false'); // Use merge strategy for main
+    } else {
+      await execAsync('git config pull.rebase true'); // Use rebase strategy for features
+    }
+
+    // Pull from upstream
+    const { stdout: pullOutput, stderr: pullError } = await execAsync('git pull upstream main');
 
     if (pullError && !pullError.includes('Already up to date')) {
       console.error('Git pull failed with error:', pullError);
@@ -69,6 +80,7 @@ export const action: ActionFunction = async () => {
       message: 'Update completed successfully',
       details: {
         branch: currentBranch,
+        updateType: currentBranch === 'main' ? 'merge' : 'rebase',
         pull: pullOutput,
         install: installOutput,
       },
