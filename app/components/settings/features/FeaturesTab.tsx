@@ -19,6 +19,8 @@ export default function FeaturesTab() {
     updatesEnabled,
   } = useSettings();
 
+  const [showPullRequests, setShowPullRequests] = React.useState(false);
+
   return (
     <div className="p-4 bg-bolt-elements-bg-depth-2 border border-bolt-elements-borderColor rounded-lg mb-4">
       <div className="mb-6">
@@ -101,6 +103,18 @@ export default function FeaturesTab() {
             ))}
           </select>
         </div>
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <span className="text-bolt-elements-textPrimary">DEV MODE : Pull Requests</span>
+            <p className="text-sm text-bolt-elements-textSecondary">Coming soon: View and manage pull requests</p>
+          </div>
+          <Switch className="ml-auto" checked={showPullRequests} onCheckedChange={setShowPullRequests} />
+        </div>
+        {showPullRequests && (
+          <div className="mt-4 bg-bolt-elements-surface rounded-lg p-4">
+            <p className="text-bolt-elements-textSecondary">Pull Request feature is coming soon.</p>
+          </div>
+        )}
       </div>
     </div>
   );

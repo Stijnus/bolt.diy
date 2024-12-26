@@ -35,16 +35,16 @@ export const action: ActionFunction = async () => {
       // On main branch - do a regular pull
       console.log('On main branch, using merge strategy');
       await execAsync('git config pull.rebase false'); // Use merge strategy for main
-      
+
       // Pull from upstream main with merge
       const { stdout: pullOutput, stderr: pullError } = await execAsync('git pull upstream main');
-      
+
       if (pullError && !pullError.includes('Already up to date')) {
         console.error('Git pull failed with error:', pullError);
-        
+
         // Try to recover by popping the stash
         await execAsync('git stash pop');
-        
+
         return json(
           {
             error: 'Git pull failed',
@@ -61,16 +61,16 @@ export const action: ActionFunction = async () => {
       // On feature branch - rebase on top of main
       console.log('On feature branch, using rebase strategy');
       await execAsync('git config pull.rebase true'); // Use rebase strategy for features
-      
+
       // Pull from upstream main with rebase
       const { stdout: pullOutput, stderr: pullError } = await execAsync('git pull upstream main');
-      
+
       if (pullError && !pullError.includes('Already up to date')) {
         console.error('Git pull failed with error:', pullError);
-        
+
         // Try to recover by popping the stash
         await execAsync('git stash pop');
-        
+
         return json(
           {
             error: 'Git pull failed',
