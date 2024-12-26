@@ -3,6 +3,14 @@ import type { ModelInfo } from '~/lib/modules/llm/types';
 import type { IProviderSetting } from '~/types/model';
 import type { LanguageModelV1 } from 'ai';
 
+interface TogetherModelResponse {
+  data: Array<{
+    name: string;
+    display_name?: string;
+    display_type: string;
+  }>;
+}
+
 export default class TogetherProvider extends BaseProvider {
   name = 'Together';
   getApiKeyLink = 'https://api.together.xyz/settings/api-keys';
@@ -49,10 +57,9 @@ export default class TogetherProvider extends BaseProvider {
       const baseUrl = fetchBaseUrl || 'https://api.together.xyz/v1';
 
       if (!baseUrl || !apiKey) {
-        return [];
+        // Return static models if API key is missing
+        return this.staticModels;
       }
-
-      // console.log({ baseUrl, apiKey });
 
       const response = await fetch(`${baseUrl}/models`, {
         headers: {
@@ -60,24 +67,30 @@ export default class TogetherProvider extends BaseProvider {
         },
       });
 
-      const res = (await response.json()) as any;
-      const data = (res || []).filter((model: any) => model.type === 'chat');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch Together models: ${response.statusText}`);
+      }
 
-      return data.map((m: any) => ({
-        name: m.id,
-        label: `${m.display_name} - in:$${m.pricing.input.toFixed(2)} out:$${m.pricing.output.toFixed(2)} - context ${Math.floor(m.context_length / 1000)}k`,
-        provider: this.name,
-        maxTokenAllowed: 8000,
-      }));
+      const data = (await response.json()) as TogetherModelResponse;
+
+      return data.data
+        .filter((model) => model.display_type === 'model')
+        .map((model) => ({
+          name: model.name,
+          label: model.display_name || model.name,
+          provider: this.name,
+          maxTokenAllowed: 8192,
+        }));
     } catch (error: any) {
-      console.error('Error getting Together models:', error.message);
-      return [];
+      // If there's an error fetching dynamic models, return static models as fallback
+      console.error('Error fetching Together models:', error?.message || 'Unknown error');
+      return this.staticModels;
     }
   }
 
   getModelInstance(options: {
     model: string;
-    serverEnv: Env;
+    serverEnv: any;
     apiKeys?: Record<string, string>;
     providerSettings?: Record<string, IProviderSetting>;
   }): LanguageModelV1 {

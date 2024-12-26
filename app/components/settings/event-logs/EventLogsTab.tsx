@@ -4,12 +4,14 @@ import { Switch } from '~/components/ui/Switch';
 import { logStore, type LogEntry } from '~/lib/stores/logs';
 import { useStore } from '@nanostores/react';
 import { classNames } from '~/utils/classNames';
+import { IconButton } from '~/components/ui/IconButton';
 
 export default function EventLogsTab() {
   const showLogs = useStore(logStore.showLogs);
   const [logLevel, setLogLevel] = useState<LogEntry['level'] | 'all'>('info');
   const [autoScroll, setAutoScroll] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchType, setSearchType] = useState<'message' | 'level' | 'category' | 'timestamp'>('message');
   const [, forceUpdate] = useState({});
   const componentId = useMemo(() => `event-logs-${Date.now()}`, []);
 
@@ -17,14 +19,31 @@ export default function EventLogsTab() {
     const logs = logStore.getLogs(); // Already sorted newest first
     return logs.filter((log) => {
       const matchesLevel = !logLevel || log.level === logLevel || logLevel === 'all';
-      const matchesSearch =
-        !searchQuery ||
-        log.message?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        JSON.stringify(log.details)?.toLowerCase()?.includes(searchQuery?.toLowerCase());
+      let matchesSearch = true;
+
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+
+        switch (searchType) {
+          case 'message':
+            matchesSearch =
+              log.message?.toLowerCase().includes(query) || JSON.stringify(log.details)?.toLowerCase()?.includes(query);
+            break;
+          case 'level':
+            matchesSearch = log.level?.toLowerCase().includes(query);
+            break;
+          case 'category':
+            matchesSearch = log.category?.toLowerCase().includes(query);
+            break;
+          case 'timestamp':
+            matchesSearch = new Date(log.timestamp).toLocaleString().toLowerCase().includes(query);
+            break;
+        }
+      }
 
       return matchesLevel && matchesSearch;
     });
-  }, [logLevel, searchQuery]);
+  }, [logLevel, searchQuery, searchType]);
 
   // Component Lifecycle Logging
   useEffect(() => {
@@ -100,33 +119,30 @@ export default function EventLogsTab() {
     const container = document.querySelector('.logs-container');
 
     if (container && autoScroll) {
-      container.scrollTop = 0; // Scroll to top instead of bottom
+      container.scrollTop = container.scrollHeight; // Scroll to bottom instead of top
     }
   }, [filteredLogs, autoScroll]);
 
   // Enhanced handlers with logging
-  const handleClearLogs = useCallback(() => {
+  const handleClearAllLogs = useCallback(() => {
     const startTime = performance.now();
 
     if (confirm('Are you sure you want to clear all logs?')) {
       try {
-        logStore.logUserAction('clear-logs', 'EventLogsTab', {
-          logCount: filteredLogs.length,
-        });
-
+        logStore.logUserAction('clear-all-logs', 'EventLogsTab');
         logStore.clearLogs();
         toast.success('Logs cleared successfully');
         forceUpdate({});
 
-        logStore.logSystem('Logs cleared', {
+        logStore.logSystem('All logs cleared', {
           duration: performance.now() - startTime,
         });
       } catch (error) {
-        logStore.logError('Failed to clear logs', error);
-        toast.error('Failed to clear logs');
+        logStore.logError('Failed to clear all logs', error);
+        toast.error('Failed to clear all logs');
       }
     }
-  }, [filteredLogs.length]);
+  }, []);
 
   const handleExportLogs = useCallback(() => {
     const startTime = performance.now();
@@ -171,6 +187,11 @@ export default function EventLogsTab() {
     },
     [logLevel],
   );
+
+  const handleSearchTypeChange = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newSearchType = event.target.value as 'message' | 'level' | 'category' | 'timestamp';
+    setSearchType(newSearchType);
+  }, []);
 
   const handleSearchChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const newQuery = event.target.value;
@@ -217,6 +238,16 @@ export default function EventLogsTab() {
                 Suggestion: {log.details.suggestion}
               </div>
             )}
+            {log.context?.docsLink && (
+              <a
+                href={log.context.docsLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-blue-500 hover:underline"
+              >
+                Documentation
+              </a>
+            )}
           </div>
           <pre className="text-xs text-bolt-elements-textSecondary overflow-x-auto whitespace-pre-wrap break-all bg-bolt-elements-bg-depth-2 p-2 rounded-md">
             {JSON.stringify(log.details, null, 2)}
@@ -262,6 +293,16 @@ export default function EventLogsTab() {
             <option value="debug">Debug</option>
             <option value="performance">Performance</option>
           </select>
+          <select
+            value={searchType}
+            onChange={handleSearchTypeChange}
+            className="flex-1 p-2 rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-prompt-background text-bolt-elements-textPrimary focus:outline-none focus:ring-2 focus:ring-bolt-elements-focus transition-all lg:max-w-[20%] text-sm min-w-[100px]"
+          >
+            <option value="message">Message</option>
+            <option value="level">Level</option>
+            <option value="category">Category</option>
+            <option value="timestamp">Timestamp</option>
+          </select>
           <div className="flex-1 min-w-[200px]">
             <input
               type="text"
@@ -273,18 +314,18 @@ export default function EventLogsTab() {
           </div>
           {showLogs && (
             <div className="flex items-center gap-2 flex-nowrap">
-              <button
+              <IconButton
                 onClick={handleExportLogs}
+                icon="i-ph:export"
+                label="Export Logs"
                 className="rounded-lg px-4 py-2 bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text hover:bg-bolt-elements-button-primary-backgroundHover"
-              >
-                Export Logs
-              </button>
-              <button
-                onClick={handleClearLogs}
+              />
+              <IconButton
+                onClick={handleClearAllLogs}
+                icon="i-ph:trash"
+                label="Clear All Logs"
                 className="rounded-lg px-4 py-2 bg-bolt-elements-button-danger-background text-bolt-elements-button-danger-text hover:bg-bolt-elements-button-danger-backgroundHover"
-              >
-                Clear Logs
-              </button>
+              />
             </div>
           )}
         </div>
@@ -324,7 +365,7 @@ export default function EventLogsTab() {
   );
 }
 
-function getLevelColor(level: LogEntry['level']) {
+function getLevelColor(level: LogEntry['level']): string {
   switch (level) {
     case 'info':
       return 'text-blue-500';

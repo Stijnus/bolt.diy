@@ -1,6 +1,6 @@
 import * as RadixDialog from '@radix-ui/react-dialog';
 import { motion } from 'framer-motion';
-import { useState, type ReactElement } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { classNames } from '~/utils/classNames';
 import { DialogTitle, dialogVariants, dialogBackdropVariants } from '~/components/ui/Dialog';
 import { IconButton } from '~/components/ui/IconButton';
@@ -12,44 +12,64 @@ import DebugTab from './debug/DebugTab';
 import EventLogsTab from './event-logs/EventLogsTab';
 import ConnectionsTab from './connections/ConnectionsTab';
 import DataTab from './data/DataTab';
+import UpdatesTab from './updates/UpdatesTab';
 
 interface SettingsProps {
   open: boolean;
   onClose: () => void;
 }
 
-type TabType = 'data' | 'providers' | 'features' | 'debug' | 'event-logs' | 'connection';
+type TabType = 'data' | 'providers' | 'features' | 'debug' | 'event-logs' | 'connection' | 'updates';
 
 export const SettingsWindow = ({ open, onClose }: SettingsProps) => {
-  const { debug, eventLogs } = useSettings();
+  const { debug, eventLogs, updatesEnabled } = useSettings();
   const [activeTab, setActiveTab] = useState<TabType>('data');
 
-  const tabs: { id: TabType; label: string; icon: string; component?: ReactElement }[] = [
-    { id: 'data', label: 'Data', icon: 'i-ph:database', component: <DataTab /> },
-    { id: 'providers', label: 'Providers', icon: 'i-ph:key', component: <ProvidersTab /> },
-    { id: 'connection', label: 'Connection', icon: 'i-ph:link', component: <ConnectionsTab /> },
-    { id: 'features', label: 'Features', icon: 'i-ph:star', component: <FeaturesTab /> },
-    ...(debug
-      ? [
-          {
-            id: 'debug' as TabType,
-            label: 'Debug Tab',
-            icon: 'i-ph:bug',
-            component: <DebugTab />,
-          },
-        ]
-      : []),
-    ...(eventLogs
-      ? [
-          {
-            id: 'event-logs' as TabType,
-            label: 'Event Logs',
-            icon: 'i-ph:list-bullets',
-            component: <EventLogsTab />,
-          },
-        ]
-      : []),
-  ];
+  // Memoize tabs to prevent unnecessary re-renders
+  const tabs = useMemo(() => {
+    const baseTabs = [
+      { id: 'data' as TabType, label: 'Data', icon: 'i-ph:database', component: <DataTab /> },
+      { id: 'providers' as TabType, label: 'Providers', icon: 'i-ph:key', component: <ProvidersTab /> },
+      { id: 'connection' as TabType, label: 'Connection', icon: 'i-ph:link', component: <ConnectionsTab /> },
+      { id: 'features' as TabType, label: 'Features', icon: 'i-ph:star', component: <FeaturesTab /> },
+    ];
+
+    if (updatesEnabled) {
+      baseTabs.push({
+        id: 'updates',
+        label: 'Updates',
+        icon: 'i-ph:arrow-clockwise',
+        component: <UpdatesTab />,
+      });
+    }
+
+    if (debug) {
+      baseTabs.push({
+        id: 'debug',
+        label: 'Debug Tab',
+        icon: 'i-ph:bug',
+        component: <DebugTab />,
+      });
+    }
+
+    if (eventLogs) {
+      baseTabs.push({
+        id: 'event-logs',
+        label: 'Event Logs',
+        icon: 'i-ph:list-bullets',
+        component: <EventLogsTab />,
+      });
+    }
+
+    return baseTabs;
+  }, [debug, eventLogs, updatesEnabled]);
+
+  // If the current tab is disabled, switch to data tab
+  useEffect(() => {
+    if (!tabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab('data');
+    }
+  }, [tabs, activeTab]);
 
   return (
     <RadixDialog.Root open={open}>
@@ -81,16 +101,64 @@ export const SettingsWindow = ({ open, onClose }: SettingsProps) => {
                 <DialogTitle className="flex-shrink-0 text-lg font-semibold text-bolt-elements-textPrimary mb-2">
                   Settings
                 </DialogTitle>
-                {tabs.map((tab) => (
+                <div className="flex flex-col">
                   <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={classNames(activeTab === tab.id ? styles.active : '')}
+                    onClick={() => setActiveTab('data')}
+                    className={classNames(activeTab === 'data' ? styles.active : '')}
                   >
-                    <div className={tab.icon} />
-                    {tab.label}
+                    <div className="i-ph:database" />
+                    Data
                   </button>
-                ))}
+                  <button
+                    onClick={() => setActiveTab('providers')}
+                    className={classNames(activeTab === 'providers' ? styles.active : '')}
+                  >
+                    <div className="i-ph:key" />
+                    Providers
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('connection')}
+                    className={classNames(activeTab === 'connection' ? styles.active : '')}
+                  >
+                    <div className="i-ph:link" />
+                    Connection
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('features')}
+                    className={classNames(activeTab === 'features' ? styles.active : '')}
+                  >
+                    <div className="i-ph:star" />
+                    Features
+                  </button>
+
+                  {updatesEnabled && (
+                    <button
+                      onClick={() => setActiveTab('updates')}
+                      className={classNames(activeTab === 'updates' ? styles.active : '')}
+                    >
+                      <div className="i-ph:arrow-clockwise" />
+                      Updates
+                    </button>
+                  )}
+                  {debug && (
+                    <button
+                      onClick={() => setActiveTab('debug')}
+                      className={classNames(activeTab === 'debug' ? styles.active : '')}
+                    >
+                      <div className="i-ph:bug" />
+                      Debug Tab
+                    </button>
+                  )}
+                  {eventLogs && (
+                    <button
+                      onClick={() => setActiveTab('event-logs')}
+                      className={classNames(activeTab === 'event-logs' ? styles.active : '')}
+                    >
+                      <div className="i-ph:list-bullets" />
+                      Event Logs
+                    </button>
+                  )}
+                </div>
                 <div className="mt-auto flex flex-col gap-2">
                   <a
                     href="https://github.com/stackblitz-labs/bolt.diy"

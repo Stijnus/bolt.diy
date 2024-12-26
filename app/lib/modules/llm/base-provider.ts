@@ -3,6 +3,7 @@ import type { ProviderInfo, ProviderConfig, ModelInfo } from './types';
 import type { IProviderSetting } from '~/types/model';
 import { createOpenAI } from '@ai-sdk/openai';
 import { LLMManager } from './manager';
+import { logStore } from '~/lib/stores/logs';
 
 export abstract class BaseProvider implements ProviderInfo {
   abstract name: string;
@@ -12,6 +13,7 @@ export abstract class BaseProvider implements ProviderInfo {
   getApiKeyLink?: string;
   labelForGetApiKey?: string;
   icon?: string;
+  requiresApiKey: boolean = true; // Default to true, override in local providers
 
   getProviderBaseUrlAndKey(options: {
     apiKeys?: Record<string, string>;
@@ -38,6 +40,23 @@ export abstract class BaseProvider implements ProviderInfo {
     const apiTokenKey = this.config.apiTokenKey || defaultApiTokenKey;
     const apiKey =
       apiKeys?.[this.name] || serverEnv?.[apiTokenKey] || process?.env?.[apiTokenKey] || manager.env?.[baseUrlKey];
+
+    // Only validate API key if the provider requires one
+    if (this.requiresApiKey && !apiKey) {
+      const error = new Error(`Missing API key for ${this.name} provider`);
+      Object.assign(error, {
+        provider: this.name,
+        apiKeyLink: this.getApiKeyLink,
+        isApiKeyError: true,
+      });
+      logStore.logAPIError('/api/chat', error, {
+        suggestion: `Please set your ${this.name} API key in the settings or .env file`,
+        actionRequired: true,
+        provider: this.name,
+        apiKeyLink: this.getApiKeyLink,
+      });
+      throw error;
+    }
 
     return {
       baseUrl,

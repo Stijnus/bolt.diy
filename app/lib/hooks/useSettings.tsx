@@ -7,16 +7,20 @@ import {
   promptStore,
   providersStore,
   latestBranchStore,
+  isUpdatesEnabled,
 } from '~/lib/stores/settings';
 import { useCallback, useEffect, useState } from 'react';
 import Cookies from 'js-cookie';
 import type { IProviderSetting, ProviderInfo } from '~/types/model';
-import { logStore } from '~/lib/stores/logs'; // assuming logStore is imported from this location
+import { logStore } from '~/lib/stores/logs';
 
 interface CommitData {
   commit: string;
   version?: string;
 }
+
+declare const __COMMIT_HASH: string;
+declare const __APP_VERSION: string;
 
 const versionData: CommitData = {
   commit: __COMMIT_HASH,
@@ -30,7 +34,9 @@ export function useSettings() {
   const promptId = useStore(promptStore);
   const isLocalModel = useStore(isLocalModelsEnabled);
   const isLatestBranch = useStore(latestBranchStore);
+  const updatesEnabled = useStore(isUpdatesEnabled);
   const [activeProviders, setActiveProviders] = useState<ProviderInfo[]>([]);
+  const [autoUpdateEnabled, setAutoUpdateEnabled] = useState<boolean>(false);
 
   // Function to check if we're on stable version
   const checkIsStableVersion = async () => {
@@ -118,11 +124,24 @@ export function useSettings() {
     } else {
       latestBranchStore.set(savedLatestBranch === 'true');
     }
+
+    // load auto update setting from cookies
+    const savedAutoUpdate = Cookies.get('autoUpdateEnabled');
+
+    if (savedAutoUpdate) {
+      setAutoUpdateEnabled(savedAutoUpdate === 'true');
+    }
+
+    // load updates enabled setting from cookies
+    const savedUpdatesEnabled = Cookies.get('updatesEnabled');
+
+    if (savedUpdatesEnabled) {
+      isUpdatesEnabled.set(savedUpdatesEnabled === 'true');
+    }
   }, []);
 
   // writing values to cookies on change
   useEffect(() => {
-    const providers = providersStore.get();
     const providerSetting: Record<string, IProviderSetting> = {};
     Object.keys(providers).forEach((provider) => {
       providerSetting[provider] = providers[provider].settings;
@@ -132,8 +151,8 @@ export function useSettings() {
 
   useEffect(() => {
     let active = Object.entries(providers)
-      .filter(([_key, provider]) => provider.settings.enabled)
-      .map(([_k, p]) => p);
+      .filter(([_key, provider]: [string, ProviderInfo & { settings: IProviderSetting }]) => provider.settings.enabled)
+      .map(([_k, p]: [string, ProviderInfo & { settings: IProviderSetting }]) => p);
 
     if (!isLocalModel) {
       active = active.filter((p) => !LOCAL_PROVIDERS.includes(p.name));
@@ -173,10 +192,23 @@ export function useSettings() {
     promptStore.set(promptId);
     Cookies.set('promptId', promptId);
   }, []);
+
   const enableLatestBranch = useCallback((enabled: boolean) => {
     latestBranchStore.set(enabled);
     logStore.logSystem(`Main branch updates ${enabled ? 'enabled' : 'disabled'}`);
     Cookies.set('isLatestBranch', String(enabled));
+  }, []);
+
+  const updateAutoUpdateEnabled = useCallback((enabled: boolean) => {
+    setAutoUpdateEnabled(enabled);
+    Cookies.set('autoUpdateEnabled', String(enabled));
+    logStore.logSystem(`Automatic updates ${enabled ? 'enabled' : 'disabled'}`);
+  }, []);
+
+  const enableUpdates = useCallback((enabled: boolean) => {
+    isUpdatesEnabled.set(enabled);
+    Cookies.set('updatesEnabled', String(enabled));
+    logStore.logSystem(`Updates ${enabled ? 'enabled' : 'disabled'}`);
   }, []);
 
   return {
@@ -193,5 +225,11 @@ export function useSettings() {
     setPromptId,
     isLatestBranch,
     enableLatestBranch,
+    autoUpdateEnabled,
+    setAutoUpdateEnabled: updateAutoUpdateEnabled,
+    updatesEnabled,
+    enableUpdates,
   };
 }
+
+export default useSettings;

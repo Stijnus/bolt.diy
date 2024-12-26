@@ -17,6 +17,13 @@ export interface LogEntry {
     component?: string;
     session?: string;
     featureFlags?: Record<string, boolean>;
+    environment?: {
+      browser?: string;
+      os?: string;
+      device?: string;
+    };
+    severity?: 'low' | 'medium' | 'high';
+    docsLink?: string;
   };
 }
 
@@ -51,6 +58,7 @@ interface APIErrorDetails {
 }
 
 const MAX_LOGS = 1000;
+const MAX_LOG_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
 
 class LogStore {
   private _logs = map<Record<string, LogEntry>>({});
@@ -85,13 +93,21 @@ class LogStore {
 
   private _trimLogs() {
     const currentLogs = Object.entries(this._logs.get());
+    const now = Date.now();
 
-    if (currentLogs.length > MAX_LOGS) {
-      const sortedLogs = currentLogs.sort(
+    const filteredLogs = currentLogs.filter(([, log]) => {
+      const logTimestamp = new Date(log.timestamp).getTime();
+      return now - logTimestamp <= MAX_LOG_AGE;
+    });
+
+    if (filteredLogs.length > MAX_LOGS) {
+      const sortedLogs = filteredLogs.sort(
         ([, a], [, b]) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
       );
       const newLogs = Object.fromEntries(sortedLogs.slice(0, MAX_LOGS));
       this._logs.set(newLogs);
+    } else {
+      this._logs.set(Object.fromEntries(filteredLogs));
     }
   }
 
@@ -106,6 +122,7 @@ class LogStore {
     level: LogEntry['level'] = 'info',
     category: LogEntry['category'] = 'system',
     details?: Record<string, any>,
+    context?: LogEntry['context'],
   ) {
     const id = this._generateId();
     const entry: LogEntry = {
@@ -115,6 +132,7 @@ class LogStore {
       message,
       details,
       category,
+      context,
     };
 
     this._logs.setKey(id, entry);
@@ -126,11 +144,20 @@ class LogStore {
 
   // Component Lifecycle Logging
   logLifecycle(component: string, event: string, details?: Record<string, any>) {
-    return this.addLog(`${component}: ${event}`, 'debug', 'lifecycle', {
-      ...details,
-      timestamp: new Date().toISOString(),
-      route: typeof window !== 'undefined' ? window.location.pathname : undefined,
-    });
+    return this.addLog(
+      `${component}: ${event}`,
+      'debug',
+      'lifecycle',
+      {
+        ...details,
+        timestamp: new Date().toISOString(),
+        route: typeof window !== 'undefined' ? window.location.pathname : undefined,
+      },
+      {
+        component,
+        route: typeof window !== 'undefined' ? window.location.pathname : undefined,
+      },
+    );
   }
 
   // User Action Logging
@@ -206,7 +233,7 @@ class LogStore {
   }
 
   // Enhanced Error Logging
-  logError(message: string, error?: Error | unknown, details?: Record<string, any>) {
+  logError(message: string, error?: Error | unknown, details?: Record<string, any>, docsLink?: string) {
     const errorDetails = {
       ...details,
       error:
@@ -222,6 +249,15 @@ class LogStore {
         route: typeof window !== 'undefined' ? window.location.pathname : undefined,
         userAgent: typeof window !== 'undefined' ? window.navigator.userAgent : undefined,
         timestamp: new Date().toISOString(),
+        environment:
+          typeof window !== 'undefined'
+            ? {
+                browser: navigator.userAgent,
+                os: navigator.platform,
+                device: navigator.userAgent,
+              }
+            : undefined,
+        docsLink,
       },
     };
     return this.addLog(message, 'error', 'error', errorDetails);
@@ -250,7 +286,7 @@ class LogStore {
     const responseDetails = {
       endpoint,
       status,
-      duration: `${duration}ms`,
+      duration,
       success: status >= 200 && status < 300,
       ...details,
     };
@@ -288,13 +324,28 @@ class LogStore {
   }
 
   // Warning events
-  logWarning(message: string, details?: Record<string, any>) {
-    return this.addLog(message, 'warning', 'system', details);
+  logWarning(
+    message: string,
+    details?: Record<string, any>,
+    severity?: 'low' | 'medium' | 'high',
+    context?: Record<string, any>,
+  ) {
+    return this.addLog(message, 'warning', 'system', {
+      ...details,
+      ...context,
+      severity,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   // Debug events
-  logDebug(message: string, details?: Record<string, any>) {
-    return this.addLog(message, 'debug', 'system', details);
+  logDebug(message: string, step?: string, variables?: Record<string, any>, details?: Record<string, any>) {
+    return this.addLog(message, 'debug', 'system', {
+      ...details,
+      step,
+      variables,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   clearLogs() {

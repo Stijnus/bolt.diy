@@ -10,35 +10,65 @@ export default function FeaturesTab() {
     isLocalModel,
     enableLocalModels,
     enableEventLogs,
+    eventLogs,
     isLatestBranch,
     enableLatestBranch,
     promptId,
     setPromptId,
+    enableUpdates,
+    updatesEnabled,
   } = useSettings();
-
-  const handleToggle = (enabled: boolean) => {
-    enableDebugMode(enabled);
-    enableEventLogs(enabled);
-  };
 
   return (
     <div className="p-4 bg-bolt-elements-bg-depth-2 border border-bolt-elements-borderColor rounded-lg mb-4">
       <div className="mb-6">
         <h3 className="text-lg font-medium text-bolt-elements-textPrimary mb-4">Optional Features</h3>
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-bolt-elements-textPrimary">Debug Features</span>
-            <Switch className="ml-auto" checked={debug} onCheckedChange={handleToggle} />
-          </div>
+          {/* Debug Feature */}
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-bolt-elements-textPrimary">Use Main Branch</span>
+              <span className="text-bolt-elements-textPrimary">Debug Features</span>
               <p className="text-sm text-bolt-elements-textSecondary">
-                Check for updates against the main branch instead of stable
+                Enable debug mode to access advanced debugging tools
               </p>
             </div>
-            <Switch className="ml-auto" checked={isLatestBranch} onCheckedChange={enableLatestBranch} />
+            <Switch className="ml-auto" checked={debug} onCheckedChange={enableDebugMode} />
           </div>
+
+          {/* Event Logs Feature */}
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-bolt-elements-textPrimary">Event Logs</span>
+              <p className="text-sm text-bolt-elements-textSecondary">
+                View detailed system event logs and diagnostics
+              </p>
+            </div>
+            <Switch className="ml-auto" checked={eventLogs} onCheckedChange={enableEventLogs} />
+          </div>
+
+          {/* Updates Feature */}
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-bolt-elements-textPrimary">Updates</span>
+              <p className="text-sm text-bolt-elements-textSecondary">
+                Enable the updates tab to manage application updates
+              </p>
+            </div>
+            <Switch className="ml-auto" checked={updatesEnabled} onCheckedChange={enableUpdates} />
+          </div>
+
+          {/* Update Branch Selection - only show if updates are enabled */}
+          {updatesEnabled && (
+            <div className="flex items-center justify-between pl-6 border-l-2 border-bolt-elements-borderColor">
+              <div>
+                <span className="text-bolt-elements-textPrimary">Use Main Branch</span>
+                <p className="text-sm text-bolt-elements-textSecondary">
+                  Check for updates against the main branch instead of stable
+                </p>
+              </div>
+              <Switch className="ml-auto" checked={isLatestBranch} onCheckedChange={enableLatestBranch} />
+            </div>
+          )}
         </div>
       </div>
 

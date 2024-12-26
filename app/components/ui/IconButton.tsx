@@ -16,11 +16,13 @@ interface BaseIconButtonProps {
 type IconButtonWithoutChildrenProps = {
   icon: string;
   children?: undefined;
+  label?: string;
 } & BaseIconButtonProps;
 
 type IconButtonWithChildrenProps = {
   icon?: undefined;
   children: string | JSX.Element | JSX.Element[];
+  label?: string;
 } & BaseIconButtonProps;
 
 type IconButtonProps = IconButtonWithoutChildrenProps | IconButtonWithChildrenProps;
@@ -39,6 +41,7 @@ export const IconButton = memo(
         title,
         onClick,
         children,
+        label,
       }: IconButtonProps,
       ref: ForwardedRef<HTMLButtonElement>,
     ) => {
@@ -52,7 +55,7 @@ export const IconButton = memo(
             },
             className,
           )}
-          title={title}
+          title={title || label}
           disabled={disabled}
           onClick={(event) => {
             if (disabled) {

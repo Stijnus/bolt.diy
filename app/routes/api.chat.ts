@@ -5,6 +5,7 @@ import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
 import SwitchableStream from '~/lib/.server/llm/switchable-stream';
 import type { IProviderSetting } from '~/types/model';
+import { logStore } from '~/lib/stores/logs';
 
 export async function action(args: ActionFunctionArgs) {
   return chatAction(args);
@@ -128,12 +129,27 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     console.error(error);
 
     if (error.message?.includes('API key')) {
-      throw new Response('Invalid or missing API key', {
+      // Get provider info from the error if available
+      const provider = error.provider || 'Unknown';
+      const apiKeyLink = error.apiKeyLink;
+      const suggestion = apiKeyLink
+        ? `Please configure your ${provider} API key in settings. You can get one at ${apiKeyLink}`
+        : `Please check your ${provider} API key configuration in the settings`;
+
+      logStore.logAPIError('/api/chat', error, {
+        suggestion,
+        actionRequired: true,
+        provider,
+        apiKeyLink,
+      });
+
+      throw new Response(`Invalid or missing API key for ${provider}`, {
         status: 401,
         statusText: 'Unauthorized',
       });
     }
 
+    logStore.logError('Chat API error', error);
     throw new Response(null, {
       status: 500,
       statusText: 'Internal Server Error',
