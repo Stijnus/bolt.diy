@@ -106,7 +106,7 @@ export default function FeaturesTab() {
         <div className="flex items-center justify-between mb-2">
           <div>
             <span className="text-bolt-elements-textPrimary">DEV MODE : Pull Requests</span>
-            <p className="text-sm text-bolt-elements-textSecondary">Coming soon: View and manage pull requests</p>
+            <p className="text-sm text-bolt-elements-textSecondary">View and manage pull requests</p>
           </div>
           <Switch className="ml-auto" checked={showPullRequests} onCheckedChange={setShowPullRequests} />
         </div>
