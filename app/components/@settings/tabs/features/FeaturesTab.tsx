@@ -121,13 +121,23 @@ export default function FeaturesTab() {
 
   // Enable features by default on first load
   React.useEffect(() => {
-    // Force enable these features by default
-    enableLatestBranch(true);
-    enableContextOptimization(true);
-    setAutoSelectTemplate(true);
-    setPromptId('optimized');
+    // Only set defaults if values are undefined
+    if (isLatestBranch === undefined) {
+      enableLatestBranch(true);
+    }
 
-    // Only enable event logs if not explicitly set before
+    if (contextOptimizationEnabled === undefined) {
+      enableContextOptimization(true);
+    }
+
+    if (autoSelectTemplate === undefined) {
+      setAutoSelectTemplate(true);
+    }
+
+    if (promptId === undefined) {
+      setPromptId('optimized');
+    }
+
     if (eventLogs === undefined) {
       setEventLogs(true);
     }
