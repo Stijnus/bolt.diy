@@ -593,7 +593,7 @@ export const Preview = memo(() => {
      * Intentionally disabled - we want to maintain scale of 1
      * No dynamic scaling to ensure device frame matches external window exactly
      */
-    return () => {};
+    return undefined;
   }, [isDeviceModeOn, showDeviceFrameInPreview, getDeviceScale, isLandscape, selectedWindowSize]);
 
   // Function to get the frame color based on dark mode
