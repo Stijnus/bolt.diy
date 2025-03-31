@@ -2,17 +2,39 @@
  * Server-side utilities for the Bolt application
  * Contains utilities for safe command execution and other server operations
  */
-
 import { isCloudEnvironment } from './environment';
+import { execSync } from 'child_process';
 
-// Add common paths where Git might be located
-const commonGitPaths = [
-  '/opt/homebrew/bin/git', // macOS Homebrew
-  '/usr/local/bin/git', // macOS Homebrew (Intel)
-  '/usr/bin/git', // Linux/macOS system
-  'C:\\Program Files\\Git\\bin\\git.exe', // Windows
-  'C:\\Program Files (x86)\\Git\\bin\\git.exe', // Windows 32-bit
-];
+/**
+ * Type for Node.js platform strings that we support
+ */
+type SupportedPlatform = 'darwin' | 'linux' | 'win32';
+
+/**
+ * Common paths where Git might be installed
+ */
+const commonGitPaths: Record<SupportedPlatform, string[]> = {
+  darwin: ['/opt/homebrew/bin/git', '/usr/local/bin/git', '/usr/bin/git'],
+  linux: ['/usr/bin/git', '/usr/local/bin/git'],
+  win32: ['C:\\Program Files\\Git\\bin\\git.exe', 'C:\\Program Files (x86)\\Git\\bin\\git.exe'],
+};
+
+/**
+ * Helper function to safely get platform-specific Git paths
+ */
+export const getPlatformGitPaths = (): string[] => {
+  const platform = process.platform as string;
+
+  // Check if the platform is supported
+  if (platform === 'darwin' || platform === 'linux' || platform === 'win32') {
+    return commonGitPaths[platform as SupportedPlatform];
+  }
+
+  // Default to Linux paths for unsupported platforms
+  console.warn(`Unsupported platform: ${platform}, defaulting to Linux paths`);
+
+  return commonGitPaths.linux;
+};
 
 /**
  * A custom implementation of util.promisify to avoid ESM/CommonJS conflicts
@@ -62,48 +84,143 @@ export const execCommand = async (
 };
 
 /**
- * Execute Git commands using the direct path to Git
- * This bypasses PATH issues and directly accesses the Git executable
+ * Execute Git command directly with a specific path
  */
 export const execDirectGit = async (
   args: string,
   options: { timeout?: number; cwd?: string } = {},
 ): Promise<{ stdout: string; stderr: string }> => {
-  // Try all known Git paths directly
-  for (const gitPath of commonGitPaths) {
+  try {
+    // Try to find git in PATH first
     try {
-      /*
-       * Try executing with the direct path - don't use quotes as they can cause issues
-       * We don't use the standard git executable name at all
-       */
-      return await execCommand(`${gitPath} ${args}`, options);
-    } catch {
-      // Try next path
-      continue;
-    }
-  }
+      const { stdout: gitPathOutput } = await execCommand('which git');
+      const gitPath = gitPathOutput.trim();
 
-  // If all direct attempts fail, throw error
-  throw new Error('Could not find Git executable in any known location');
+      if (gitPath) {
+        return await execCommand(`${gitPath} ${args}`, options);
+      }
+    } catch {
+      // Continue to fallback paths if which fails
+    }
+
+    // Try each common git path
+    for (const gitPath of getPlatformGitPaths()) {
+      try {
+        // Use quotes around the path if it contains spaces (Windows paths often do)
+        const command =
+          process.platform === 'win32' && gitPath.includes(' ') ? `"${gitPath}" ${args}` : `${gitPath} ${args}`;
+
+        return await execCommand(command, options);
+      } catch {
+        // Try next path
+        continue;
+      }
+    }
+
+    throw new Error('Git not found in any common location');
+  } catch (error) {
+    throw error;
+  }
 };
 
 /**
- * Check if Git is installed and available (using direct path approach)
- * Returns true if Git is available, false otherwise
+ * Get Git info synchronously
  */
-export const isDirectGitAvailable = async (): Promise<boolean> => {
+export const getDirectGitInfoSync = (): {
+  isGitRepo: boolean;
+  currentBranch?: string;
+  currentCommit?: string;
+  remotes?: { name: string; url: string }[];
+} => {
   try {
-    const { stdout } = await execDirectGit('--version');
-    return stdout.trim().toLowerCase().includes('git version');
+    // Check if we're in a Git repository
+    try {
+      execSync('git rev-parse --is-inside-work-tree', { encoding: 'utf8' });
+    } catch {
+      // Try with direct paths
+      let found = false;
+
+      for (const gitPath of getPlatformGitPaths()) {
+        try {
+          execSync(`"${gitPath}" rev-parse --is-inside-work-tree`, { encoding: 'utf8' });
+          found = true;
+          break;
+        } catch {
+          // Try next path
+          continue;
+        }
+      }
+
+      if (!found) {
+        return { isGitRepo: false };
+      }
+    }
+
+    // Function to execute git command with fallback to direct paths
+    const execGitSync = (cmd: string): string => {
+      try {
+        return execSync(`git ${cmd}`, { encoding: 'utf8' }).trim();
+      } catch {
+        // Try with direct paths
+        for (const gitPath of getPlatformGitPaths()) {
+          try {
+            return execSync(`"${gitPath}" ${cmd}`, { encoding: 'utf8' }).trim();
+          } catch {
+            // Try next path
+            continue;
+          }
+        }
+        return '';
+      }
+    };
+
+    // Get current branch
+    const currentBranch = execGitSync('branch --show-current');
+
+    // Get current commit
+    const currentCommit = execGitSync('rev-parse --short HEAD');
+
+    // Get remotes
+    const remotesOutput = execGitSync('remote -v');
+
+    // Create remotes array
+    const remotes: { name: string; url: string }[] = [];
+
+    if (remotesOutput) {
+      const remoteLines = remotesOutput.split('\n');
+
+      for (const line of remoteLines) {
+        if (!line.trim()) {
+          continue;
+        }
+
+        const match = line.match(/^(\S+)\s+(\S+)\s+\((\S+)\)$/);
+
+        if (match && match[3] === 'fetch') {
+          remotes.push({
+            name: match[1],
+            url: match[2],
+          });
+        }
+      }
+    }
+
+    return {
+      isGitRepo: true,
+      currentBranch: currentBranch || undefined,
+      currentCommit: currentCommit || undefined,
+      remotes: remotes.length > 0 ? remotes : undefined,
+    };
   } catch {
-    return false;
+    // Ignore error details and just return not a git repo
+    return { isGitRepo: false };
   }
 };
 
 /**
  * Get information about the current Git repository using direct child_process execution
  */
-export const getDirectGitInfoSync = async (): Promise<{
+export const getDirectGitInfo = async (): Promise<{
   isGitRepo: boolean;
   currentBranch?: string;
   currentCommit?: string;
@@ -112,7 +229,31 @@ export const getDirectGitInfoSync = async (): Promise<{
   try {
     // Import directly to avoid ESM/CommonJS conflicts
     const { execSync } = await import('child_process');
-    const gitPath = '/opt/homebrew/bin/git';
+
+    // Find the Git executable path
+    let gitPath = '';
+
+    // Try to find Git using 'which' command first
+    try {
+      gitPath = execSync('which git', { encoding: 'utf8' }).trim();
+    } catch {
+      // If 'which' fails, try each common path
+      for (const path of getPlatformGitPaths()) {
+        try {
+          execSync(`${path} --version`, { encoding: 'utf8' });
+          gitPath = path;
+          break;
+        } catch {
+          // Continue to next path
+        }
+      }
+    }
+
+    // If we still don't have a valid Git path, return early
+    if (!gitPath) {
+      console.error('Could not find Git executable');
+      return { isGitRepo: false };
+    }
 
     // Get current working directory
     let workingDir;
@@ -199,16 +340,28 @@ export const getDirectGitInfoSync = async (): Promise<{
 };
 
 /**
- * Check if Git is installed and available
+ * Check if Git is installed and available (using direct path approach)
  * Returns true if Git is available, false otherwise
  */
-export const isGitAvailable = async (): Promise<boolean> => {
+export const isDirectGitAvailable = async (): Promise<boolean> => {
+  try {
+    const { stdout } = await execDirectGit('--version');
+    return stdout.trim().toLowerCase().includes('git version');
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Check if Git is installed by trying to execute the git command
+ */
+export const isGitInstalled = async (): Promise<boolean> => {
   try {
     const { stdout } = await execCommand('git --version');
     return stdout.trim().toLowerCase().includes('git version');
   } catch {
     // Try with full paths if the command fails
-    for (const gitPath of commonGitPaths) {
+    for (const gitPath of getPlatformGitPaths()) {
       try {
         const { stdout } = await execCommand(`${gitPath} --version`);
 
@@ -216,31 +369,34 @@ export const isGitAvailable = async (): Promise<boolean> => {
           return true;
         }
       } catch {
-        // Continue to next path
+        // Try next path
+        continue;
       }
     }
+
     return false;
   }
 };
 
 /**
- * Execute Git command with fallback to full path if git is not in PATH
+ * Execute Git commands with fallback to direct paths
  */
-export const execGitCommand = async (
+export const execGit = async (
   args: string,
   options: { timeout?: number; cwd?: string } = {},
 ): Promise<{ stdout: string; stderr: string }> => {
   try {
-    // First try with standard git command
+    // Try with standard git command first
     return await execCommand(`git ${args}`, options);
   } catch (error) {
     // If that fails, try with full paths
-    for (const gitPath of commonGitPaths) {
+    for (const gitPath of getPlatformGitPaths()) {
       try {
         // Use the full git path as the command, not as an argument to git
         return await execCommand(`"${gitPath}" ${args}`, options);
       } catch {
-        // Continue to next path
+        // Try next path
+        continue;
       }
     }
 
@@ -250,223 +406,286 @@ export const execGitCommand = async (
 };
 
 /**
- * Get information about the current Git repository
+ * Execute Git command with fallback to direct paths
  */
-export const getGitInfo = async (): Promise<{
-  isGitRepo: boolean;
-  currentBranch?: string;
+export const execGitWithFallback = async (
+  args: string,
+  options: { timeout?: number; cwd?: string } = {},
+): Promise<{ stdout: string; stderr: string }> => {
+  // Method 1: Try with standard git command
+  try {
+    return await execCommand(`git ${args}`, options);
+  } catch {
+    // Continue to next method
+  }
+
+  // Method 2: Try with our path-fallback execGit
+  try {
+    return await execGit(args, options);
+  } catch {
+    // Continue to next method
+  }
+
+  // Method 3: Try each common git path directly
+  for (const gitPath of getPlatformGitPaths()) {
+    try {
+      return await execCommand(`"${gitPath}" ${args}`, options);
+    } catch {
+      // Try next path
+      continue;
+    }
+  }
+
+  // If all methods fail, throw error
+  throw new Error(`Failed to execute Git command: ${args}`);
+};
+
+/**
+ * Check for Git updates
+ */
+export const checkGitUpdates = async (): Promise<{
+  hasUpdates: boolean;
   currentCommit?: string;
-  remotes?: { name: string; url: string }[];
+  latestCommit?: string;
+  behindCount?: number;
+  error?: string;
 }> => {
   try {
-    // Check if we're in a Git repository
-    try {
-      await execGitCommand('rev-parse --is-inside-work-tree');
-    } catch {
-      return { isGitRepo: false };
+    // First check if we're in a Git repository
+    const gitInfo = await getDirectGitInfo();
+
+    if (!gitInfo.isGitRepo) {
+      return { hasUpdates: false, error: 'Not a Git repository' };
     }
 
-    // Get current branch
-    const { stdout: branchOutput } = await execGitCommand('branch --show-current');
-    const currentBranch = branchOutput.trim();
-
     // Get current commit
-    const { stdout: commitOutput } = await execGitCommand('rev-parse --short HEAD');
-    const currentCommit = commitOutput.trim();
+    const { stdout: currentCommitOutput } = await execGitWithFallback('rev-parse HEAD');
+    const currentCommit = currentCommitOutput.trim();
 
-    // Get remotes
-    const { stdout: remotesOutput } = await execGitCommand('remote -v');
+    // Fetch from remote to get latest changes
+    try {
+      await execGitWithFallback('fetch');
+    } catch (error) {
+      return {
+        hasUpdates: false,
+        currentCommit,
+        error: `Failed to fetch from remote: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
 
-    // Create remotes array
-    const remotes: { name: string; url: string }[] = [];
+    // Get the latest commit on the remote branch
+    try {
+      // Get current branch
+      const { stdout: branchOutput } = await execGitWithFallback('branch --show-current');
+      const currentBranch = branchOutput.trim();
 
-    // Parse remotes (format: "name url (fetch/push)")
-    remotesOutput.split('\n').forEach((line) => {
-      if (!line.trim()) {
-        return;
-      }
+      // Get remote for current branch
+      const { stdout: remoteOutput } = await execGitWithFallback(`config --get branch.${currentBranch}.remote`);
+      const remote = remoteOutput.trim() || 'origin';
 
-      const [name, url] = line.split('\t');
+      // Get latest commit on remote branch
+      const { stdout: latestCommitOutput } = await execGitWithFallback(`rev-parse ${remote}/${currentBranch}`);
+      const latestCommit = latestCommitOutput.trim();
 
-      if (name && url && url.includes('(fetch)')) {
-        remotes.push({
-          name,
-          url: url.replace(' (fetch)', '').trim(),
-        });
-      }
-    });
+      // Check if we're behind the remote
+      const { stdout: behindOutput } = await execGitWithFallback(`rev-list --count ${currentCommit}..${latestCommit}`);
+      const behindCount = parseInt(behindOutput.trim(), 10);
 
-    return {
-      isGitRepo: true,
-      currentBranch,
-      currentCommit,
-      remotes,
-    };
+      return {
+        hasUpdates: behindCount > 0,
+        currentCommit,
+        latestCommit,
+        behindCount,
+      };
+    } catch (error) {
+      return {
+        hasUpdates: false,
+        currentCommit,
+        error: `Failed to check for updates: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
   } catch (error) {
-    console.error('Error getting Git info:', error);
-    return { isGitRepo: false };
+    return {
+      hasUpdates: false,
+      error: `Error checking for updates: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 };
 
 /**
- * Diagnose Git setup issues and provide solutions
- * Returns detailed information about Git configuration and possible solutions
+ * Pull latest changes from Git
  */
-export const diagnoseGitIssues = async (): Promise<{
-  isGitInstalled: boolean;
-  isGitRepo: boolean;
-  hasOriginRemote: boolean;
-  gitVersion?: string;
-  gitPath?: string;
-  systemPath?: string;
-  possibleSolutions: string[];
+export const pullGitUpdates = async (): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
 }> => {
-  const result = {
-    isGitInstalled: false,
-    isGitRepo: false,
-    hasOriginRemote: false,
-    gitVersion: undefined as string | undefined,
-    gitPath: undefined as string | undefined,
-    systemPath: undefined as string | undefined,
-    possibleSolutions: [] as string[],
+  try {
+    // First check if we're in a Git repository
+    const gitInfo = await getDirectGitInfo();
+
+    if (!gitInfo.isGitRepo) {
+      return { success: false, error: 'Not a Git repository' };
+    }
+
+    // Pull latest changes
+    try {
+      const { stdout } = await execGitWithFallback('pull');
+      return { success: true, message: stdout.trim() };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Failed to pull updates: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: `Error pulling updates: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+};
+
+/**
+ * Check if Git is installed at the Homebrew path
+ */
+export const isHomebrewGitInstalled = async (): Promise<boolean> => {
+  try {
+    const { stdout } = await execCommand('/opt/homebrew/bin/git --version');
+    return stdout.trim().toLowerCase().includes('git version');
+  } catch {
+    // If homebrew Git fails, try other locations
+    for (const gitPath of getPlatformGitPaths()) {
+      // Skip the homebrew path as we already tried it
+      if (gitPath === '/opt/homebrew/bin/git') {
+        continue;
+      }
+
+      try {
+        const { stdout } = await execCommand(`${gitPath} --version`);
+
+        if (stdout.trim().toLowerCase().includes('git version')) {
+          return true;
+        }
+      } catch {
+        // Try next path
+        continue;
+      }
+    }
+
+    return false;
+  }
+};
+
+/**
+ * Get diagnostic information about Git
+ */
+export const getGitDiagnostic = async (): Promise<{
+  gitInstalled: boolean;
+  gitPath?: string;
+  gitVersion?: string;
+  gitPaths?: string[];
+  systemPath?: string;
+  error?: string;
+}> => {
+  const result: {
+    gitInstalled: boolean;
+    gitPath?: string;
+    gitVersion?: string;
+    gitPaths?: string[];
+    systemPath?: string;
+    error?: string;
+  } = {
+    gitInstalled: false,
   };
 
   try {
-    // Get system PATH to help with diagnostics
+    // Get system PATH
     try {
-      const { stdout: pathOutput } = await execCommand('echo $PATH');
-      result.systemPath = pathOutput.trim();
+      const { stdout } = await execCommand('echo $PATH');
+      result.systemPath = stdout.trim();
     } catch {
       // Not critical if we can't get PATH
     }
 
-    // First try the standard isGitAvailable
-    let gitAvailable = await isGitAvailable();
+    // First try the standard isGitInstalled
+    let gitAvailable = await isGitInstalled();
 
     // If standard approach failed, try with direct path
     if (!gitAvailable) {
-      gitAvailable = await isDirectGitAvailable();
+      try {
+        await execDirectGit('--version');
+        gitAvailable = true;
+      } catch {
+        // Git is not available
+      }
     }
 
-    if (gitAvailable) {
-      result.isGitInstalled = true;
+    result.gitInstalled = gitAvailable;
 
+    if (gitAvailable) {
       try {
         // Try to get Git version, first with regular method
         try {
-          const { stdout } = await execGitCommand('--version');
+          const { stdout } = await execGit('--version');
           result.gitVersion = stdout.trim();
         } catch {
           // Then with direct method
           const { stdout } = await execDirectGit('--version');
           result.gitVersion = stdout.trim();
         }
-      } catch {
-        console.error('Strange: Git was found but version command failed');
-      }
-    } else {
-      result.isGitInstalled = false;
 
-      // Check if Git is installed in common locations but not in PATH
-      try {
-        // Check Homebrew Git location (common on macOS)
-        const { stdout: homebrewGit } = await execCommand('ls /opt/homebrew/bin/git || ls /usr/local/bin/git');
+        // Try to get Git path using 'which git' first
+        let foundPath: string | undefined = undefined;
 
-        if (homebrewGit.trim()) {
-          result.possibleSolutions.push(
-            'Git is installed but not in your PATH. Try running: export PATH="/opt/homebrew/bin:$PATH"',
-            'For permanent fix, add the line above to your ~/.zshrc or ~/.bash_profile',
-            'Then restart your terminal and the application',
-          );
-        } else {
-          result.possibleSolutions.push(
-            'Verify Git is installed correctly: git --version',
-            'Make sure Git is in your system PATH',
-            'Install Git from https://git-scm.com/downloads',
-          );
+        try {
+          const { stdout } = await execCommand('which git');
+          foundPath = stdout.trim();
+          result.gitPath = foundPath;
+        } catch {
+          // 'which git' failed, proceed to check common paths
+          console.warn("'which git' command failed, checking common paths.");
+
+          for (const path of getPlatformGitPaths()) {
+            try {
+              /*
+               * Check if the path exists and is executable, then verify version
+               * Note: Simple existence check might be sufficient and less error-prone
+               * For now, just try executing; suppress specific 'No such file' errors
+               */
+              const { stdout } = await execCommand(`${path} --version`);
+
+              if (stdout.trim().toLowerCase().includes('git version')) {
+                result.gitPath = path;
+                break; // Found a working path
+              }
+            } catch (pathError) {
+              // Log only if it's not a 'command not found' or 'No such file' error
+              const errorMsg = String(pathError);
+
+              if (!errorMsg.includes('No such file or directory') && !errorMsg.includes('command not found')) {
+                console.warn(`Error checking git path ${path}:`, pathError);
+              }
+
+              // Try next path
+              continue;
+            }
+          }
         }
-      } catch {
-        // Standard Git not found solutions
-        result.possibleSolutions.push(
-          'Verify Git is installed correctly: git --version',
-          'Make sure Git is in your system PATH',
-          'Install Git from https://git-scm.com/downloads',
-        );
-      }
-
-      return result;
-    }
-
-    // Get Git path by checking common locations
-    for (const gitPath of commonGitPaths) {
-      try {
-        const { stdout } = await execCommand(`${gitPath} --version`);
-
-        if (stdout.trim().toLowerCase().includes('git version')) {
-          result.gitPath = gitPath;
-          break;
-        }
-      } catch {
-        // Continue to next path
+      } catch (error) {
+        result.error = `Error getting Git info: ${error instanceof Error ? error.message : String(error)}`;
       }
     }
 
-    if (!result.gitPath) {
-      // Fallback to which/where if we couldn't find it
-      try {
-        const { stdout: whichOutput } = await execCommand('which git || where git');
-        result.gitPath = whichOutput.trim();
-      } catch {
-        // Not critical if we can't determine path
-      }
-    }
-
-    // Use getGitInfo with fallback to direct Git
-    let gitInfo;
-
-    try {
-      gitInfo = await getGitInfo();
-    } catch {
-      try {
-        gitInfo = await getDirectGitInfoSync();
-      } catch {
-        gitInfo = { isGitRepo: false };
-      }
-    }
-
-    result.isGitRepo = gitInfo.isGitRepo;
-
-    if (!result.isGitRepo) {
-      result.possibleSolutions.push(
-        'This is not a Git repository. Initialize with: git init',
-        'Or clone the repository: git clone https://github.com/stackblitz-labs/bolt.diy.git',
-      );
-    } else {
-      // Check for origin remote if it's a Git repo
-      const remotes = gitInfo.remotes || [];
-      result.hasOriginRemote = remotes.some((r) => r.name === 'origin');
-
-      if (!result.hasOriginRemote) {
-        result.possibleSolutions.push(
-          'Add GitHub as remote: git remote add origin https://github.com/stackblitz-labs/bolt.diy.git',
-        );
-      }
-    }
-
-    // Add general solutions if we have issues
-    if (!result.isGitRepo || !result.hasOriginRemote) {
-      result.possibleSolutions.push('Restart Bolt after making changes');
-    }
+    // Add all possible Git paths for reference
+    result.gitPaths = getPlatformGitPaths();
 
     return result;
   } catch (error) {
-    console.error('Error diagnosing Git issues:', error);
-    result.possibleSolutions.push(
-      'Unknown error occurred while diagnosing Git. Check the console for more details.',
-      'Make sure Git is properly installed and in your PATH',
-    );
-
-    return result;
+    return {
+      gitInstalled: false,
+      error: `Error getting Git diagnostic: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 };
 
@@ -485,26 +704,8 @@ export const execDirectGitSync = async (
     // Get working directory if not provided
     const workingDir = options.cwd || process.cwd();
 
-    // On macOS, directly try the homebrew Git location first as we know it works
-    try {
-      const stdout = execSync(`/opt/homebrew/bin/git ${args}`, {
-        encoding: 'utf8',
-        timeout: options.timeout,
-        cwd: workingDir,
-      });
-
-      return { stdout, stderr: '' };
-    } catch {
-      // If homebrew Git fails, try other locations
-    }
-
     // Try all other known Git paths
-    for (const gitPath of commonGitPaths) {
-      // Skip the homebrew path as we already tried it
-      if (gitPath === '/opt/homebrew/bin/git') {
-        continue;
-      }
-
+    for (const gitPath of getPlatformGitPaths()) {
       try {
         // Execute directly without any wrappers
         const stdout = execSync(`${gitPath} ${args}`, {
@@ -536,25 +737,14 @@ export const isDirectGitSyncAvailable = async (): Promise<boolean> => {
     // Import directly to avoid ESM/CommonJS conflicts
     const { execSync } = await import('child_process');
 
-    // Try the homebrew Git location directly first as we know it works
-    try {
-      const stdout = execSync('/opt/homebrew/bin/git --version', { encoding: 'utf8' });
-      return stdout.trim().toLowerCase().includes('git version');
-    } catch {
-      // If homebrew Git fails, try other locations
-      for (const gitPath of commonGitPaths) {
-        // Skip the homebrew path as we already tried it
-        if (gitPath === '/opt/homebrew/bin/git') {
-          continue;
-        }
-
-        try {
-          const stdout = execSync(`${gitPath} --version`, { encoding: 'utf8' });
-          return stdout.trim().toLowerCase().includes('git version');
-        } catch {
-          // Try next path
-          continue;
-        }
+    // Try all other known Git paths
+    for (const gitPath of getPlatformGitPaths()) {
+      try {
+        const stdout = execSync(`${gitPath} --version`, { encoding: 'utf8' });
+        return stdout.trim().toLowerCase().includes('git version');
+      } catch {
+        // Try next path
+        continue;
       }
     }
 
@@ -582,7 +772,7 @@ export const execGitUltimate = async (
 
     // Method 2: Try with our path-fallback execGitCommand
     try {
-      return await execGitCommand(args, options);
+      return await execGit(args, options);
     } catch {
       // Continue to next method
     }

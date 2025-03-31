@@ -154,7 +154,8 @@ const UpdateTab = () => {
 
     const checkGitAvailability = async () => {
       try {
-        const response = await fetch('/api/git-check');
+        // Use the more reliable Git diagnostic API instead of git-check
+        const response = await fetch('/api/git-diagnostic');
 
         if (!response.ok) {
           throw new Error('Failed to check Git availability');
@@ -163,21 +164,14 @@ const UpdateTab = () => {
         const data = await response.json();
 
         // Validate the response format
-        if (
-          typeof data === 'object' &&
-          data !== null &&
-          'isAvailable' in data &&
-          typeof data.isAvailable === 'boolean'
-        ) {
-          setIsGitMissing(!data.isAvailable);
+        if (typeof data === 'object' && data !== null && 'gitInstalled' in data && data.gitInstalled !== undefined) {
+          setIsGitMissing(!data.gitInstalled);
           setIsGitChecked(true);
         } else {
-          console.error('Invalid response format from Git check endpoint');
+          console.error('Invalid response format from Git diagnostic endpoint');
         }
       } catch (error) {
         console.error('Error checking Git availability:', error);
-
-        // We don't set isGitMissing here as we're not sure
       }
     };
 

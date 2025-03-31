@@ -9,7 +9,7 @@ interface GitDiagnosticResponse {
   gitVersion?: string;
   gitPath?: string;
   systemPath?: string;
-  possibleSolutions: string[];
+  possibleSolutions?: string[];
   error?: string;
 }
 
@@ -126,7 +126,7 @@ export const GitDiagnosticHelper: React.FC = () => {
 
   const isHomebrewGitProblem =
     !diagnosticData.isGitInstalled &&
-    diagnosticData.possibleSolutions.some((sol) => sol.includes('Git is installed but not in your PATH'));
+    diagnosticData.possibleSolutions?.some((sol) => sol.includes('Git is installed but not in your PATH'));
 
   return (
     <div className="p-6 rounded-xl bg-white dark:bg-[#0A0A0A] border border-[#E5E5E5] dark:border-[#1A1A1A]">

@@ -1,6 +1,19 @@
 import { json, type LoaderFunction } from '@remix-run/cloudflare';
 import { isCloudEnvironment } from '~/lib/environment';
-import { isGitAvailable, execCommand, getGitInfo } from '~/lib/serverUtils';
+import { execCommand, getDirectGitInfo, isGitInstalled } from '~/lib/serverUtils';
+
+// Only import Node.js modules if we're not in a cloud environment
+let execSync: any = null;
+
+if (!isCloudEnvironment()) {
+  try {
+    // This will only work in Node.js environments, not in Cloudflare Workers
+    const childProcess = await import('child_process');
+    execSync = childProcess.execSync;
+  } catch {
+    console.warn('child_process module not available despite not being in cloud environment');
+  }
+}
 
 // Define an interface for Git remotes
 interface GitRemote {
@@ -23,43 +36,66 @@ export const loader: LoaderFunction = async ({ request }) => {
   }
 
   try {
-    // Check if Git is available
-    const gitAvailable = await isGitAvailable();
+    // Check if Git is installed using multiple methods
+    let gitInstalled = false;
+    let gitVersion = '';
 
-    // Basic response if Git is not available or diagnostic not requested
-    if (!gitAvailable || !diagnostic) {
+    // First try using the utility function which should work in all environments
+    gitInstalled = await isGitInstalled();
+
+    // If that fails and we have execSync available, try direct execSync
+    if (!gitInstalled && execSync) {
+      try {
+        const output = execSync('git --version', { encoding: 'utf8', timeout: 3000 });
+
+        if (output) {
+          gitVersion = output.toString().trim();
+          gitInstalled = gitVersion.toLowerCase().includes('git version');
+        }
+      } catch (execError) {
+        console.warn('Error executing git command directly:', execError);
+      }
+    }
+
+    // Basic response if Git is not installed or diagnostic not requested
+    if (!gitInstalled || !diagnostic) {
       return json({
-        isAvailable: gitAvailable,
+        isAvailable: gitInstalled,
         inCloud: false,
-        error: gitAvailable ? null : 'Git command not found. Please install Git to enable update functionality.',
+        error: gitInstalled ? null : 'Git command not found. Please install Git to enable update functionality.',
       });
     }
 
     // Enhanced diagnostic mode
     try {
-      // Check Git version
-      const { stdout: gitVersion } = await execCommand('git --version');
+      // Git version already obtained above
 
       // Check Git configuration
       const { stdout: gitConfig } = await execCommand('git config --list');
 
       // Get repository info
-      const repoInfo = await getGitInfo();
+      const repoInfo = await getDirectGitInfo();
 
       // Try to get remotes
       let remotes: GitRemote[] = [];
 
-      if (repoInfo.isGitRepo) {
+      if (repoInfo.isGitRepo && execSync) {
         try {
-          const { stdout: remotesOutput } = await execCommand('git remote -v');
-          remotes = remotesOutput
-            .split('\n')
-            .filter((line) => line.includes('(fetch)'))
-            .map((line) => {
-              const [name, url] = line.split(/\s+/);
-              return { name, url: url.replace('(fetch)', '').trim() };
-            });
-        } catch {
+          const remotesOutput = execSync('git remote -v', { encoding: 'utf8', timeout: 3000 });
+
+          if (remotesOutput) {
+            const trimmedOutput = remotesOutput.toString().trim();
+            remotes = trimmedOutput
+              .split('\n')
+              .filter((line: string) => line.includes('(fetch)'))
+              .map((line: string) => {
+                const [name, url] = line.split(/\s+/);
+                return { name, url: url.replace('(fetch)', '').trim() };
+              });
+          }
+        } catch (remotesError) {
+          console.warn('Error getting Git remotes:', remotesError);
+
           // Continue even if we can't get remotes
         }
       }
@@ -69,7 +105,7 @@ export const loader: LoaderFunction = async ({ request }) => {
         inCloud: false,
         error: null,
         diagnostic: {
-          gitVersion: gitVersion.trim(),
+          gitVersion,
           isGitRepo: repoInfo.isGitRepo,
           currentBranch: repoInfo.currentBranch,
           currentCommit: repoInfo.currentCommit,
@@ -90,12 +126,12 @@ export const loader: LoaderFunction = async ({ request }) => {
       });
     }
   } catch (error) {
-    console.error('Error checking Git availability:', error);
+    console.error('Error checking Git installation:', error);
 
     return json({
       isAvailable: false,
       inCloud: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred checking Git availability',
+      error: error instanceof Error ? error.message : 'Unknown error occurred checking Git installation',
     });
   }
 };
