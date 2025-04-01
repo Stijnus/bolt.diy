@@ -47,15 +47,34 @@ function getUpdateDetails(progress: UpdateProgress | null): UpdateProgress['deta
 // Helper function to parse progress update from JSON string
 function parseProgressUpdate(progressStr: string): UpdateProgress | null {
   try {
-    const parsed = JSON.parse(progressStr);
+    // Split the string into individual JSON objects
+    const jsonObjects = progressStr.split(/}\s*{/).map((str) => str.trim());
 
-    if (isUpdateProgress(parsed)) {
-      return parsed;
+    // Process each JSON object
+    for (const json of jsonObjects) {
+      if (!json) {
+        continue;
+      }
+
+      // Add back the curly braces if they were removed by split
+      const completeJson = json.startsWith('{') ? json : `{${json}}`;
+
+      try {
+        const parsed = JSON.parse(completeJson);
+
+        if (isUpdateProgress(parsed)) {
+          return parsed;
+        }
+      } catch {
+        // Skip invalid JSON objects
+        continue;
+      }
     }
 
     return null;
-  } catch (e) {
-    console.error('Failed to parse update progress:', e);
+  } catch (error) {
+    console.error('Failed to parse update progress:', error);
+    console.error('Invalid JSON string:', progressStr);
 
     return null;
   }
@@ -84,7 +103,10 @@ const UpdateTab = () => {
   const [isGitMissing, setIsGitMissing] = useState(false);
   const [isGitChecked, setIsGitChecked] = useState(false);
   const environmentInfo = getEnvironmentInfo();
-  console.log('Environment Info:', environmentInfo);
+
+  useEffect(() => {
+    console.log('Environment Info:', environmentInfo);
+  }, [environmentInfo]);
 
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
   const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null);
@@ -189,38 +211,47 @@ const UpdateTab = () => {
         const lines = chunk.split('\n').filter(Boolean);
 
         for (const line of lines) {
-          const progress = parseProgressUpdate(line);
+          try {
+            const progress = parseProgressUpdate(line);
 
-          if (progress) {
-            setUpdateProgress(progress);
+            if (progress) {
+              setUpdateProgress(progress);
 
-            if (progress.error) {
-              setError(progress.error);
+              if (progress.error) {
+                setError(progress.error);
 
-              // Check if this is a Git not found error
-              if (progress.error.includes('Git command not found') || progress.error.includes('Git is not available')) {
-                setIsGitMissing(true);
-                logStore.logWarning('Git Not Found', {
-                  type: 'git',
-                  message: progress.error,
-                });
+                // Check if this is a Git not found error
+                if (
+                  progress.error.includes('Git command not found') ||
+                  progress.error.includes('Git is not available')
+                ) {
+                  setIsGitMissing(true);
+                  logStore.logWarning('Git Not Found', {
+                    type: 'git',
+                    message: progress.error,
+                  });
+                }
               }
-            }
 
-            // If we're done, update the UI accordingly
-            if (progress.stage === 'complete') {
-              setIsChecking(false);
+              // If we're done, update the UI accordingly
+              if (progress.stage === 'complete') {
+                setIsChecking(false);
 
-              if (!progress.error) {
-                // Update check completed
-                toast.success('Update check completed');
+                if (!progress.error) {
+                  // Update check completed
+                  toast.success('Update check completed');
 
-                // Show update dialog only if there are changes and auto-update is disabled
-                if (progress.details?.changedFiles?.length && progress.details?.updateReady) {
-                  setShowUpdateDialog(true);
+                  // Show update dialog only if there are changes and auto-update is disabled
+                  if (progress.details?.changedFiles?.length && progress.details?.updateReady) {
+                    setShowUpdateDialog(true);
+                  }
                 }
               }
             }
+          } catch (error) {
+            console.error('Error processing update progress:', error);
+
+            // Continue processing other lines even if one fails
           }
         }
       }

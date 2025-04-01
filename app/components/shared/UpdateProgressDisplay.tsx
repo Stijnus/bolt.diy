@@ -34,11 +34,6 @@ export function UpdateProgressDisplay({
   const [copied, setCopied] = useState(false);
   const [animateProgress, setAnimateProgress] = useState(false);
 
-  // Don't render anything if no update is in progress and no error
-  if (!updateState.updateInProgress && !updateState.updateError) {
-    return null;
-  }
-
   // Reset state for clean render
   const {
     updateInProgress = false,
@@ -122,6 +117,14 @@ export function UpdateProgressDisplay({
     }
   };
 
+  // Get stage information
+  const { icon, message, description, color, bgColor, progressColor } = getStageInfo(updateStage);
+
+  // Don't render anything if no update is in progress and no error
+  if (!updateInProgress && !updateError) {
+    return null;
+  }
+
   // Render error state
   if (updateError) {
     return (
@@ -161,9 +164,6 @@ export function UpdateProgressDisplay({
       </Card>
     );
   }
-
-  // Get stage information
-  const { icon, message, description, color, bgColor, progressColor } = getStageInfo(updateStage);
 
   // Render update progress
   return (
