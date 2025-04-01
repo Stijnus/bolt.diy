@@ -3,11 +3,13 @@ import { motion } from 'framer-motion';
 import { useSettings } from '~/lib/hooks/useSettings';
 import { logStore } from '~/lib/stores/logs';
 import { toast } from 'react-toastify';
-import { Dialog, DialogRoot, DialogTitle, DialogDescription, DialogButton } from '~/components/ui/Dialog';
+import { Dialog, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
+import { Button } from '~/components/ui/Button';
 import { classNames } from '~/utils/classNames';
 import { Markdown } from '~/components/chat/Markdown';
 import { getEnvironmentInfo } from '~/lib/environment';
 import { GitDiagnosticHelper } from './GitDiagnosticHelper';
+import { UpdateProgressDisplay as SharedUpdateProgressDisplay } from '~/components/shared/UpdateProgressDisplay';
 
 interface UpdateProgress {
   stage: 'fetch' | 'pull' | 'install' | 'build' | 'complete';
@@ -28,91 +30,52 @@ interface UpdateProgress {
   };
 }
 
-const ProgressBar = ({ progress }: { progress: number }) => (
-  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-    <motion.div
-      className="h-full bg-blue-500"
-      initial={{ width: 0 }}
-      animate={{ width: `${progress}%` }}
-      transition={{ duration: 0.3 }}
-    />
-  </div>
-);
+// Type guard to check if an object is of type UpdateProgress
+function isUpdateProgress(obj: any): obj is UpdateProgress {
+  return obj && typeof obj === 'object' && 'stage' in obj && 'message' in obj;
+}
 
-const UpdateProgressDisplay = ({ progress }: { progress: UpdateProgress }) => (
-  <div className="mt-4 space-y-2">
-    <div className="flex justify-between items-center">
-      <span className="text-sm font-medium">{progress.message}</span>
-      <span className="text-sm text-gray-500">{progress.progress}%</span>
-    </div>
-    <ProgressBar progress={progress.progress || 0} />
-    {progress.details && (
-      <div className="mt-2 text-sm text-gray-600">
-        {progress.details.changedFiles && progress.details.changedFiles.length > 0 && (
-          <div className="mt-4">
-            <div className="font-medium mb-2">Changed Files:</div>
-            <div className="space-y-2">
-              {/* Group files by type */}
-              {['Modified', 'Added', 'Deleted'].map((type) => {
-                const filesOfType = progress.details?.changedFiles?.filter((file) => file.startsWith(type)) || [];
+// Helper function to safely access details from UpdateProgress
+function getUpdateDetails(progress: UpdateProgress | null): UpdateProgress['details'] | undefined {
+  if (!progress || !isUpdateProgress(progress)) {
+    return undefined;
+  }
 
-                if (filesOfType.length === 0) {
-                  return null;
-                }
+  return progress.details;
+}
 
-                return (
-                  <div key={type} className="space-y-1">
-                    <div
-                      className={classNames('text-sm font-medium', {
-                        'text-blue-500': type === 'Modified',
-                        'text-green-500': type === 'Added',
-                        'text-red-500': type === 'Deleted',
-                      })}
-                    >
-                      {type} ({filesOfType.length})
-                    </div>
-                    <div className="pl-4 space-y-1">
-                      {filesOfType.map((file, index) => {
-                        const fileName = file.split(': ')[1];
-                        return (
-                          <div key={index} className="text-sm text-bolt-elements-textSecondary flex items-center gap-2">
-                            <div
-                              className={classNames('w-4 h-4', {
-                                'i-ph:pencil-simple': type === 'Modified',
-                                'i-ph:plus': type === 'Added',
-                                'i-ph:trash': type === 'Deleted',
-                                'text-blue-500': type === 'Modified',
-                                'text-green-500': type === 'Added',
-                                'text-red-500': type === 'Deleted',
-                              })}
-                            />
-                            <span className="font-mono text-xs">{fileName}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-        {progress.details.totalSize && <div className="mt-1">Total size: {progress.details.totalSize}</div>}
-        {progress.details.additions !== undefined && progress.details.deletions !== undefined && (
-          <div className="mt-1">
-            Changes: <span className="text-green-600">+{progress.details.additions}</span>{' '}
-            <span className="text-red-600">-{progress.details.deletions}</span>
-          </div>
-        )}
-        {progress.details.currentCommit && progress.details.remoteCommit && (
-          <div className="mt-1">
-            Updating from {progress.details.currentCommit} to {progress.details.remoteCommit}
-          </div>
-        )}
-      </div>
-    )}
-  </div>
-);
+// Helper function to parse progress update from JSON string
+function parseProgressUpdate(progressStr: string): UpdateProgress | null {
+  try {
+    const parsed = JSON.parse(progressStr);
+
+    if (isUpdateProgress(parsed)) {
+      return parsed;
+    }
+
+    return null;
+  } catch (e) {
+    console.error('Failed to parse update progress:', e);
+
+    return null;
+  }
+}
+
+const getUpdateStage = (stage: UpdateProgress['stage']) => {
+  switch (stage) {
+    case 'fetch':
+      return 'checking';
+    case 'pull':
+      return 'downloading';
+    case 'install':
+    case 'build':
+      return 'installing';
+    case 'complete':
+      return 'restarting';
+    default:
+      return 'idle';
+  }
+};
 
 const UpdateTab = () => {
   const { isLatestBranch } = useSettings();
@@ -121,19 +84,10 @@ const UpdateTab = () => {
   const [isGitMissing, setIsGitMissing] = useState(false);
   const [isGitChecked, setIsGitChecked] = useState(false);
   const environmentInfo = getEnvironmentInfo();
+  console.log('Environment Info:', environmentInfo);
+
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
   const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null);
-  const [showDiagnosticHelper, setShowDiagnosticHelper] = useState(false);
-
-  // Helper function to safely parse JSON from stream chunks
-  const parseProgressUpdate = useCallback((line: string): UpdateProgress | null => {
-    try {
-      return JSON.parse(line) as UpdateProgress;
-    } catch (e) {
-      console.error('Error parsing progress update:', e);
-      return null;
-    }
-  }, []);
 
   useEffect(() => {
     localStorage.removeItem('update_settings');
@@ -190,7 +144,12 @@ const UpdateTab = () => {
     console.log('Starting update check...');
     setIsChecking(true);
     setError(null);
-    setUpdateProgress(null);
+    setUpdateProgress({
+      stage: 'fetch',
+      message: 'Checking for updates...',
+      progress: 0,
+      details: {},
+    });
 
     try {
       const branchToCheck = isLatestBranch ? 'main' : 'stable';
@@ -257,7 +216,7 @@ const UpdateTab = () => {
                 toast.success('Update check completed');
 
                 // Show update dialog only if there are changes and auto-update is disabled
-                if (progress.details?.changedFiles?.length && progress.details.updateReady) {
+                if (progress.details?.changedFiles?.length && progress.details?.updateReady) {
                   setShowUpdateDialog(true);
                 }
               }
@@ -276,7 +235,7 @@ const UpdateTab = () => {
     } finally {
       setIsChecking(false);
     }
-  }, [isGitChecked, isGitMissing, isLatestBranch, parseProgressUpdate]);
+  }, [isGitChecked, isGitMissing, isLatestBranch]);
 
   const handleUpdate = useCallback(async () => {
     setShowUpdateDialog(false);
@@ -351,7 +310,29 @@ const UpdateTab = () => {
         message: errorMessage,
       });
     }
-  }, [isLatestBranch, parseProgressUpdate]);
+  }, [isLatestBranch]);
+
+  // Helper function to get the appropriate status message based on update stage
+  const getStatusMessage = useCallback((progress: UpdateProgress | null) => {
+    if (!progress || !progress.stage) {
+      return 'Checking for updates...';
+    }
+
+    switch (progress.stage) {
+      case 'fetch':
+        return 'Checking repository...';
+      case 'pull':
+        return 'Downloading updates...';
+      case 'install':
+        return 'Installing dependencies...';
+      case 'build':
+        return 'Building application...';
+      default:
+        return 'Checking for updates...';
+    }
+  }, []);
+
+  const details = getUpdateDetails(updateProgress);
 
   return (
     <div className="flex flex-col gap-6">
@@ -369,7 +350,7 @@ const UpdateTab = () => {
       </motion.div>
 
       {/* Environment notice for cloud deployments */}
-      {environmentInfo.isCloud && (
+      {environmentInfo.isCloud ? (
         <motion.div
           className="p-6 rounded-xl bg-white dark:bg-[#0A0A0A] border border-[#E5E5E5] dark:border-[#1A1A1A]"
           initial={{ opacity: 0, y: 20 }}
@@ -385,7 +366,7 @@ const UpdateTab = () => {
               This instance is running on {environmentInfo.platform}, where updates are managed through automatic
               deployments.
             </p>
-            <p className="mt-2">Manual updates are not available in this environment.</p>
+            <p className="mt-1">Manual updates are not available in this environment.</p>
             {environmentInfo.platform === 'Cloudflare' && (
               <div className="mt-4 p-4 bg-gray-100 dark:bg-[#1A1A1A] rounded-lg">
                 <div className="flex items-center gap-2 mb-2">
@@ -405,196 +386,268 @@ const UpdateTab = () => {
             )}
           </div>
         </motion.div>
-      )}
-
-      {/* Git Diagnostic Helper - show when Git is missing or manually triggered */}
-      {!environmentInfo.isCloud && (isGitMissing || showDiagnosticHelper) && isGitChecked && (
+      ) : (
         <motion.div
+          className="p-6 rounded-xl bg-white dark:bg-[#0A0A0A] border border-[#E5E5E5] dark:border-[#1A1A1A]"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.2 }}
         >
-          <GitDiagnosticHelper />
-        </motion.div>
-      )}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="i-ph:arrows-clockwise text-purple-500 w-5 h-5" />
+              <h3 className="text-lg font-medium text-bolt-elements-textPrimary">Update Status</h3>
+            </div>
 
-      {/* Update Status Card - modified for cloud environments */}
-      <motion.div
-        className="p-6 rounded-xl bg-white dark:bg-[#0A0A0A] border border-[#E5E5E5] dark:border-[#1A1A1A]"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.2 }}
-      >
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="i-ph:arrows-clockwise text-purple-500 w-5 h-5" />
-            <h3 className="text-lg font-medium text-bolt-elements-textPrimary">
-              {environmentInfo.isCloud ? 'Version Information' : 'Update Status'}
-            </h3>
-          </div>
-
-          {/* Only show update buttons for local environments */}
-          {!environmentInfo.isCloud && (
-            <div className="flex items-center gap-2">
-              {updateProgress?.details?.updateReady && (
-                <button
-                  onClick={handleUpdate}
-                  className={classNames(
-                    'flex items-center gap-2 px-4 py-2 rounded-lg text-sm',
-                    'bg-purple-500 text-white',
-                    'hover:bg-purple-600',
-                    'transition-colors duration-200',
-                  )}
-                >
-                  <div className="i-ph:arrow-circle-up w-4 h-4" />
-                  Update Now
-                </button>
-              )}
+            {/* Only show update buttons for local environments */}
+            {!environmentInfo.isCloud && updateProgress?.details?.updateReady && (
               <button
-                onClick={() => {
-                  setError(null);
-                  checkForUpdates();
-                }}
+                onClick={handleUpdate}
                 className={classNames(
                   'flex items-center gap-2 px-4 py-2 rounded-lg text-sm',
-                  'bg-[#F5F5F5] dark:bg-[#1A1A1A]',
-                  'hover:bg-purple-500/10 hover:text-purple-500',
-                  'dark:hover:bg-purple-500/20 dark:hover:text-purple-500',
-                  'text-bolt-elements-textPrimary',
+                  'bg-purple-500 text-white',
+                  'hover:bg-purple-600',
                   'transition-colors duration-200',
-                  'disabled:opacity-50 disabled:cursor-not-allowed',
                 )}
-                disabled={isChecking || environmentInfo.isCloud || isGitMissing}
-                title={
-                  isGitMissing ? 'Git is not available. Please install Git to enable updates.' : 'Check for updates'
-                }
               >
-                {isChecking ? (
-                  <div className="flex items-center gap-2">
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                      className="i-ph:arrows-clockwise w-4 h-4"
-                    />
-                    Checking...
-                  </div>
-                ) : (
-                  <>
-                    <div className="i-ph:arrows-clockwise w-4 h-4" />
-                    Check for Updates
-                  </>
-                )}
+                <div className="i-ph:arrow-circle-up w-4 h-4" />
+                Update Now
               </button>
-            </div>
-          )}
-        </div>
-
-        {/* Show appropriate content based on environment */}
-        {environmentInfo.isCloud ? (
-          <div className="text-sm text-bolt-elements-textSecondary">
-            <p>
-              Updates for {environmentInfo.platform} deployments are managed automatically through the CI/CD pipeline.
-            </p>
-            <p className="mt-2">
-              When new code is pushed to the repository, a new deployment will be triggered automatically.
-            </p>
-            <div className="mt-4 p-4 bg-gray-100 dark:bg-[#1A1A1A] rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="i-ph:info text-purple-500 w-4 h-4" />
-                <span className="font-medium">Manual Update Instructions</span>
-              </div>
-              <p className="mb-2">If you need to update this environment manually, follow these steps:</p>
-              <ol className="list-decimal pl-5 space-y-1">
-                <li>Push changes to the connected repository</li>
-                <li>Trigger a new deployment from your {environmentInfo.platform} dashboard</li>
-                <li>Wait for the deployment to complete</li>
-              </ol>
-            </div>
+            )}
           </div>
-        ) : (
-          <>
-            {/* Existing update progress and details display */}
-            {updateProgress && <UpdateProgressDisplay progress={updateProgress} />}
 
-            {error && <div className="mt-4 p-4 bg-red-100 text-red-700 rounded">{error}</div>}
+          {/* Existing update progress and details display */}
+          <div>
+            {updateProgress ? (
+              <>
+                {/* Use the shared UpdateProgressDisplay component */}
+                <SharedUpdateProgressDisplay
+                  updateState={{
+                    updateAvailable: Boolean(updateProgress?.details?.updateReady),
+                    updateInProgress: !['complete', 'error'].includes(updateProgress.stage) || isChecking,
+                    updateProgress: updateProgress.progress || 0,
+                    updateStage: getUpdateStage(updateProgress.stage),
+                    updateError: updateProgress.error || null,
+                    currentVersion: updateProgress?.details?.currentCommit?.substring(0, 7) || '',
+                    latestVersion: updateProgress?.details?.remoteCommit?.substring(0, 7) || '',
+                    lastAcknowledgedVersion: '',
+                  }}
+                  onRetry={() => {
+                    setError(null);
+                    checkForUpdates();
+                  }}
+                  onCancel={() => {
+                    if (updateProgress.stage !== 'complete') {
+                      setUpdateProgress(null);
+                    }
+                  }}
+                  showDetails={true}
+                />
 
-            {/* Show update source information */}
-            {updateProgress?.details?.currentCommit && updateProgress?.details?.remoteCommit && (
-              <div className="mt-4 text-sm text-bolt-elements-textSecondary">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p>
-                      Updates are fetched from: <span className="font-mono">stackblitz-labs/bolt.diy</span> (
-                      {isLatestBranch ? 'main' : 'stable'} branch)
-                    </p>
-                    <p className="mt-1">
-                      Current version: <span className="font-mono">{updateProgress.details.currentCommit}</span>
-                      <span className="mx-2">→</span>
-                      Latest version: <span className="font-mono">{updateProgress.details.remoteCommit}</span>
-                    </p>
+                {error && <div className="mt-4 p-4 bg-red-100 text-red-700 rounded">{error}</div>}
+              </>
+            ) : (
+              <>
+                {/* Custom idle state UI with enhanced visual design */}
+                <div className="p-6 bg-white dark:bg-[#0A0A0A] border border-[#E5E5E5] dark:border-[#1A1A1A] rounded-lg">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="i-ph:info text-purple-500 w-5 h-5" />
+                    <h3 className="text-base font-medium text-bolt-elements-textPrimary">Update Information</h3>
                   </div>
-                  {updateProgress?.details?.compareUrl && (
-                    <a
-                      href={updateProgress.details.compareUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+
+                  {/* Repository information */}
+                  <div className="mb-4 p-4 bg-[#F5F5F5] dark:bg-[#1A1A1A] rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="i-ph:git-branch text-purple-500 w-4 h-4" />
+                      <p className="font-medium">Repository Status</p>
+                    </div>
+                    <div className="space-y-2 text-sm text-bolt-elements-textSecondary">
+                      <div className="flex items-center gap-2">
+                        <div className="i-ph:git-fork text-blue-500 w-4 h-4" />
+                        <span>
+                          Repository: <span className="font-mono">stackblitz-labs/bolt.diy</span> (
+                          {isLatestBranch ? 'main' : 'stable'} branch)
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="i-ph:git-branch text-green-500 w-4 h-4" />
+                        <span>
+                          Current branch: <span className="font-medium">{isLatestBranch ? 'main' : 'stable'}</span>
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="i-ph:git-commit text-amber-500 w-4 h-4" />
+                        <span>Updates are fetched from the {isLatestBranch ? 'main' : 'stable'} branch</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-sm text-bolt-elements-textSecondary">
+                    <p>Your application is ready to check for updates.</p>
+                    <p className="mt-1">Click the button below to check if a new version is available.</p>
+                  </div>
+
+                  <div className="mt-6 flex flex-col sm:flex-row sm:items-center gap-4">
+                    <button
+                      onClick={checkForUpdates}
+                      disabled={isChecking}
                       className={classNames(
-                        'flex items-center gap-2 px-4 py-2 rounded-lg text-sm',
-                        'bg-[#F5F5F5] dark:bg-[#1A1A1A]',
-                        'hover:bg-purple-500/10 hover:text-purple-500',
-                        'dark:hover:bg-purple-500/20 dark:hover:text-purple-500',
-                        'text-bolt-elements-textPrimary',
+                        'flex items-center justify-center gap-2 px-6 py-2 rounded-lg text-sm w-full sm:w-auto',
+                        'bg-purple-500 text-white',
+                        'hover:bg-purple-600',
                         'transition-colors duration-200',
-                        'w-fit',
+                        'disabled:opacity-50 disabled:cursor-not-allowed',
                       )}
                     >
-                      <div className="i-ph:github-logo w-4 h-4" />
-                      View Changes on GitHub
-                    </a>
-                  )}
+                      {isChecking ? (
+                        <>
+                          <div className="i-ph:circle-notch animate-spin w-4 h-4" />
+                          <span className="relative">
+                            <span className="opacity-0">Checking for Updates</span>
+                            <span className="absolute left-0 top-0 w-full text-center">
+                              {updateProgress ? getStatusMessage(updateProgress) : 'Checking for updates...'}
+                            </span>
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <div className="i-ph:arrows-clockwise w-4 h-4" />
+                          Check for Updates
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Add Git diagnostic helper when available */}
+                  <div className="mt-6 pt-4 border-t border-[#E5E5E5] dark:border-[#1A1A1A]">
+                    <GitDiagnosticHelper />
+                  </div>
                 </div>
-                {updateProgress?.details?.additions !== undefined &&
-                  updateProgress?.details?.deletions !== undefined && (
-                    <div className="mt-2 flex items-center gap-2">
-                      <div className="i-ph:git-diff text-purple-500 w-4 h-4" />
-                      Changes: <span className="text-green-600">+{updateProgress.details.additions}</span>{' '}
-                      <span className="text-red-600">-{updateProgress.details.deletions}</span>
+
+                {error && <div className="mt-4 p-4 bg-red-100 text-red-700 rounded">{error}</div>}
+
+                {/* Version information section */}
+                {details && details.currentCommit && details.remoteCommit && (
+                  <div className="mt-4 text-sm text-bolt-elements-textSecondary">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                      <div>
+                        <p>
+                          Updates are fetched from: <span className="font-mono">stackblitz-labs/bolt.diy</span> (
+                          {isLatestBranch ? 'main' : 'stable'} branch)
+                        </p>
+                        <p className="mt-1">
+                          Current version: <span className="font-mono">{details.currentCommit.substring(0, 7)}</span>
+                          <span className="mx-2">→</span>
+                          Latest version: <span className="font-mono">{details.remoteCommit.substring(0, 7)}</span>
+                        </p>
+                      </div>
+                      {details.compareUrl && (
+                        <a
+                          href={details.compareUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={classNames(
+                            'flex items-center gap-2 px-4 py-2 rounded-lg text-sm',
+                            'bg-[#F5F5F5] dark:bg-[#1A1A1A]',
+                            'hover:bg-purple-500/10 hover:text-purple-500',
+                            'dark:hover:bg-purple-500/20 dark:hover:text-purple-500',
+                            'text-bolt-elements-textPrimary',
+                            'transition-colors duration-200',
+                            'w-fit',
+                          )}
+                        >
+                          <div className="i-ph:git-diff w-4 h-4" />
+                          View Changes
+                        </a>
+                      )}
                     </div>
-                  )}
-              </div>
-            )}
-
-            {/* Changelog */}
-            {updateProgress?.details?.changelog && (
-              <div className="mb-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="i-ph:scroll text-purple-500 w-5 h-5" />
-                  <p className="font-medium">Changelog</p>
-                </div>
-                <div className="bg-[#F5F5F5] dark:bg-[#1A1A1A] rounded-lg p-4 overflow-auto max-h-[300px]">
-                  <div className="prose dark:prose-invert prose-sm max-w-none">
-                    <Markdown>{updateProgress.details.changelog}</Markdown>
                   </div>
-                </div>
-              </div>
-            )}
+                )}
 
-            {/* Commit messages */}
-            {updateProgress?.details?.commitMessages && updateProgress.details.commitMessages.length > 0 && (
-              <div className="mt-4 mb-6">
-                <p className="font-medium mb-2">Changes in this Update:</p>
-                <div className="bg-[#F5F5F5] dark:bg-[#1A1A1A] rounded-lg p-4 overflow-auto max-h-[400px]">
-                  <div className="prose dark:prose-invert prose-sm max-w-none">
-                    {updateProgress.details.commitMessages.map((section, index) => (
-                      <Markdown key={index}>{section}</Markdown>
-                    ))}
+                {/* Changed files section */}
+                {details && details.changedFiles && details.changedFiles.length > 0 && (
+                  <div className="mt-6">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="i-ph:file-code text-purple-500 w-5 h-5" />
+                      <p className="font-medium">Changed Files ({details.changedFiles.length})</p>
+                    </div>
+                    <div className="bg-[#F5F5F5] dark:bg-[#1A1A1A] rounded-lg p-4 overflow-auto max-h-[300px]">
+                      <div className="space-y-2">
+                        {details.changedFiles.map((file: string, index: number) => {
+                          // Parse the file string to extract status and filename
+                          const fileStr = String(file);
+                          const isAdded = fileStr.startsWith('Added:');
+                          const isModified = fileStr.startsWith('Modified:');
+                          const isRemoved = fileStr.startsWith('Deleted:');
+                          const filename = fileStr.split(': ')[1] || fileStr;
+
+                          return (
+                            <div
+                              key={index}
+                              className="flex items-center gap-2 text-sm text-bolt-elements-textSecondary"
+                            >
+                              <div
+                                className={classNames(
+                                  'w-4 h-4',
+                                  isAdded ? 'i-ph:plus-circle text-green-500' : '',
+                                  isModified ? 'i-ph:pencil-simple text-blue-500' : '',
+                                  isRemoved ? 'i-ph:minus-circle text-red-500' : '',
+                                  !isAdded && !isModified && !isRemoved ? 'i-ph:file text-gray-500' : '',
+                                )}
+                              />
+                              <span className="font-mono">{filename}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                )}
+
+                {/* Total size section */}
+                {details && details.totalSize && (
+                  <div className="mt-3 text-sm text-bolt-elements-textSecondary flex items-center gap-2">
+                    <div className="i-ph:hard-drives text-purple-500 w-4 h-4" />
+                    Total size: {details.totalSize}
+                  </div>
+                )}
+
+                {/* Changelog section */}
+                {details && details.changelog && (
+                  <div className="mb-6 mt-6">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="i-ph:scroll text-purple-500 w-5 h-5" />
+                      <p className="font-medium">Changelog</p>
+                    </div>
+                    <div className="bg-[#F5F5F5] dark:bg-[#1A1A1A] rounded-lg p-4 overflow-auto max-h-[300px]">
+                      <div className="prose dark:prose-invert prose-sm max-w-none">
+                        <Markdown>{details.changelog}</Markdown>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Commit messages section */}
+                {details && details.commitMessages && details.commitMessages.length > 0 && (
+                  <div className="mt-4 mb-6">
+                    <p className="font-medium mb-2">Changes in this Update:</p>
+                    <div className="space-y-2">
+                      {details.commitMessages.map((commit: string, index: number) => (
+                        <div
+                          key={index}
+                          className="bg-[#F5F5F5] dark:bg-[#1A1A1A] p-3 rounded-lg text-sm text-bolt-elements-textSecondary"
+                        >
+                          {commit}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
-          </>
-        )}
-      </motion.div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Update dialog - only for local environments */}
       <DialogRoot open={showUpdateDialog && !environmentInfo.isCloud} onOpenChange={setShowUpdateDialog}>
@@ -607,10 +660,11 @@ const UpdateTab = () => {
                 {isLatestBranch ? 'main' : 'stable'} branch)
               </p>
 
-              {updateProgress?.details?.compareUrl && (
+              {/* GitHub link section */}
+              {details && details.compareUrl && (
                 <div className="mb-6">
                   <a
-                    href={updateProgress.details.compareUrl}
+                    href={details.compareUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={classNames(
@@ -629,11 +683,12 @@ const UpdateTab = () => {
                 </div>
               )}
 
-              {updateProgress?.details?.commitMessages && updateProgress.details.commitMessages.length > 0 && (
+              {/* Commit messages section */}
+              {details && details.commitMessages && details.commitMessages.length > 0 && (
                 <div className="mb-6">
                   <p className="font-medium mb-2">Commit Messages:</p>
                   <div className="bg-[#F5F5F5] dark:bg-[#1A1A1A] rounded-lg p-3 max-h-[200px] overflow-y-auto space-y-2">
-                    {updateProgress.details.commitMessages.map((msg, index) => (
+                    {details.commitMessages.map((msg: string, index: number) => (
                       <div key={index} className="text-sm text-bolt-elements-textSecondary flex items-start gap-2">
                         <div className="i-ph:git-commit text-purple-500 w-4 h-4 mt-0.5 flex-shrink-0" />
                         <span>{msg}</span>
@@ -643,43 +698,54 @@ const UpdateTab = () => {
                 </div>
               )}
 
-              {updateProgress?.details?.changelog && (
+              {/* Changed files section */}
+              {details && details.changedFiles && details.changedFiles.length > 0 && (
                 <div className="mb-6">
-                  <p className="font-medium mb-2">Changelog:</p>
-                  <div className="bg-[#F5F5F5] dark:bg-[#1A1A1A] rounded-lg p-4 max-h-[200px] overflow-y-auto">
-                    <div className="prose dark:prose-invert prose-sm max-w-none">
-                      <Markdown>{updateProgress.details.changelog}</Markdown>
-                    </div>
+                  <p className="font-medium mb-2">Changed Files:</p>
+                  <div className="bg-[#F5F5F5] dark:bg-[#1A1A1A] rounded-lg p-3 max-h-[200px] overflow-y-auto space-y-2">
+                    {details.changedFiles.map((file: string, index: number) => {
+                      // Parse the file string to extract status and filename
+                      const fileStr = String(file);
+                      const isAdded = fileStr.startsWith('Added:');
+                      const isModified = fileStr.startsWith('Modified:');
+                      const isRemoved = fileStr.startsWith('Deleted:');
+                      const filename = fileStr.split(': ')[1] || fileStr;
+
+                      return (
+                        <div key={index} className="text-sm text-bolt-elements-textSecondary flex items-start gap-2">
+                          <div
+                            className={classNames(
+                              'w-4 h-4 mt-0.5 flex-shrink-0',
+                              isAdded ? 'i-ph:plus-circle text-green-500' : '',
+                              isModified ? 'i-ph:pencil-simple text-blue-500' : '',
+                              isRemoved ? 'i-ph:minus-circle text-red-500' : '',
+                              !isAdded && !isModified && !isRemoved ? 'i-ph:file text-gray-500' : '',
+                            )}
+                          />
+                          <span className="font-mono">{filename}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
-              <div className="flex items-center gap-4 text-sm text-bolt-elements-textSecondary">
-                {updateProgress?.details?.additions !== undefined &&
-                  updateProgress?.details?.deletions !== undefined && (
-                    <div className="flex items-center gap-2">
-                      <div className="i-ph:git-diff text-purple-500 w-4 h-4" />
-                      Changes: <span className="text-green-600">+{updateProgress.details.additions}</span>{' '}
-                      <span className="text-red-600">-{updateProgress.details.deletions}</span>
-                    </div>
-                  )}
-
-                {updateProgress?.details?.changedFiles && (
-                  <div className="flex items-center gap-2">
-                    <div className="i-ph:file-code text-purple-500 w-4 h-4" />
-                    Files changed: {updateProgress.details.changedFiles.length}
-                  </div>
-                )}
-              </div>
+              {/* Total size section */}
+              {details && details.totalSize && (
+                <div className="mb-6 flex items-center gap-2 text-sm text-bolt-elements-textSecondary">
+                  <div className="i-ph:file-code text-purple-500 w-4 h-4" />
+                  Files changed: {details.changedFiles?.length || 0}
+                </div>
+              )}
             </div>
           </DialogDescription>
           <div className="flex justify-end gap-2 mt-6">
-            <DialogButton type="secondary" onClick={() => setShowUpdateDialog(false)}>
+            <Button variant="secondary" onClick={() => setShowUpdateDialog(false)}>
               Cancel
-            </DialogButton>
-            <DialogButton type="primary" onClick={handleUpdate}>
+            </Button>
+            <Button variant="default" onClick={handleUpdate}>
               Update Now
-            </DialogButton>
+            </Button>
           </div>
         </Dialog>
       </DialogRoot>
@@ -696,12 +762,6 @@ const UpdateTab = () => {
                 functionality.
               </p>
               <div className="mt-3 flex gap-2">
-                <button
-                  onClick={() => setShowDiagnosticHelper(true)}
-                  className="px-3 py-1.5 text-xs rounded-lg bg-red-100 dark:bg-red-800/30 text-red-800 dark:text-red-200 hover:bg-red-200 dark:hover:bg-red-800/50 transition-colors"
-                >
-                  Run Git Diagnostics
-                </button>
                 <a
                   href="https://git-scm.com/downloads"
                   target="_blank"
