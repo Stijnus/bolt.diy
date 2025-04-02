@@ -13,7 +13,7 @@ import { useEnvironment } from './useEnvironment';
 import { useLocalStorage } from '~/lib/hooks/useLocalStorage';
 
 // Types for update management
-type UpdateStage = 'idle' | 'checking' | 'downloading' | 'installing' | 'restarting';
+type UpdateStage = 'idle' | 'checking' | 'downloading' | 'installing' | 'building' | 'restarting' | 'syncing';
 
 interface UpdateState {
   updateAvailable: boolean;
