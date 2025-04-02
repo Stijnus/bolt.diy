@@ -3,13 +3,13 @@ import { motion } from 'framer-motion';
 import { useSettings } from '~/lib/hooks/useSettings';
 import { logStore } from '~/lib/stores/logs';
 import { toast } from 'react-toastify';
-import { Dialog, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
-import { Button } from '~/components/ui/Button';
 import { classNames } from '~/utils/classNames';
 import { getEnvironmentInfo } from '~/lib/environment';
 import { GitDiagnosticHelper } from './GitDiagnosticHelper';
 import { UpdateProgressDisplay as SharedUpdateProgressDisplay } from '~/components/shared/UpdateProgressDisplay';
 import type { UpdateStage } from '~/lib/hooks/useUpdateManager';
+import { getEstimatedProgress, getTroubleshootingSteps } from '~/utils/update';
+import { Button } from '~/components/ui/Button';
 
 interface UpdateProgress {
   stage:
@@ -44,6 +44,10 @@ interface UpdateProgress {
     isPRBranch?: boolean;
     hasUncommittedChanges?: boolean;
   };
+}
+
+interface UpdateResponse {
+  message?: string;
 }
 
 function isUpdateProgress(obj: any): obj is UpdateProgress {
@@ -120,6 +124,34 @@ function getUpdateStageHelper(stage: UpdateProgress['stage']): UpdateStage {
   }
 }
 
+function ErrorDisplay({ error }: { error: string }) {
+  const troubleshootingSteps = getTroubleshootingSteps(error);
+
+  return (
+    <div className="space-y-2">
+      <p className="text-red-500">{error}</p>
+      <div className="text-sm text-gray-500">
+        <h4 className="font-medium">Troubleshooting Steps:</h4>
+        <ul className="list-disc pl-4">
+          {troubleshootingSteps.map((step, i) => (
+            <li key={i}>{step}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function useProgressEstimation() {
+  const [estimatedProgress, setEstimatedProgress] = useState(0);
+
+  const updateProgressEstimation = useCallback((stage: UpdateProgress['stage']) => {
+    setEstimatedProgress(getEstimatedProgress(stage));
+  }, []);
+
+  return { estimatedProgress, updateProgressEstimation };
+}
+
 const UpdateTab = () => {
   const { isLatestBranch } = useSettings();
   const [isChecking, setIsChecking] = useState(false);
@@ -128,10 +160,11 @@ const UpdateTab = () => {
   const [isGitChecked, setIsGitChecked] = useState(false);
   const environmentInfo = getEnvironmentInfo();
 
-  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
   const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null);
   const [currentBranch, setCurrentBranch] = useState<string>('main');
   const isPRBranch = currentBranch !== 'main' && currentBranch !== 'stable';
+
+  const { estimatedProgress, updateProgressEstimation } = useProgressEstimation();
 
   useEffect(() => {
     localStorage.removeItem('update_settings');
@@ -157,18 +190,8 @@ const UpdateTab = () => {
           setIsGitChecked(true);
         }
 
-        const branchResponse = await fetch('/api/update?action=getBranch');
-
-        if (!branchResponse.ok) {
-          throw new Error('Branch check failed');
-        }
-
-        const branchData = await branchResponse.json();
-        const branch = branchData as { branch?: string };
-
-        if (branch.branch) {
-          setCurrentBranch(branch.branch);
-        }
+        const branch = await getCurrentBranch();
+        setCurrentBranch(branch);
       } catch (error) {
         console.error('Initialization error:', error);
       }
@@ -176,6 +199,35 @@ const UpdateTab = () => {
 
     checkGitAndBranch();
   }, [environmentInfo.isCloud]);
+
+  const runGitCommand = async (command: string): Promise<string> => {
+    try {
+      const { exec } = await import('child_process');
+      return new Promise((resolve, reject) => {
+        exec(command, (error, stdout, stderr) => {
+          if (error) {
+            reject(new Error(`Git command failed: ${stderr}`));
+            return;
+          }
+
+          resolve(stdout.trim());
+        });
+      });
+    } catch (error) {
+      console.error('Error running Git command:', error);
+      throw error;
+    }
+  };
+
+  const getCurrentBranch = async (): Promise<string> => {
+    try {
+      const branch = await runGitCommand('git rev-parse --abbrev-ref HEAD');
+      return branch;
+    } catch (error) {
+      console.error('Error getting current branch:', error);
+      throw new Error('Failed to determine current branch');
+    }
+  };
 
   const checkForUpdates = useCallback(async () => {
     if (isGitChecked && isGitMissing) {
@@ -211,7 +263,12 @@ const UpdateTab = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`Update check failed: ${response.statusText}`);
+        try {
+          const errorData = (await response.json()) as UpdateResponse;
+          throw new Error(errorData.message || 'Update failed');
+        } catch {
+          throw new Error('Update failed: ' + response.statusText);
+        }
       }
 
       const reader = response.body?.getReader();
@@ -259,7 +316,7 @@ const UpdateTab = () => {
                   toast.success(isPRBranch ? 'Sync check completed' : 'Update check completed');
 
                   if (progress.details?.updateReady && !isPRBranch) {
-                    setShowUpdateDialog(true);
+                    // setShowUpdateDialog(true);
                   }
                 }
               }
@@ -283,36 +340,39 @@ const UpdateTab = () => {
   }, [isGitChecked, isGitMissing, isLatestBranch, currentBranch, isPRBranch]);
 
   const handleUpdate = useCallback(async () => {
-    setShowUpdateDialog(false);
     setIsChecking(true);
     setError(null);
 
     try {
-      const branchToCheck = isLatestBranch ? 'main' : 'stable';
-      const action = isPRBranch ? 'sync' : 'update';
-
-      const response = await fetch('/api/update', {
+      const response = await fetch('/api/update?action=update', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          branch: branchToCheck,
-          currentBranch,
-          action,
-          autoUpdate: true,
+          branch: currentBranch,
+          force: true,
+          testMode: true,
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`${isPRBranch ? 'Sync' : 'Update'} failed: ${response.statusText}`);
+        try {
+          const errorData = (await response.json()) as UpdateResponse;
+          throw new Error(errorData.message || 'Update failed');
+        } catch {
+          throw new Error('Update failed: ' + response.statusText);
+        }
       }
 
       const reader = response.body?.getReader();
 
       if (!reader) {
-        throw new Error('No response stream available');
+        throw new Error('Failed to read update stream');
       }
+
+      const decoder = new TextDecoder();
+      let progressStr = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -321,46 +381,34 @@ const UpdateTab = () => {
           break;
         }
 
-        const chunk = new TextDecoder().decode(value);
-        const lines = chunk.split('\n').filter(Boolean);
+        progressStr += decoder.decode(value);
 
-        for (const line of lines) {
-          const progress = parseProgressUpdate(line);
+        try {
+          const progress = parseProgressUpdate(progressStr);
 
           if (progress) {
             setUpdateProgress(progress);
-
-            if (progress.error) {
-              setError(progress.error);
-              toast.error(`${isPRBranch ? 'Sync' : 'Update'} failed: ${progress.error}`);
-              logStore.logWarning(isPRBranch ? 'Sync Failed' : 'Update Failed', {
-                type: 'update',
-                message: progress.error,
-              });
-            }
+            updateProgressEstimation(progress.stage);
 
             if (progress.stage === 'complete' && !progress.error) {
-              toast.success(`${isPRBranch ? 'Sync' : 'Update'} completed successfully`);
-              logStore.logInfo(isPRBranch ? 'Sync Completed' : 'Update Completed', {
-                type: 'update',
-                message: `${isPRBranch ? 'Sync' : 'Update'} completed successfully`,
-              });
+              toast.success('Update completed successfully');
+            } else if (progress.error) {
+              toast.error(`Update failed: ${progress.error}`);
             }
           }
+        } catch (parseError) {
+          console.error('Error parsing progress:', parseError);
         }
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      const errorMessage = error instanceof Error ? error.message : 'Update failed';
       setError(errorMessage);
-      toast.error(`${isPRBranch ? 'Sync' : 'Update'} failed: ${errorMessage}`);
-      logStore.logWarning(isPRBranch ? 'Sync Failed' : 'Update Failed', {
-        type: 'update',
-        message: errorMessage,
-      });
+      toast.error(`Update failed: ${errorMessage}`);
+      console.error('Update error:', error);
     } finally {
       setIsChecking(false);
     }
-  }, [isLatestBranch, currentBranch, isPRBranch]);
+  }, [currentBranch, updateProgressEstimation]);
 
   const getStatusMessage = useCallback(
     (progress: UpdateProgress | null) => {
@@ -396,6 +444,126 @@ const UpdateTab = () => {
   );
 
   const details = getUpdateDetails(updateProgress);
+
+  useEffect(() => {
+    if (updateProgress) {
+      updateProgressEstimation(updateProgress.stage);
+    }
+  }, [updateProgress, updateProgressEstimation]);
+
+  const UpdateDetails = ({ details }: { details: UpdateProgress['details'] }) => (
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="mt-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 space-y-4"
+    >
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {details?.changedFiles && (
+          <div>
+            <h4 className="font-medium flex items-center gap-2 mb-2">
+              <div className="i-ph:file-text text-blue-500 w-5 h-5" />
+              Changed Files ({details.changedFiles.length})
+            </h4>
+            <div className="max-h-[200px] overflow-y-auto">
+              <ul className="space-y-1 text-sm">
+                {details.changedFiles.map((file, i) => {
+                  const fileStr = String(file);
+                  const isAdded = fileStr.startsWith('Added:');
+                  const isModified = fileStr.startsWith('Modified:');
+                  const isRemoved = fileStr.startsWith('Deleted:');
+                  const filename = fileStr.split(': ')[1] || fileStr;
+
+                  return (
+                    <li key={i} className="flex items-center gap-2">
+                      <div
+                        className={classNames(
+                          'w-4 h-4',
+                          isAdded ? 'i-ph:plus-circle text-green-500' : '',
+                          isModified ? 'i-ph:pencil-simple text-blue-500' : '',
+                          isRemoved ? 'i-ph:minus-circle text-red-500' : '',
+                          !isAdded && !isModified && !isRemoved ? 'i-ph:file text-gray-500' : '',
+                        )}
+                      />
+                      <span className="font-mono break-all">{filename}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {details?.commitMessages && (
+          <div>
+            <h4 className="font-medium flex items-center gap-2 mb-2">
+              <div className="i-ph:git-commit text-purple-500 w-5 h-5" />
+              Commit Messages ({details.commitMessages.length})
+            </h4>
+            <div className="max-h-[200px] overflow-y-auto">
+              <ul className="space-y-2 text-sm">
+                {details.commitMessages.map((msg, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <div className="i-ph:git-commit text-purple-500 w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <span>{msg}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {details?.compareUrl && (
+        <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+          <a
+            href={details.compareUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium 
+              bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 
+              text-blue-600 dark:text-blue-400 transition-colors"
+          >
+            <div className="i-ph:github-logo w-4 h-4" />
+            View Changes on GitHub
+          </a>
+        </div>
+      )}
+    </motion.div>
+  );
+
+  const resetUpdateState = useCallback(() => {
+    setIsChecking(false);
+    setUpdateProgress(null);
+    setError(null);
+  }, []);
+
+  const handleCancelUpdate = useCallback(() => {
+    resetUpdateState();
+    toast.info('Update check completed');
+  }, [resetUpdateState]);
+
+  // Enhanced branch info display
+  const branchInfo = (
+    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg mb-6">
+      <div className="flex items-center gap-2">
+        <div className="i-ph:git-branch w-5 h-5 text-gray-500 dark:text-gray-400" />
+        <div className="text-sm">
+          Current Branch: <span className="font-medium text-gray-900 dark:text-gray-100">{currentBranch}</span>
+        </div>
+        {isPRBranch && (
+          <span className="ml-2 px-2 py-1 text-xs font-medium bg-yellow-100 dark:bg-yellow-800/20 text-yellow-800 dark:text-yellow-200 rounded-full">
+            PR Branch
+          </span>
+        )}
+      </div>
+      {isPRBranch && (
+        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+          Updates are disabled on PR branches. Switch to main or stable branch to update.
+        </p>
+      )}
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -477,18 +645,10 @@ const UpdateTab = () => {
               </div>
 
               {!environmentInfo.isCloud && !isPRBranch && updateProgress?.details?.updateReady && (
-                <button
-                  onClick={handleUpdate}
-                  className={classNames(
-                    'flex items-center gap-2 px-4 py-2 rounded-lg text-sm',
-                    'bg-purple-500 text-white',
-                    'hover:bg-purple-600',
-                    'transition-colors duration-200',
-                  )}
-                >
+                <Button variant="default" onClick={handleUpdate} disabled={isChecking}>
                   <div className="i-ph:arrow-circle-up w-4 h-4" />
                   Update Now
-                </button>
+                </Button>
               )}
             </div>
 
@@ -499,7 +659,7 @@ const UpdateTab = () => {
                     updateState={{
                       updateAvailable: Boolean(updateProgress?.details?.updateReady) && !isPRBranch,
                       updateInProgress: !['complete', 'error'].includes(updateProgress.stage) || isChecking,
-                      updateProgress: updateProgress.progress || 0,
+                      updateProgress: estimatedProgress,
                       updateStage: getUpdateStage(updateProgress.stage),
                       updateError: updateProgress.error || null,
                       currentVersion: updateProgress?.details?.currentCommit?.substring(0, 7) || '',
@@ -518,7 +678,42 @@ const UpdateTab = () => {
                     showDetails={true}
                   />
 
-                  {error && <div className="mt-4 p-4 bg-red-100 text-red-700 rounded">{error}</div>}
+                  {error && <ErrorDisplay error={error} />}
+                  {updateProgress && ['complete', 'error'].includes(updateProgress.stage) && (
+                    <UpdateDetails details={updateProgress.details} />
+                  )}
+                  {updateProgress && ['complete', 'error'].includes(updateProgress.stage) && (
+                    <div className="mt-4 flex gap-2">
+                      <Button
+                        variant="secondary"
+                        onClick={handleCancelUpdate}
+                        disabled={isChecking}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-[var(--bolt-elements-button-secondary-background)] text-[var(--bolt-elements-button-secondary-text)] hover:bg-[var(--bolt-elements-button-secondary-backgroundHover)]"
+                      >
+                        <div className="i-ph:arrow-clockwise w-4 h-4" />
+                        Check Again
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={resetUpdateState}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-[var(--bolt-elements-button-secondary-background)] text-[var(--bolt-elements-button-secondary-text)] hover:bg-[var(--bolt-elements-button-secondary-backgroundHover)]"
+                      >
+                        <div className="i-ph:arrow-left w-4 h-4" />
+                        Go Back
+                      </Button>
+                      {!isPRBranch && updateProgress.details?.updateReady && (
+                        <Button
+                          variant="default"
+                          onClick={handleUpdate}
+                          disabled={isChecking}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-[var(--bolt-elements-button-primary-background)] text-[var(--bolt-elements-button-primary-text)] hover:bg-[var(--bolt-elements-button-primary-backgroundHover)]"
+                        >
+                          <div className="i-ph:arrow-down w-4 h-4" />
+                          Update Now
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
@@ -566,17 +761,7 @@ const UpdateTab = () => {
                     </div>
 
                     <div className="mt-6 flex flex-col sm:flex-row sm:items-center gap-4">
-                      <button
-                        onClick={checkForUpdates}
-                        disabled={isChecking}
-                        className={classNames(
-                          'flex items-center justify-center gap-2 px-6 py-2 rounded-lg text-sm w-full sm:w-auto',
-                          'bg-purple-500 text-white',
-                          'hover:bg-purple-600',
-                          'transition-colors duration-200',
-                          'disabled:opacity-50 disabled:cursor-not-allowed',
-                        )}
-                      >
+                      <Button onClick={checkForUpdates} disabled={isChecking} variant="default">
                         {isChecking ? (
                           <>
                             <div className="i-ph:circle-notch animate-spin w-4 h-4" />
@@ -597,23 +782,13 @@ const UpdateTab = () => {
                             {isPRBranch ? 'Check Sync Status' : 'Check for Updates'}
                           </>
                         )}
-                      </button>
+                      </Button>
 
                       {isPRBranch && !details?.hasUncommittedChanges && (
-                        <button
-                          onClick={handleUpdate}
-                          disabled={isChecking}
-                          className={classNames(
-                            'flex items-center justify-center gap-2 px-6 py-2 rounded-lg text-sm w-full sm:w-auto',
-                            'bg-green-500 text-white',
-                            'hover:bg-green-600',
-                            'transition-colors duration-200',
-                            'disabled:opacity-50 disabled:cursor-not-allowed',
-                          )}
-                        >
+                        <Button onClick={handleUpdate} disabled={isChecking} variant="default">
                           <div className="i-ph:arrows-clockwise w-4 h-4" />
                           Sync with Upstream
-                        </button>
+                        </Button>
                       )}
                     </div>
 
@@ -622,103 +797,12 @@ const UpdateTab = () => {
                     </div>
                   </div>
 
-                  {error && <div className="mt-4 p-4 bg-red-100 text-red-700 rounded">{error}</div>}
+                  {error && <ErrorDisplay error={error} />}
                 </>
               )}
             </div>
           </motion.div>
         </>
-      )}
-
-      {/* Update dialog - only for non-PR branches */}
-      {!isPRBranch && (
-        <DialogRoot open={showUpdateDialog && !environmentInfo.isCloud} onOpenChange={setShowUpdateDialog}>
-          <Dialog>
-            <DialogTitle>Update Available</DialogTitle>
-            <DialogDescription>
-              <div className="mt-4">
-                <p className="text-sm text-bolt-elements-textSecondary mb-4">
-                  A new version is available from <span className="font-mono">stackblitz-labs/bolt.diy</span> (
-                  {isLatestBranch ? 'main' : 'stable'} branch)
-                </p>
-
-                {details && details.compareUrl && (
-                  <div className="mb-6">
-                    <a
-                      href={details.compareUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={classNames(
-                        'flex items-center gap-2 px-4 py-2 rounded-lg text-sm',
-                        'bg-[#F5F5F5] dark:bg-[#1A1A1A]',
-                        'hover:bg-purple-500/10 hover:text-purple-500',
-                        'dark:hover:bg-purple-500/20 dark:hover:text-purple-500',
-                        'text-bolt-elements-textPrimary',
-                        'transition-colors duration-200',
-                        'w-fit',
-                      )}
-                    >
-                      <div className="i-ph:github-logo w-4 h-4" />
-                      View Changes on GitHub
-                    </a>
-                  </div>
-                )}
-
-                {details && details.commitMessages && details.commitMessages.length > 0 && (
-                  <div className="mb-6">
-                    <p className="font-medium mb-2">Commit Messages:</p>
-                    <div className="bg-[#F5F5F5] dark:bg-[#1A1A1A] rounded-lg p-3 max-h-[200px] overflow-y-auto space-y-2">
-                      {details.commitMessages.map((msg: string, index: number) => (
-                        <div key={index} className="text-sm text-bolt-elements-textSecondary flex items-start gap-2">
-                          <div className="i-ph:git-commit text-purple-500 w-4 h-4 mt-0.5 flex-shrink-0" />
-                          <span>{msg}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {details && details.changedFiles && details.changedFiles.length > 0 && (
-                  <div className="mb-6">
-                    <p className="font-medium mb-2">Changed Files:</p>
-                    <div className="bg-[#F5F5F5] dark:bg-[#1A1A1A] rounded-lg p-3 max-h-[200px] overflow-y-auto space-y-2">
-                      {details.changedFiles.map((file: string, index: number) => {
-                        const fileStr = String(file);
-                        const isAdded = fileStr.startsWith('Added:');
-                        const isModified = fileStr.startsWith('Modified:');
-                        const isRemoved = fileStr.startsWith('Deleted:');
-                        const filename = fileStr.split(': ')[1] || fileStr;
-
-                        return (
-                          <div key={index} className="text-sm text-bolt-elements-textSecondary flex items-start gap-2">
-                            <div
-                              className={classNames(
-                                'w-4 h-4 mt-0.5 flex-shrink-0',
-                                isAdded ? 'i-ph:plus-circle text-green-500' : '',
-                                isModified ? 'i-ph:pencil-simple text-blue-500' : '',
-                                isRemoved ? 'i-ph:minus-circle text-red-500' : '',
-                                !isAdded && !isModified && !isRemoved ? 'i-ph:file text-gray-500' : '',
-                              )}
-                            />
-                            <span className="font-mono">{filename}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </DialogDescription>
-            <div className="flex justify-end gap-2 mt-6">
-              <Button variant="secondary" onClick={() => setShowUpdateDialog(false)}>
-                Cancel
-              </Button>
-              <Button variant="default" onClick={handleUpdate}>
-                Update Now
-              </Button>
-            </div>
-          </Dialog>
-        </DialogRoot>
       )}
 
       {/* Git missing notification */}
@@ -746,6 +830,7 @@ const UpdateTab = () => {
           </div>
         </div>
       )}
+      {branchInfo}
     </div>
   );
 };

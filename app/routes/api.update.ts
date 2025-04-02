@@ -34,6 +34,62 @@ interface ExecCommandResult {
   error?: string;
 }
 
+interface UpdateStageTimings {
+  fetch: number;
+  pull: number;
+  install: number;
+  build: number;
+  complete: number;
+  sync: number;
+  checking: number;
+  downloading: number;
+  installing: number;
+  building: number;
+  restarting: number;
+  syncing: number;
+  idle: number;
+}
+
+const DEFAULT_STAGE_TIMINGS: UpdateStageTimings = {
+  fetch: 20,
+  pull: 40,
+  install: 70,
+  build: 90,
+  complete: 100,
+  sync: 50,
+  checking: 10,
+  downloading: 30,
+  installing: 60,
+  building: 80,
+  restarting: 95,
+  syncing: 50,
+  idle: 0,
+};
+
+export function getEstimatedProgress(
+  stage: keyof UpdateStageTimings,
+  timings: UpdateStageTimings = DEFAULT_STAGE_TIMINGS,
+): number {
+  return timings[stage] || 0;
+}
+
+function getTroubleshootingSteps(error: string): string[] {
+  if (error.includes('Git is not available')) {
+    return [
+      '1. Install Git from https://git-scm.com/',
+      '2. Verify installation by running `git --version` in terminal',
+      '3. Restart the application',
+    ];
+  }
+
+  // Add more error-specific troubleshooting steps
+  return [
+    '1. Check your internet connection',
+    '2. Verify repository access permissions',
+    '3. Contact support if issue persists',
+  ];
+}
+
 async function detectGitPath(): Promise<string> {
   try {
     if (execSync) {
@@ -128,7 +184,8 @@ export const action: ActionFunction = async ({ request }) => {
                 JSON.stringify({
                   stage: 'complete',
                   error: 'Git is not available. Please install Git to enable updates.',
-                  progress: 100,
+                  progress: getEstimatedProgress('complete'),
+                  troubleshootingSteps: getTroubleshootingSteps('Git is not available'),
                 }) + '\n',
               ),
             );
@@ -145,7 +202,8 @@ export const action: ActionFunction = async ({ request }) => {
                 JSON.stringify({
                   stage: 'complete',
                   error: 'Not in a Git repository. Please initialize Git first.',
-                  progress: 100,
+                  progress: getEstimatedProgress('complete'),
+                  troubleshootingSteps: getTroubleshootingSteps('Not in a Git repository'),
                 }) + '\n',
               ),
             );
@@ -162,7 +220,8 @@ export const action: ActionFunction = async ({ request }) => {
                 JSON.stringify({
                   stage: 'complete',
                   error: 'No remote repository configured. Please add a remote repository.',
-                  progress: 100,
+                  progress: getEstimatedProgress('complete'),
+                  troubleshootingSteps: getTroubleshootingSteps('No remote repository configured'),
                 }) + '\n',
               ),
             );
@@ -180,7 +239,7 @@ export const action: ActionFunction = async ({ request }) => {
                 JSON.stringify({
                   stage: 'fetch',
                   message: 'Checking branch status...',
-                  progress: 20,
+                  progress: getEstimatedProgress('fetch'),
                   details: {
                     currentBranch,
                     isPRBranch: true,
@@ -196,7 +255,8 @@ export const action: ActionFunction = async ({ request }) => {
                   JSON.stringify({
                     stage: 'complete',
                     error: 'You have uncommitted changes. Please commit or stash them before syncing.',
-                    progress: 100,
+                    progress: getEstimatedProgress('complete'),
+                    troubleshootingSteps: getTroubleshootingSteps('Uncommitted changes'),
                   }) + '\n',
                 ),
               );
@@ -212,7 +272,7 @@ export const action: ActionFunction = async ({ request }) => {
                 JSON.stringify({
                   stage: 'fetch',
                   message: 'Checking upstream status...',
-                  progress: 30,
+                  progress: getEstimatedProgress('fetch'),
                 }) + '\n',
               ),
             );
@@ -229,7 +289,8 @@ export const action: ActionFunction = async ({ request }) => {
                   JSON.stringify({
                     stage: 'complete',
                     error: `Could not find branch origin/${currentBranch}`,
-                    progress: 100,
+                    progress: getEstimatedProgress('complete'),
+                    troubleshootingSteps: getTroubleshootingSteps(`Could not find branch origin/${currentBranch}`),
                   }) + '\n',
                 ),
               );
@@ -262,7 +323,7 @@ export const action: ActionFunction = async ({ request }) => {
                   JSON.stringify({
                     stage: 'complete',
                     message: 'Sync check complete',
-                    progress: 100,
+                    progress: getEstimatedProgress('complete'),
                     details: {
                       currentBranch,
                       isPRBranch: true,
@@ -286,7 +347,7 @@ export const action: ActionFunction = async ({ request }) => {
                   JSON.stringify({
                     stage: 'sync',
                     message: 'Syncing with upstream...',
-                    progress: 50,
+                    progress: getEstimatedProgress('sync'),
                   }) + '\n',
                 ),
               );
@@ -302,7 +363,7 @@ export const action: ActionFunction = async ({ request }) => {
                   JSON.stringify({
                     stage: 'sync',
                     message: 'Branch synced successfully',
-                    progress: 80,
+                    progress: getEstimatedProgress('sync'),
                   }) + '\n',
                 ),
               );
@@ -318,7 +379,7 @@ export const action: ActionFunction = async ({ request }) => {
                   JSON.stringify({
                     stage: 'complete',
                     message: 'Branch sync completed',
-                    progress: 100,
+                    progress: getEstimatedProgress('complete'),
                     details: {
                       currentBranch,
                       isPRBranch: true,
@@ -332,7 +393,7 @@ export const action: ActionFunction = async ({ request }) => {
                   JSON.stringify({
                     stage: 'complete',
                     message: 'Branch is already up to date',
-                    progress: 100,
+                    progress: getEstimatedProgress('complete'),
                     details: {
                       currentBranch,
                       isPRBranch: true,
@@ -347,7 +408,7 @@ export const action: ActionFunction = async ({ request }) => {
                 JSON.stringify({
                   stage: 'fetch',
                   message: 'Checking for updates...',
-                  progress: 20,
+                  progress: getEstimatedProgress('fetch'),
                 }) + '\n',
               ),
             );
@@ -363,7 +424,7 @@ export const action: ActionFunction = async ({ request }) => {
                 JSON.stringify({
                   stage: 'fetch',
                   message: 'Checking for changes...',
-                  progress: 40,
+                  progress: getEstimatedProgress('fetch'),
                 }) + '\n',
               ),
             );
@@ -380,7 +441,8 @@ export const action: ActionFunction = async ({ request }) => {
                   JSON.stringify({
                     stage: 'complete',
                     error: `Could not find branch origin/${branch}`,
-                    progress: 100,
+                    progress: getEstimatedProgress('complete'),
+                    troubleshootingSteps: getTroubleshootingSteps(`Could not find branch origin/${branch}`),
                   }) + '\n',
                 ),
               );
@@ -432,7 +494,7 @@ export const action: ActionFunction = async ({ request }) => {
                   JSON.stringify({
                     stage: 'complete',
                     message: 'Update check complete',
-                    progress: 100,
+                    progress: getEstimatedProgress('complete'),
                     details: {
                       changedFiles,
                       additions: parseInt(additions),
@@ -458,7 +520,7 @@ export const action: ActionFunction = async ({ request }) => {
                   JSON.stringify({
                     stage: 'pull',
                     message: 'Pulling updates...',
-                    progress: 50,
+                    progress: getEstimatedProgress('pull'),
                   }) + '\n',
                 ),
               );
@@ -474,7 +536,7 @@ export const action: ActionFunction = async ({ request }) => {
                   JSON.stringify({
                     stage: 'pull',
                     message: 'Updates pulled successfully',
-                    progress: 70,
+                    progress: getEstimatedProgress('pull'),
                   }) + '\n',
                 ),
               );
@@ -490,7 +552,7 @@ export const action: ActionFunction = async ({ request }) => {
                   JSON.stringify({
                     stage: 'install',
                     message: 'Dependencies installed',
-                    progress: 85,
+                    progress: getEstimatedProgress('install'),
                   }) + '\n',
                 ),
               );
@@ -506,7 +568,7 @@ export const action: ActionFunction = async ({ request }) => {
                   JSON.stringify({
                     stage: 'build',
                     message: 'Application built successfully',
-                    progress: 95,
+                    progress: getEstimatedProgress('build'),
                   }) + '\n',
                 ),
               );
@@ -516,7 +578,7 @@ export const action: ActionFunction = async ({ request }) => {
                   JSON.stringify({
                     stage: 'complete',
                     message: 'Update completed',
-                    progress: 100,
+                    progress: getEstimatedProgress('complete'),
                   }) + '\n',
                 ),
               );
@@ -526,7 +588,7 @@ export const action: ActionFunction = async ({ request }) => {
                   JSON.stringify({
                     stage: 'complete',
                     message: 'Already up to date',
-                    progress: 100,
+                    progress: getEstimatedProgress('complete'),
                   }) + '\n',
                 ),
               );
@@ -540,8 +602,9 @@ export const action: ActionFunction = async ({ request }) => {
               JSON.stringify({
                 stage: 'complete',
                 message: 'Error during process',
-                progress: 100,
+                progress: getEstimatedProgress('complete'),
                 error: error instanceof Error ? error.message : 'Unknown error',
+                troubleshootingSteps: getTroubleshootingSteps(error instanceof Error ? error.message : 'Unknown error'),
               }) + '\n',
             ),
           );
@@ -561,6 +624,7 @@ export const action: ActionFunction = async ({ request }) => {
       {
         error: 'Error processing request',
         details: error instanceof Error ? error.message : 'Unknown error',
+        troubleshootingSteps: getTroubleshootingSteps(error instanceof Error ? error.message : 'Unknown error'),
       },
       { status: 500 },
     );

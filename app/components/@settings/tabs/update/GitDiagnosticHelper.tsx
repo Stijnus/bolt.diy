@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
+import { ErrorBoundary } from './ErrorBoundary';
 
 interface GitDiagnosticResponse {
   inCloud: boolean;
@@ -13,13 +14,16 @@ interface GitDiagnosticResponse {
   error?: string;
 }
 
-export const GitDiagnosticHelper: React.FC = () => {
+const GitDiagnosticHelperContent: React.FC = () => {
   const [diagnosticData, setDiagnosticData] = useState<GitDiagnosticResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showPath, setShowPath] = useState(false);
+  const [isFixingPath, setIsFixingPath] = useState(false);
 
   const runDiagnostic = async () => {
     setIsLoading(true);
+    toast.dismiss();
+    toast.info('Running Git diagnostics...', { autoClose: 2000 });
 
     try {
       const response = await fetch('/api/git-diagnostic');
@@ -30,9 +34,10 @@ export const GitDiagnosticHelper: React.FC = () => {
 
       const data = await response.json();
       setDiagnosticData(data as GitDiagnosticResponse);
+      toast.success('Git diagnostics completed successfully', { autoClose: 2000 });
     } catch (error) {
       console.error('Error running Git diagnostic:', error);
-      toast.error('Failed to run Git diagnostic');
+      toast.error('Failed to run Git diagnostic. Please try again.', { autoClose: 3000 });
     } finally {
       setIsLoading(false);
     }
@@ -70,23 +75,81 @@ export const GitDiagnosticHelper: React.FC = () => {
     );
   };
 
-  const fixPathForHomebrewGit = async () => {
+  const fixPath = async () => {
+    setIsFixingPath(true);
+    toast.dismiss();
+    toast.info('Attempting to fix PATH...', { autoClose: false });
+
     try {
-      // Make an API call to fix the PATH issue
-      const response = await fetch('/api/git-fix-path', { method: 'POST' });
+      const response = await fetch('/api/git-fix-path', {
+        method: 'POST',
+      });
 
       if (!response.ok) {
-        throw new Error('Failed to fix Git PATH');
+        throw new Error('Failed to fix PATH');
       }
 
-      toast.success('Git PATH updated! Restart Bolt to apply changes.');
-
-      // Run diagnostic again after a short delay
+      toast.success('PATH updated successfully! Restart Bolt to apply changes.', { autoClose: 4000 });
       setTimeout(runDiagnostic, 1000);
     } catch (error) {
-      console.error('Error fixing Git PATH:', error);
-      toast.error('Failed to fix Git PATH. Please follow the manual instructions.');
+      console.error('Error fixing PATH:', error);
+      toast.error('Failed to fix PATH. Please try manually.', { autoClose: 4000 });
+    } finally {
+      setIsFixingPath(false);
     }
+  };
+
+  const renderPathInfo = () => {
+    if (!diagnosticData?.systemPath) {
+      return null;
+    }
+
+    const pathLines = diagnosticData.systemPath.split(':');
+    const gitPath = diagnosticData.gitPath;
+
+    return (
+      <div className="mt-4 mb-6">
+        <button
+          onClick={() => setShowPath(!showPath)}
+          className="flex items-center gap-2 text-sm font-medium text-blue-500 hover:text-blue-600"
+        >
+          <div className={`i-ph:caret-${showPath ? 'down' : 'right'} w-4 h-4`} />
+          <span>System PATH Information</span>
+        </button>
+
+        {showPath && (
+          <div className="mt-2">
+            <div className="text-sm text-bolt-elements-textSecondary">
+              {pathLines.map((line, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  {gitPath && line.includes(gitPath) ? (
+                    <div className="i-ph:check-circle-fill text-green-500 w-4 h-4" />
+                  ) : (
+                    <div className="i-ph:x-circle-fill text-red-500 w-4 h-4" />
+                  )}
+                  <code className="font-mono">{line}</code>
+                </div>
+              ))}
+            </div>
+
+            {diagnosticData.possibleSolutions?.some((sol) => sol.includes('Git is installed but not in your PATH')) && (
+              <button
+                onClick={fixPath}
+                className="mt-4 flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                disabled={isFixingPath}
+              >
+                {isFixingPath ? (
+                  <div className="i-ph:spinner animate-spin w-4 h-4" />
+                ) : (
+                  <div className="i-ph:magic-wand w-4 h-4" />
+                )}
+                <span>Fix PATH Automatically</span>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   if (isLoading) {
@@ -123,10 +186,6 @@ export const GitDiagnosticHelper: React.FC = () => {
       </div>
     );
   }
-
-  const isHomebrewGitProblem =
-    !diagnosticData.isGitInstalled &&
-    diagnosticData.possibleSolutions?.some((sol) => sol.includes('Git is installed but not in your PATH'));
 
   return (
     <div className="p-6 rounded-xl bg-white dark:bg-[#0A0A0A] border border-[#E5E5E5] dark:border-[#1A1A1A]">
@@ -191,45 +250,7 @@ export const GitDiagnosticHelper: React.FC = () => {
       </div>
 
       {/* Show system PATH information if Git is not detected */}
-      {!diagnosticData.isGitInstalled && diagnosticData.systemPath && (
-        <div className="mt-4 mb-6">
-          <button
-            onClick={() => setShowPath(!showPath)}
-            className="flex items-center gap-2 text-sm font-medium text-blue-500 hover:text-blue-600"
-          >
-            <div className={`i-ph:caret-${showPath ? 'down' : 'right'} w-4 h-4`} />
-            <span>System PATH Information</span>
-          </button>
-
-          {showPath && (
-            <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 text-xs font-mono text-gray-700 dark:text-gray-300 overflow-x-auto whitespace-pre-wrap">
-              {diagnosticData.systemPath}
-            </div>
-          )}
-
-          <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800/30 text-xs">
-            <p className="text-blue-800 dark:text-blue-200 flex items-center gap-2 mb-2">
-              <div className="i-ph:info text-blue-500 w-4 h-4 flex-shrink-0" />
-              <span>
-                <strong>Common PATH issue:</strong> If Git is installed via Homebrew on macOS but not found, it may be
-                that /opt/homebrew/bin is not in your PATH.
-              </span>
-            </p>
-
-            {isHomebrewGitProblem && (
-              <div className="mt-3 flex justify-end">
-                <button
-                  onClick={fixPathForHomebrewGit}
-                  className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
-                >
-                  <div className="i-ph:wrench w-3.5 h-3.5" />
-                  Fix PATH Automatically
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {!diagnosticData.isGitInstalled && diagnosticData.systemPath && renderPathInfo()}
 
       {/* Possible solutions */}
       {diagnosticData.possibleSolutions && diagnosticData.possibleSolutions.length > 0 && (
@@ -263,3 +284,9 @@ export const GitDiagnosticHelper: React.FC = () => {
     </div>
   );
 };
+
+export const GitDiagnosticHelper = () => (
+  <ErrorBoundary>
+    <GitDiagnosticHelperContent />
+  </ErrorBoundary>
+);

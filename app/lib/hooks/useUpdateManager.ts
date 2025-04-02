@@ -32,6 +32,19 @@ interface UpdateManagerOptions {
   checkInterval?: number;
 }
 
+// Electron API type declaration
+declare global {
+  interface Window {
+    electron?: {
+      ipcRenderer: {
+        send: (channel: string, ...args: any[]) => void;
+        on: (channel: string, listener: (...args: any[]) => void) => void;
+        removeListener: (channel: string, listener: (...args: any[]) => void) => void;
+      };
+    };
+  }
+}
+
 /**
  * Hook for managing application updates across different environments
  *
@@ -67,6 +80,23 @@ export function useUpdateManager({
   const eventSourceRef = useRef<EventSource | null>(null);
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Utility function for consistent error handling
+  const handleUpdateError = useCallback((error: unknown, context: string) => {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    const fullMessage = `${context}: ${errorMessage}`;
+
+    console.error(fullMessage);
+
+    // toast.error(fullMessage); // Assuming toast is not defined in this scope
+
+    setUpdateState((prev) => ({
+      ...prev,
+      updateError: fullMessage,
+      updateStage: 'idle',
+      updateInProgress: false,
+    }));
+  }, []);
+
   // Reset update state
   const resetUpdateState = useCallback(() => {
     setUpdateState((prev) => ({
@@ -78,12 +108,20 @@ export function useUpdateManager({
     }));
   }, []);
 
+  // Debug logging utility
+  const logUpdate = useCallback((message: string, data?: any) => {
+    console.log(`[UpdateManager] ${message}`, data);
+  }, []);
+
   // Check for updates
   const checkForUpdate = useCallback(async () => {
+    logUpdate('Checking for updates');
+
     try {
       setUpdateState((prev) => ({ ...prev, updateStage: 'checking' }));
 
       const { available, version } = await checkForUpdates();
+      logUpdate('Update check completed', { available, version });
 
       setUpdateState((prev) => ({
         ...prev,
@@ -93,13 +131,9 @@ export function useUpdateManager({
         updateStage: 'idle',
       }));
     } catch (error) {
-      setUpdateState((prev) => ({
-        ...prev,
-        updateStage: 'idle',
-        updateError: `Error checking for updates: ${error instanceof Error ? error.message : String(error)}`,
-      }));
+      handleUpdateError(error, 'Error checking for updates');
     }
-  }, []);
+  }, [handleUpdateError, logUpdate]);
 
   // Acknowledge current update
   const acknowledgeCurrentUpdate = useCallback(async () => {
@@ -112,12 +146,9 @@ export function useUpdateManager({
       setLastAcknowledgedVersion(updateState.latestVersion);
       setUpdateState((prev) => ({ ...prev, updateAvailable: false }));
     } catch (error) {
-      setUpdateState((prev) => ({
-        ...prev,
-        updateError: `Error acknowledging update: ${error instanceof Error ? error.message : String(error)}`,
-      }));
+      handleUpdateError(error, 'Error acknowledging update');
     }
-  }, [updateState.latestVersion, setLastAcknowledgedVersion]);
+  }, [updateState.latestVersion, setLastAcknowledgedVersion, handleUpdateError]);
 
   // Auto-acknowledge updates when configured
   useEffect(() => {
@@ -136,28 +167,84 @@ export function useUpdateManager({
     acknowledgeCurrentUpdate,
   ]);
 
+  // Enhanced EventSource handling
+  const handleEventSource = useCallback(() => {
+    const eventSource = new EventSource('/api/updates/progress');
+    eventSourceRef.current = eventSource;
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        if (data.complete) {
+          setUpdateState((prev) => ({
+            ...prev,
+            updateStage: 'installing',
+            updateProgress: 100,
+          }));
+
+          eventSource.close();
+          eventSourceRef.current = null;
+
+          // Redirect to reload the application
+          setTimeout(() => {
+            window.location.reload();
+          }, 2000);
+
+          return;
+        }
+
+        // Handle progress updates
+        const progressData = data.lines.find(
+          (line: string) => line.includes('Receiving objects:') || line.includes('Resolving deltas:'),
+        );
+
+        if (progressData) {
+          const match = progressData.match(/(\d+)%/);
+
+          if (match && match[1]) {
+            const progress = parseInt(match[1], 10);
+            setUpdateState((prev) => ({
+              ...prev,
+              updateProgress: progress,
+            }));
+          }
+        }
+      } catch (error) {
+        handleUpdateError(error, 'Error processing update progress');
+        eventSource.close();
+        eventSourceRef.current = null;
+      }
+    };
+
+    eventSource.onerror = () => {
+      handleUpdateError(null, 'Error receiving update progress');
+      eventSource.close();
+      eventSourceRef.current = null;
+    };
+
+    return eventSource;
+  }, [handleUpdateError]);
+
   // Start update process
   const startUpdate = useCallback(async () => {
-    // Reset any previous errors
-    setUpdateState((prev) => ({ ...prev, updateError: null }));
+    logUpdate('Starting update process', { environment });
 
     try {
-      // Start the update process based on environment
+      // Reset any previous errors
+      setUpdateState((prev) => ({ ...prev, updateError: null }));
+
       if (environment.isElectron) {
-        // Electron update process
+        logUpdate('Starting Electron update');
         setUpdateState((prev) => ({
           ...prev,
           updateInProgress: true,
           updateStage: 'downloading',
         }));
 
-        /*
-         * In Electron, we would use IPC to communicate with the main process
-         * This is a placeholder for the actual Electron implementation
-         */
-        (window as any).electron?.ipcRenderer.send('start-update');
+        window.electron?.ipcRenderer.send('start-update');
       } else if (environment.gitSupported) {
-        // Git-based update process
+        logUpdate('Starting Git update');
         setUpdateState((prev) => ({
           ...prev,
           updateInProgress: true,
@@ -165,97 +252,32 @@ export function useUpdateManager({
           updateProgress: 0,
         }));
 
-        // Start Git update via API
         const response = await fetch('/api/updates/start', {
           method: 'POST',
         });
+        logUpdate('Git update started', { status: response.status });
 
         if (!response.ok) {
           throw new Error(`Failed to start update: ${response.status}`);
         }
 
-        // Set up EventSource for progress updates
-        const eventSource = new EventSource('/api/updates/progress');
-        eventSourceRef.current = eventSource;
-
-        eventSource.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-
-          if (data.complete) {
-            setUpdateState((prev) => ({
-              ...prev,
-              updateStage: 'installing',
-              updateProgress: 100,
-            }));
-
-            eventSource.close();
-            eventSourceRef.current = null;
-
-            // Redirect to reload the application
-            setTimeout(() => {
-              window.location.reload();
-            }, 2000);
-
-            return;
-          }
-
-          // Find progress information in the output
-          const progressData = data.lines.find(
-            (line: string) => line.includes('Receiving objects:') || line.includes('Resolving deltas:'),
-          );
-
-          if (progressData) {
-            const match = progressData.match(/(\d+)%/);
-
-            if (match && match[1]) {
-              const progress = parseInt(match[1], 10);
-
-              setUpdateState((prev) => ({
-                ...prev,
-                updateProgress: progress,
-              }));
-            }
-          }
-        };
-
-        eventSource.onerror = () => {
-          setUpdateState((prev) => ({
-            ...prev,
-            updateError: 'Error receiving update progress',
-            updateInProgress: false,
-            updateStage: 'idle',
-          }));
-
-          eventSource.close();
-          eventSourceRef.current = null;
-        };
+        handleEventSource();
       } else if (environment.isCloud) {
-        // Cloud environment - just reload the page
+        logUpdate('Reloading cloud environment');
         setUpdateState((prev) => ({
           ...prev,
-          updateInProgress: true,
           updateStage: 'restarting',
+          updateProgress: 100,
         }));
 
-        // Reload after a short delay
         setTimeout(() => {
           window.location.reload();
-        }, 1000);
-      } else {
-        // Unsupported environment
-        throw new Error('Updates are not supported in this environment');
+        }, 2000);
       }
     } catch (error) {
-      setUpdateState((prev) => ({
-        ...prev,
-        updateError: `Error starting update: ${error instanceof Error ? error.message : String(error)}`,
-        updateInProgress: false,
-        updateStage: 'idle',
-      }));
+      handleUpdateError(error, 'Error starting update');
     }
-
-    return null;
-  }, [environment]);
+  }, [environment, handleEventSource, handleUpdateError, logUpdate]);
 
   // Cancel update process
   const cancelUpdate = useCallback(() => {
