@@ -1,11 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useStore } from '@nanostores/react';
 import type { FileMap } from '~/lib/stores/files';
 import { classNames } from '~/utils/classNames';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import type { FileHistory } from '~/types/actions';
 import { diffLines, type Change } from 'diff';
-import { workbenchStore } from '~/lib/stores/workbench';
+import { workbenchStore, lockedFilesAtom } from '~/lib/stores/workbench';
 import { toast } from 'react-toastify';
 import { path } from '~/utils/path';
 
@@ -36,8 +37,9 @@ interface InlineInputProps {
   onCancel: () => void;
 }
 
-export const FileTree = memo(
-  ({
+export const FileTree = memo((props: Props) => {
+  const lockedFiles = useStore(lockedFilesAtom);
+  const {
     files = {},
     onFileSelect,
     selectedFile,
@@ -49,151 +51,151 @@ export const FileTree = memo(
     className,
     unsavedFiles,
     fileHistory = {},
-  }: Props) => {
-    renderLogger.trace('FileTree');
+  } = props;
 
-    const computedHiddenFiles = useMemo(() => [...DEFAULT_HIDDEN_FILES, ...(hiddenFiles ?? [])], [hiddenFiles]);
+  renderLogger.trace('FileTree');
 
-    const fileList = useMemo(() => {
-      return buildFileList(files, rootFolder, hideRoot, computedHiddenFiles);
-    }, [files, rootFolder, hideRoot, computedHiddenFiles]);
+  const computedHiddenFiles = useMemo(() => [...DEFAULT_HIDDEN_FILES, ...(hiddenFiles ?? [])], [hiddenFiles]);
 
-    const [collapsedFolders, setCollapsedFolders] = useState(() => {
-      return collapsed
-        ? new Set(fileList.filter((item) => item.kind === 'folder').map((item) => item.fullPath))
-        : new Set<string>();
+  const fileList = useMemo(() => {
+    return buildFileList(files, rootFolder, hideRoot, computedHiddenFiles);
+  }, [files, rootFolder, hideRoot, computedHiddenFiles]);
+
+  const [collapsedFolders, setCollapsedFolders] = useState(() => {
+    return collapsed
+      ? new Set(fileList.filter((item) => item.kind === 'folder').map((item) => item.fullPath))
+      : new Set<string>();
+  });
+
+  useEffect(() => {
+    if (collapsed) {
+      setCollapsedFolders(new Set(fileList.filter((item) => item.kind === 'folder').map((item) => item.fullPath)));
+      return;
+    }
+
+    setCollapsedFolders((prevCollapsed) => {
+      const newCollapsed = new Set<string>();
+
+      for (const folder of fileList) {
+        if (folder.kind === 'folder' && prevCollapsed.has(folder.fullPath)) {
+          newCollapsed.add(folder.fullPath);
+        }
+      }
+
+      return newCollapsed;
     });
+  }, [fileList, collapsed]);
 
-    useEffect(() => {
-      if (collapsed) {
-        setCollapsedFolders(new Set(fileList.filter((item) => item.kind === 'folder').map((item) => item.fullPath)));
-        return;
+  const filteredFileList = useMemo(() => {
+    const list = [];
+
+    let lastDepth = Number.MAX_SAFE_INTEGER;
+
+    for (const fileOrFolder of fileList) {
+      const depth = fileOrFolder.depth;
+
+      // if the depth is equal we reached the end of the collaped group
+      if (lastDepth === depth) {
+        lastDepth = Number.MAX_SAFE_INTEGER;
       }
 
-      setCollapsedFolders((prevCollapsed) => {
-        const newCollapsed = new Set<string>();
+      // ignore collapsed folders
+      if (collapsedFolders.has(fileOrFolder.fullPath)) {
+        lastDepth = Math.min(lastDepth, depth);
+      }
 
-        for (const folder of fileList) {
-          if (folder.kind === 'folder' && prevCollapsed.has(folder.fullPath)) {
-            newCollapsed.add(folder.fullPath);
+      // ignore files and folders below the last collapsed folder
+      if (lastDepth < depth) {
+        continue;
+      }
+
+      list.push(fileOrFolder);
+    }
+
+    return list;
+  }, [fileList, collapsedFolders]);
+
+  const toggleCollapseState = (fullPath: string) => {
+    setCollapsedFolders((prevSet) => {
+      const newSet = new Set(prevSet);
+
+      if (newSet.has(fullPath)) {
+        newSet.delete(fullPath);
+      } else {
+        newSet.add(fullPath);
+      }
+
+      return newSet;
+    });
+  };
+
+  const onCopyPath = (fileOrFolder: FileNode | FolderNode) => {
+    try {
+      navigator.clipboard.writeText(fileOrFolder.fullPath);
+    } catch (error) {
+      logger.error(error);
+    }
+  };
+
+  const onCopyRelativePath = (fileOrFolder: FileNode | FolderNode) => {
+    try {
+      navigator.clipboard.writeText(fileOrFolder.fullPath.substring((rootFolder || '').length));
+    } catch (error) {
+      logger.error(error);
+    }
+  };
+
+  return (
+    <div className={classNames('text-sm', className, 'overflow-y-auto')}>
+      {filteredFileList.map((fileOrFolder) => {
+        switch (fileOrFolder.kind) {
+          case 'file': {
+            return (
+              <File
+                key={fileOrFolder.id}
+                selected={selectedFile === fileOrFolder.fullPath}
+                file={fileOrFolder}
+                unsavedChanges={unsavedFiles?.has(fileOrFolder.fullPath)}
+                fileHistory={fileHistory}
+                onCopyPath={() => {
+                  onCopyPath(fileOrFolder);
+                }}
+                onCopyRelativePath={() => {
+                  onCopyRelativePath(fileOrFolder);
+                }}
+                onClick={() => {
+                  onFileSelect?.(fileOrFolder.fullPath);
+                }}
+              />
+            );
+          }
+          case 'folder': {
+            return (
+              <Folder
+                key={fileOrFolder.id}
+                folder={fileOrFolder}
+                selected={allowFolderSelection && selectedFile === fileOrFolder.fullPath}
+                collapsed={collapsedFolders.has(fileOrFolder.fullPath)}
+                onCopyPath={() => {
+                  onCopyPath(fileOrFolder);
+                }}
+                onCopyRelativePath={() => {
+                  onCopyRelativePath(fileOrFolder);
+                }}
+                onClick={() => {
+                  toggleCollapseState(fileOrFolder.fullPath);
+                }}
+              />
+            );
+          }
+          default: {
+            return undefined;
           }
         }
-
-        return newCollapsed;
-      });
-    }, [fileList, collapsed]);
-
-    const filteredFileList = useMemo(() => {
-      const list = [];
-
-      let lastDepth = Number.MAX_SAFE_INTEGER;
-
-      for (const fileOrFolder of fileList) {
-        const depth = fileOrFolder.depth;
-
-        // if the depth is equal we reached the end of the collaped group
-        if (lastDepth === depth) {
-          lastDepth = Number.MAX_SAFE_INTEGER;
-        }
-
-        // ignore collapsed folders
-        if (collapsedFolders.has(fileOrFolder.fullPath)) {
-          lastDepth = Math.min(lastDepth, depth);
-        }
-
-        // ignore files and folders below the last collapsed folder
-        if (lastDepth < depth) {
-          continue;
-        }
-
-        list.push(fileOrFolder);
-      }
-
-      return list;
-    }, [fileList, collapsedFolders]);
-
-    const toggleCollapseState = (fullPath: string) => {
-      setCollapsedFolders((prevSet) => {
-        const newSet = new Set(prevSet);
-
-        if (newSet.has(fullPath)) {
-          newSet.delete(fullPath);
-        } else {
-          newSet.add(fullPath);
-        }
-
-        return newSet;
-      });
-    };
-
-    const onCopyPath = (fileOrFolder: FileNode | FolderNode) => {
-      try {
-        navigator.clipboard.writeText(fileOrFolder.fullPath);
-      } catch (error) {
-        logger.error(error);
-      }
-    };
-
-    const onCopyRelativePath = (fileOrFolder: FileNode | FolderNode) => {
-      try {
-        navigator.clipboard.writeText(fileOrFolder.fullPath.substring((rootFolder || '').length));
-      } catch (error) {
-        logger.error(error);
-      }
-    };
-
-    return (
-      <div className={classNames('text-sm', className, 'overflow-y-auto')}>
-        {filteredFileList.map((fileOrFolder) => {
-          switch (fileOrFolder.kind) {
-            case 'file': {
-              return (
-                <File
-                  key={fileOrFolder.id}
-                  selected={selectedFile === fileOrFolder.fullPath}
-                  file={fileOrFolder}
-                  unsavedChanges={unsavedFiles?.has(fileOrFolder.fullPath)}
-                  fileHistory={fileHistory}
-                  onCopyPath={() => {
-                    onCopyPath(fileOrFolder);
-                  }}
-                  onCopyRelativePath={() => {
-                    onCopyRelativePath(fileOrFolder);
-                  }}
-                  onClick={() => {
-                    onFileSelect?.(fileOrFolder.fullPath);
-                  }}
-                />
-              );
-            }
-            case 'folder': {
-              return (
-                <Folder
-                  key={fileOrFolder.id}
-                  folder={fileOrFolder}
-                  selected={allowFolderSelection && selectedFile === fileOrFolder.fullPath}
-                  collapsed={collapsedFolders.has(fileOrFolder.fullPath)}
-                  onCopyPath={() => {
-                    onCopyPath(fileOrFolder);
-                  }}
-                  onCopyRelativePath={() => {
-                    onCopyRelativePath(fileOrFolder);
-                  }}
-                  onClick={() => {
-                    toggleCollapseState(fileOrFolder.fullPath);
-                  }}
-                />
-              );
-            }
-            default: {
-              return undefined;
-            }
-          }
-        })}
-      </div>
-    );
-  },
-);
+      })}
+    </div>
+  );
+});
 
 export default FileTree;
 
@@ -289,6 +291,8 @@ function FileContextMenu({
   const [isDragging, setIsDragging] = useState(false);
   const depth = useMemo(() => fullPath.split('/').length, [fullPath]);
   const fileName = useMemo(() => path.basename(fullPath), [fullPath]);
+  const lockedFiles = useStore(workbenchStore.lockedFiles);
+  const isLocked = useMemo(() => lockedFiles.has(fullPath), [fullPath, lockedFiles]);
 
   const isFolder = useMemo(() => {
     const files = workbenchStore.files.get();
@@ -441,7 +445,20 @@ function FileContextMenu({
               <ContextMenuItem onSelect={onCopyPath}>Copy path</ContextMenuItem>
               <ContextMenuItem onSelect={onCopyRelativePath}>Copy relative path</ContextMenuItem>
             </ContextMenu.Group>
-            {/* Add delete option in a new group */}
+            {!isFolder && (
+              <ContextMenu.Group className="p-1 border-t-px border-solid border-bolt-elements-borderColor">
+                <ContextMenuItem onSelect={() => workbenchStore.toggleLockFile(fullPath)}>
+                  <div className="flex items-center gap-2">
+                    <div className={isLocked ? "i-ph:lock-key text-bolt-elements-textSecondary" : "i-ph:lock-key-open text-bolt-elements-textSecondary"} />
+                    {isLocked ? (
+                      <span className="font-medium">Unlock File</span>
+                    ) : (
+                      <span>Lock File</span>
+                    )}
+                  </div>
+                </ContextMenuItem>
+              </ContextMenu.Group>
+            )}
             <ContextMenu.Group className="p-1 border-t-px border-solid border-bolt-elements-borderColor">
               <ContextMenuItem onSelect={handleDelete}>
                 <div className="flex items-center gap-2 text-red-500">

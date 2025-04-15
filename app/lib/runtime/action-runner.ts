@@ -66,13 +66,14 @@ class ActionCommandError extends Error {
 export class ActionRunner {
   #webcontainer: Promise<WebContainer>;
   #currentExecutionPromise: Promise<void> = Promise.resolve();
-  #shellTerminal: () => BoltShell;
+  #getShellTerminal: () => BoltShell;
   runnerId = atom<string>(`${Date.now()}`);
   actions: ActionsMap = map({});
   onAlert?: (alert: ActionAlert) => void;
   onSupabaseAlert?: (alert: SupabaseAlert) => void;
   onDeployAlert?: (alert: DeployAlert) => void;
   buildOutput?: { path: string; exitCode: number; output: string };
+  #isFileLocked?: (filePath: string) => boolean;
 
   constructor(
     webcontainerPromise: Promise<WebContainer>,
@@ -80,12 +81,14 @@ export class ActionRunner {
     onAlert?: (alert: ActionAlert) => void,
     onSupabaseAlert?: (alert: SupabaseAlert) => void,
     onDeployAlert?: (alert: DeployAlert) => void,
+    isFileLocked?: (filePath: string) => boolean,
   ) {
     this.#webcontainer = webcontainerPromise;
-    this.#shellTerminal = getShellTerminal;
+    this.#getShellTerminal = getShellTerminal;
     this.onAlert = onAlert;
     this.onSupabaseAlert = onSupabaseAlert;
     this.onDeployAlert = onDeployAlert;
+    this.#isFileLocked = isFileLocked;
   }
 
   addAction(data: ActionCallbackData) {
@@ -252,7 +255,7 @@ export class ActionRunner {
       unreachable('Expected shell action');
     }
 
-    const shell = this.#shellTerminal();
+    const shell = this.#getShellTerminal();
     await shell.ready();
 
     if (!shell || !shell.terminal || !shell.process) {
@@ -275,11 +278,11 @@ export class ActionRunner {
       unreachable('Expected shell action');
     }
 
-    if (!this.#shellTerminal) {
+    if (!this.#getShellTerminal) {
       unreachable('Shell terminal not found');
     }
 
-    const shell = this.#shellTerminal();
+    const shell = this.#getShellTerminal();
     await shell.ready();
 
     if (!shell || !shell.terminal || !shell.process) {
@@ -302,6 +305,32 @@ export class ActionRunner {
   async #runFileAction(action: ActionState) {
     if (action.type !== 'file') {
       unreachable('Expected file action');
+    }
+
+    // Skip file write if it's locked - ENHANCED BLOCKING
+    if (this.#isFileLocked && this.#isFileLocked(action.filePath)) {
+      const fileName = nodePath.basename(action.filePath);
+      logger.debug(`File ${action.filePath} is locked, blocking write operation`);
+      
+      // Show a prominent warning notification that file is locked
+      this.onAlert?.({
+        type: 'error',
+        title: '🔒 File Operation Blocked',
+        description: `AI attempted to edit locked file "${fileName}"`,
+        content: `The file "${action.filePath}" is locked and protected from AI modifications. You can unlock it from the file context menu if you want to allow changes.`
+      });
+      
+      // Mark the action as failed with strong error message
+      const actionId = Object.entries(this.actions.get()).find(([_, act]) => act === action)?.[0];
+      if (actionId) {
+        this.#updateAction(actionId, { 
+          status: 'failed', 
+          error: `Error: AI attempted to edit locked file "${fileName}"`
+        });
+      }
+      
+      // Create an error that bubbles up to the terminal display
+      throw new Error(`Error: AI attempted to edit locked file "${fileName}"`);
     }
 
     const webcontainer = await this.#webcontainer;

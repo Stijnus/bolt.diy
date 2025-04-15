@@ -8,6 +8,7 @@ import { WORK_DIR } from '~/utils/constants';
 import { computeFileModifications } from '~/utils/diff';
 import { createScopedLogger } from '~/utils/logger';
 import { unreachable } from '~/utils/unreachable';
+import { lockedFilesAtom, isFileLocked } from './workbench';
 
 const logger = createScopedLogger('FilesStore');
 
@@ -40,12 +41,20 @@ export class FilesStore {
    * Needs to be reset when the user sends another message and all changes have to be submitted
    * for the model to be aware of the changes.
    */
-  #modifiedFiles: Map<string, string> = import.meta.hot?.data.modifiedFiles ?? new Map();
+  #modifiedFiles: Map<string, string> =
+    typeof import.meta.hot?.data.modifiedFiles !== 'undefined'
+      ? import.meta.hot.data.modifiedFiles
+      : new Map<string, string>();
 
   /**
    * Keeps track of deleted files and folders to prevent them from reappearing on reload
    */
-  #deletedPaths: Set<string> = import.meta.hot?.data.deletedPaths ?? new Set();
+  #deletedPaths: Set<string> =
+    typeof import.meta.hot?.data.deletedPaths !== 'undefined'
+      ? import.meta.hot.data.deletedPaths
+      : new Set<string>();
+
+  #isFileLocked?: (filePath: string) => boolean;
 
   /**
    * Map of files that matches the state of WebContainer.
@@ -56,8 +65,9 @@ export class FilesStore {
     return this.#size;
   }
 
-  constructor(webcontainerPromise: Promise<WebContainer>) {
+  constructor(webcontainerPromise: Promise<WebContainer>, isFileLocked?: (filePath: string) => boolean) {
     this.#webcontainer = webcontainerPromise;
+    this.#isFileLocked = isFileLocked;
 
     // Load deleted paths from localStorage if available
     try {
@@ -128,6 +138,12 @@ export class FilesStore {
   }
 
   async saveFile(filePath: string, content: string) {
+    // Check if the file is locked before allowing the save
+    if (this.#isFileLocked && this.#isFileLocked(filePath)) {
+      logger.error(`File "${filePath}" is locked and cannot be modified.`);
+      return;
+    }
+
     const webcontainer = await this.#webcontainer;
 
     try {
@@ -309,6 +325,13 @@ export class FilesStore {
   }
 
   async createFile(filePath: string, content: string | Uint8Array = '') {
+    // Check if the file is locked before allowing the creation/modification
+    if (this.#isFileLocked && this.#isFileLocked(filePath)) {
+      const fileName = path.basename(filePath);
+      logger.error(`Blocked file creation/modification: File ${fileName} is locked`);
+      throw new Error(`File "${fileName}" is locked and cannot be modified`);
+    }
+
     const webcontainer = await this.#webcontainer;
 
     try {

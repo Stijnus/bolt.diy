@@ -21,6 +21,8 @@ import type { ActionAlert, DeployAlert, SupabaseAlert } from '~/types/actions';
 
 const { saveAs } = fileSaver;
 
+export const lockedFilesAtom: WritableAtom<Set<string>> = atom(new Set<string>());
+
 export interface ArtifactState {
   id: string;
   title: string;
@@ -37,7 +39,10 @@ export type WorkbenchViewType = 'code' | 'diff' | 'preview';
 
 export class WorkbenchStore {
   #previewsStore = new PreviewsStore(webcontainer);
-  #filesStore = new FilesStore(webcontainer);
+  #filesStore = new FilesStore(webcontainer, 
+    // Pass the lock check function to the FilesStore
+    (filePath: string) => this.isFileLocked(filePath)
+  );
   #editorStore = new EditorStore(this.#filesStore);
   #terminalStore = new TerminalStore(webcontainer);
 
@@ -48,6 +53,7 @@ export class WorkbenchStore {
   showWorkbench: WritableAtom<boolean> = import.meta.hot?.data.showWorkbench ?? atom(false);
   currentView: WritableAtom<WorkbenchViewType> = import.meta.hot?.data.currentView ?? atom('code');
   unsavedFiles: WritableAtom<Set<string>> = import.meta.hot?.data.unsavedFiles ?? atom(new Set<string>());
+  lockedFiles: WritableAtom<Set<string>> = import.meta.hot?.data.lockedFiles ?? atom(new Set<string>());
   actionAlert: WritableAtom<ActionAlert | undefined> =
     import.meta.hot?.data.unsavedFiles ?? atom<ActionAlert | undefined>(undefined);
   supabaseAlert: WritableAtom<SupabaseAlert | undefined> =
@@ -66,6 +72,7 @@ export class WorkbenchStore {
       import.meta.hot.data.actionAlert = this.actionAlert;
       import.meta.hot.data.supabaseAlert = this.supabaseAlert;
       import.meta.hot.data.deployAlert = this.deployAlert;
+      import.meta.hot.data.lockedFiles = this.lockedFiles;
 
       // Ensure binary files are properly preserved across hot reloads
       const filesMap = this.files.get();
@@ -134,6 +141,58 @@ export class WorkbenchStore {
 
   clearDeployAlert() {
     this.deployAlert.set(undefined);
+  }
+
+  toggleLockFile(filePath: string) {
+    const currentLockedFiles = this.lockedFiles.get();
+    const newLockedFiles = new Set(currentLockedFiles);
+    const fileName = path.basename(filePath);
+    
+    if (newLockedFiles.has(filePath)) {
+      newLockedFiles.delete(filePath);
+      // Show alert when unlocking a file
+      this.actionAlert.set({
+        type: 'info',
+        title: 'File Unlocked',
+        description: `${fileName} is now unlocked`,
+        content: `The file "${filePath}" is now unlocked and can be modified by AI. Any changes to this file will be applied immediately.`,
+        source: 'terminal',
+      });
+    } else {
+      newLockedFiles.add(filePath);
+      // Show alert when locking a file
+      this.actionAlert.set({
+        type: 'info',
+        title: 'File Locked',
+        description: `${fileName} is now locked`,
+        content: `The file "${filePath}" is now locked and protected from AI modifications. The AI will be informed not to modify this file.`,
+        source: 'terminal',
+      });
+    }
+    
+    this.lockedFiles.set(newLockedFiles);
+    
+    // Make changes visible immediately
+    this.refreshEditor();
+  }
+
+  // Helper method to refresh the editor state
+  refreshEditor() {
+    const currentDoc = this.currentDocument.get();
+
+    if (currentDoc) {
+      const { filePath } = currentDoc;
+
+      // Trigger a re-render by updating the document slightly
+      this.#editorStore.updateScrollPosition(filePath, {
+        top: 0,
+        left: 0,
+      });
+    }
+  }
+
+  isFileLocked(filePath: string) {
+    return this.lockedFiles.get().has(filePath);
   }
 
   toggleTerminal(value?: boolean) {
@@ -797,3 +856,10 @@ export class WorkbenchStore {
 }
 
 export const workbenchStore = new WorkbenchStore();
+
+/**
+ * Standalone function to check if a file is locked
+ */
+export function isFileLocked(filePath: string): boolean {
+  return lockedFilesAtom.get().has(filePath);
+}
