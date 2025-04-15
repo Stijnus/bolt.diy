@@ -31,6 +31,7 @@ export type FileMap = Record<string, Dirent | undefined>;
 
 export class FilesStore {
   #webcontainer: Promise<WebContainer>;
+  #isFileLocked?: (filePath: string) => boolean;
 
   /**
    * Tracks the number of files without folders.
@@ -58,8 +59,9 @@ export class FilesStore {
     return this.#size;
   }
 
-  constructor(webcontainerPromise: Promise<WebContainer>) {
+  constructor(webcontainerPromise: Promise<WebContainer>, isFileLocked?: (filePath: string) => boolean) {
     this.#webcontainer = webcontainerPromise;
+    this.#isFileLocked = isFileLocked;
 
     // Load deleted paths from localStorage if available
     try {
@@ -164,6 +166,13 @@ export class FilesStore {
 
       if (!oldContent && oldContent !== '') {
         unreachable('Expected content to be defined');
+      }
+
+      // Check if the file is locked before allowing the save
+      if (this.#isFileLocked && this.#isFileLocked(filePath)) {
+        const fileName = path.basename(filePath);
+        logger.error(`Blocked save operation: File ${fileName} is locked`);
+        throw new Error(`File "${fileName}" is locked and cannot be modified`);
       }
 
       await webcontainer.fs.writeFile(relativePath, content);
@@ -344,6 +353,13 @@ export class FilesStore {
 
       if (!relativePath) {
         throw new Error(`EINVAL: invalid file path, create '${relativePath}'`);
+      }
+
+      // Check if the file is locked before allowing the creation/modification
+      if (this.#isFileLocked && this.#isFileLocked(filePath)) {
+        const fileName = path.basename(filePath);
+        logger.error(`Blocked file creation/modification: File ${fileName} is locked`);
+        throw new Error(`File "${fileName}" is locked and cannot be modified`);
       }
 
       const dirPath = path.dirname(relativePath);

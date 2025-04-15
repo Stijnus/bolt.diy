@@ -1,6 +1,58 @@
 import { atom, map, type MapStore, type ReadableAtom, type WritableAtom } from 'nanostores';
 
-export const lockedFilesAtom: WritableAtom<Set<string>> = atom(new Set<string>());
+// Try to load locked files from localStorage first, if available
+let initialLockedFiles = new Set<string>();
+
+try {
+  if (typeof localStorage !== 'undefined') {
+    const lockedFilesJson = localStorage.getItem('bolt-locked-files');
+
+    if (lockedFilesJson) {
+      const lockedFilesArray = JSON.parse(lockedFilesJson);
+
+      if (Array.isArray(lockedFilesArray)) {
+        initialLockedFiles = new Set(lockedFilesArray);
+      }
+    }
+  }
+} catch (error) {
+  console.error('Failed to load locked files from localStorage', error);
+}
+
+export const lockedFilesAtom: WritableAtom<Set<string>> = atom(initialLockedFiles);
+
+// Function to persist locked files to localStorage
+export function persistLockedFiles(lockedFiles: Set<string>) {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const lockedFilesArray = [...lockedFiles];
+      localStorage.setItem('bolt-locked-files', JSON.stringify(lockedFilesArray));
+      console.log('Persisted locked files:', lockedFilesArray);
+    }
+  } catch (error) {
+    console.error('Failed to persist locked files to localStorage', error);
+  }
+}
+
+// Helper function to normalize paths consistently
+function normalizePath(filePath: string): string {
+  // Remove potential workdir prefixes like /home/project/
+  let normalizedPath = filePath;
+
+  // If it starts with the webcontainer workdir, strip it
+  const workdirPrefix = '/home/project/';
+
+  if (normalizedPath.startsWith(workdirPrefix)) {
+    normalizedPath = normalizedPath.substring(workdirPrefix.length);
+  }
+
+  // Remove any leading slashes
+  while (normalizedPath.startsWith('/')) {
+    normalizedPath = normalizedPath.substring(1);
+  }
+
+  return normalizedPath;
+}
 
 import type { EditorDocument, ScrollPosition } from '~/components/editor/codemirror/CodeMirrorEditor';
 import { ActionRunner } from '~/lib/runtime/action-runner';
@@ -21,6 +73,7 @@ import { description } from '~/lib/persistence';
 import Cookies from 'js-cookie';
 import { createSampler } from '~/utils/sampler';
 import type { ActionAlert, DeployAlert, SupabaseAlert } from '~/types/actions';
+import { toast } from 'react-toastify';
 import { logger } from '~/utils/logger';
 
 const { saveAs } = fileSaver;
@@ -41,7 +94,12 @@ export type WorkbenchViewType = 'code' | 'diff' | 'preview';
 
 export class WorkbenchStore {
   #previewsStore = new PreviewsStore(webcontainer);
-  #filesStore = new FilesStore(webcontainer);
+  #filesStore = new FilesStore(
+    webcontainer,
+
+    // Pass the lock check function to the FilesStore
+    (filePath: string) => this.isFileLocked(filePath),
+  );
   #editorStore = new EditorStore(this.#filesStore);
   #terminalStore = new TerminalStore(webcontainer);
 
@@ -52,6 +110,11 @@ export class WorkbenchStore {
   showWorkbench: WritableAtom<boolean> = import.meta.hot?.data.showWorkbench ?? atom(false);
   currentView: WritableAtom<WorkbenchViewType> = import.meta.hot?.data.currentView ?? atom('code');
   unsavedFiles: WritableAtom<Set<string>> = import.meta.hot?.data.unsavedFiles ?? atom(new Set<string>());
+
+  // Initialize the class's lockedFiles from lockedFilesAtom
+  lockedFiles: WritableAtom<Set<string>> =
+    import.meta.hot?.data.lockedFiles ?? atom(new Set([...lockedFilesAtom.get()]));
+
   actionAlert: WritableAtom<ActionAlert | undefined> =
     import.meta.hot?.data.actionAlert ?? atom<ActionAlert | undefined>(undefined);
   supabaseAlert: WritableAtom<SupabaseAlert | undefined> =
@@ -66,6 +129,7 @@ export class WorkbenchStore {
     if (import.meta.hot) {
       import.meta.hot.data.artifacts = this.artifacts;
       import.meta.hot.data.unsavedFiles = this.unsavedFiles;
+      import.meta.hot.data.lockedFiles = this.lockedFiles;
       import.meta.hot.data.showWorkbench = this.showWorkbench;
       import.meta.hot.data.currentView = this.currentView;
       import.meta.hot.data.actionAlert = this.actionAlert;
@@ -82,43 +146,155 @@ export class WorkbenchStore {
         }
       }
     }
+
+    // Initialize the instance lockedFiles from lockedFilesAtom
+    this.syncLockedFilesFromGlobal();
+  }
+
+  // Helper method to sync instance lockedFiles from global lockedFilesAtom
+  syncLockedFilesFromGlobal() {
+    const globalLockedFiles = lockedFilesAtom.get();
+    this.lockedFiles.set(new Set([...globalLockedFiles]));
   }
 
   toggleLockFile(filePath: string) {
+    // Normalize the path for consistent storage
+    const normalizedPath = this.normalizePath(filePath);
     const lockedFiles = new Set(lockedFilesAtom.get());
-    const fileName = path.basename(filePath);
+    const fileName = path.basename(normalizedPath);
 
-    if (lockedFiles.has(filePath)) {
-      lockedFiles.delete(filePath);
+    console.log('Toggle lock for path:', filePath);
+    console.log('Normalized path:', normalizedPath);
+    console.log('Current locked files before toggle:', [...lockedFiles]);
+
+    if (lockedFiles.has(normalizedPath)) {
+      lockedFiles.delete(normalizedPath);
+      console.log('Unlocked file:', normalizedPath);
 
       // Show enhanced alert when unlocking a file
       this.actionAlert.set({
         type: 'info',
         title: 'File Unlocked',
         description: `${fileName} is now unlocked`,
-        content: `The file "${filePath}" is now unlocked and can be modified by AI. Any changes to this file will be applied immediately.`,
+        content: `The file "${normalizedPath}" is now unlocked and can be modified by AI. Any changes to this file will be applied immediately.`,
         source: 'terminal',
         notificationType: 'notification',
       });
 
-      logger.info(`File unlocked: ${filePath}`);
+      logger.info(`File unlocked: ${normalizedPath}`);
     } else {
-      lockedFiles.add(filePath);
+      lockedFiles.add(normalizedPath);
+      console.log('Locked file:', normalizedPath);
 
       // Show enhanced alert when locking a file
       this.actionAlert.set({
         type: 'info',
         title: 'File Locked',
         description: `${fileName} is now locked`,
-        content: `The file "${filePath}" is now locked and protected from AI modifications. The AI will be informed not to modify this file.`,
+        content: `The file "${normalizedPath}" is now locked and protected from AI modifications. The AI will be informed not to modify this file.`,
         source: 'terminal',
         notificationType: 'notification',
       });
 
-      logger.info(`File locked: ${filePath}`);
+      logger.info(`File locked: ${normalizedPath}`);
     }
 
+    // Update the global atom
     lockedFilesAtom.set(lockedFiles);
+
+    // Persist locked files to localStorage
+    persistLockedFiles(lockedFiles);
+    console.log('Locked files after toggle:', [...lockedFiles]);
+
+    // Also update the class-level lockedFiles atom - keep in sync with global
+    this.syncLockedFilesFromGlobal();
+
+    // Make changes visible immediately
+    this.refreshEditor();
+
+    // Show toast notification
+    if (lockedFiles.has(normalizedPath)) {
+      toast.success(`Locked: ${fileName}`);
+    } else {
+      toast.success(`Unlocked: ${fileName}`);
+    }
+  }
+
+  /**
+   * Toggles lock state for a folder and all files within it
+   * @param folderPath The path to the folder to lock/unlock
+   */
+  toggleLockFolder(folderPath: string) {
+    // Normalize the path for consistent storage
+    const normalizedFolderPath = this.normalizePath(folderPath);
+    const lockedFiles = new Set(lockedFilesAtom.get());
+    const folderName = path.basename(normalizedFolderPath);
+    const files = this.files.get();
+    const isLocked = lockedFiles.has(normalizedFolderPath);
+    const affectedFiles = [];
+
+    console.log('Toggle lock for folder:', folderPath);
+    console.log('Normalized folder path:', normalizedFolderPath);
+    console.log('Current locked files before toggle:', [...lockedFiles]);
+
+    // First, toggle the folder itself
+    if (isLocked) {
+      lockedFiles.delete(normalizedFolderPath);
+    } else {
+      lockedFiles.add(normalizedFolderPath);
+    }
+
+    // Then, toggle all files within the folder
+    for (const [filePath, dirent] of Object.entries(files)) {
+      const normalizedFilePath = this.normalizePath(filePath);
+
+      // Check if the file is within this folder
+      if (normalizedFilePath.startsWith(normalizedFolderPath + '/') && dirent?.type === 'file') {
+        affectedFiles.push(normalizedFilePath);
+
+        if (isLocked) {
+          lockedFiles.delete(normalizedFilePath);
+        } else {
+          lockedFiles.add(normalizedFilePath);
+        }
+      }
+    }
+
+    // Recursively handle subfolders too - find all folders that start with this path
+    for (const [filePath, dirent] of Object.entries(files)) {
+      const normalizedFilePath = this.normalizePath(filePath);
+
+      if (normalizedFilePath.startsWith(normalizedFolderPath + '/') && dirent?.type === 'folder') {
+        if (isLocked) {
+          lockedFiles.delete(normalizedFilePath);
+        } else {
+          lockedFiles.add(normalizedFilePath);
+        }
+      }
+    }
+
+    // Update locked files storage
+    lockedFilesAtom.set(lockedFiles);
+
+    // Persist locked files to localStorage
+    persistLockedFiles(lockedFiles);
+    console.log('Locked files after folder toggle:', [...lockedFiles]);
+
+    // Also update the class-level lockedFiles - keep in sync with global
+    this.syncLockedFilesFromGlobal();
+
+    // Show enhanced alert
+    this.actionAlert.set({
+      type: 'info',
+      title: isLocked ? 'Folder Unlocked' : 'Folder Locked',
+      description: `${folderName} is now ${isLocked ? 'unlocked' : 'locked'}`,
+      content: `The folder "${normalizedFolderPath}" and its ${affectedFiles.length} file(s) are now ${isLocked ? 'unlocked' : 'locked'}.`,
+      source: 'terminal',
+      notificationType: 'notification',
+    });
+
+    // Show toast notification
+    toast.success(`${isLocked ? 'Unlocked' : 'Locked'}: ${folderName} (${affectedFiles.length} files)`);
 
     // Make changes visible immediately
     this.refreshEditor();
@@ -139,8 +315,30 @@ export class WorkbenchStore {
     }
   }
 
-  isFileLocked(filePath: string) {
-    return lockedFilesAtom.get().has(filePath);
+  isFileLocked(filePath: string): boolean {
+    // Normalize path for consistent checking
+    const normalizedPath = this.normalizePath(filePath);
+    const lockedFiles = lockedFilesAtom.get();
+
+    // Log for debugging
+    if (normalizedPath.includes('README.md')) {
+      console.log('Checking lock for path:', normalizedPath);
+      console.log('Current locked files:', [...lockedFiles]);
+      console.log('Is locked?', lockedFiles.has(normalizedPath));
+
+      // Also check if the path exists with a different prefix
+      for (const lockedPath of lockedFiles) {
+        if (lockedPath.endsWith(normalizedPath) || normalizedPath.endsWith(lockedPath)) {
+          console.log('Found matching locked path with different prefix:', lockedPath);
+        }
+      }
+    }
+
+    return lockedFiles.has(normalizedPath);
+  }
+
+  normalizePath(filePath: string): string {
+    return normalizePath(filePath);
   }
 
   addToExecutionQueue(callback: () => Promise<void>) {
@@ -279,7 +477,20 @@ export class WorkbenchStore {
   }
 
   setSelectedFile(filePath: string | undefined) {
-    this.#editorStore.setSelectedFile(filePath);
+    try {
+      // Handle undefined filePath gracefully
+      if (!filePath) {
+        logger.debug('Attempted to select undefined file');
+        return;
+      }
+
+      this.#editorStore.setSelectedFile(filePath);
+    } catch (error) {
+      logger.error(`Failed to select file ${filePath}:`, error);
+      toast.error(`Unable to open file: ${filePath ? path.basename(filePath) : 'undefined'}`, {
+        autoClose: 3000,
+      });
+    }
   }
 
   async saveFile(filePath: string) {
@@ -513,6 +724,7 @@ export class WorkbenchStore {
 
           this.deployAlert.set(alert);
         },
+        (filePath) => this.isFileLocked(filePath),
       ),
     });
   }
@@ -569,12 +781,50 @@ export class WorkbenchStore {
       const wc = await webcontainer;
       const fullPath = path.join(wc.workdir, data.action.filePath);
 
-      if (this.selectedFile.value !== fullPath) {
-        this.setSelectedFile(fullPath);
+      // Triple protection for locked files
+      if (this.isFileLocked(fullPath)) {
+        // 1. Display prominent blocking message
+        const fileName = path.basename(fullPath);
+        logger.error(`BLOCKED: AI attempted to modify locked file "${fileName}"`);
+
+        // 2. Create a terminal error that will be displayed to the user
+        const errorMessage = `Error: AI attempted to edit locked file "${fileName}"`;
+
+        // 3. Mark the action as failed immediately
+        const actionId = data.actionId;
+        artifact.runner.actions.setKey(actionId, {
+          ...action,
+          status: 'failed',
+          error: errorMessage,
+        } as any);
+
+        // 4. Display toast notification
+        toast.error(`Blocked modification of locked file: ${fileName}`, {
+          autoClose: 5000,
+          position: 'top-center',
+        });
+
+        // 5. Let the action runner know as well, but don't depend on it
+        try {
+          await artifact.runner.runAction(data, isStreaming);
+        } catch {
+          // Error is expected and already handled
+        }
+
+        return;
       }
 
-      if (this.currentView.value !== 'code') {
-        this.currentView.set('code');
+      // Continue with normal file handling for non-locked files
+      try {
+        if (this.selectedFile.value !== fullPath) {
+          this.setSelectedFile(fullPath);
+        }
+
+        if (this.currentView.value !== 'code') {
+          this.currentView.set('code');
+        }
+      } catch (error) {
+        logger.error('Error selecting file:', error);
       }
 
       const doc = this.#editorStore.documents.get()[fullPath];
@@ -874,5 +1124,7 @@ export const workbenchStore = new WorkbenchStore();
  * Standalone function to check if a file is locked
  */
 export function isFileLocked(filePath: string): boolean {
-  return lockedFilesAtom.get().has(filePath);
+  // Use the same normalization as in the class
+  const normalizedPath = normalizePath(filePath);
+  return lockedFilesAtom.get().has(normalizedPath);
 }

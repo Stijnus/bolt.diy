@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react';
-import { lockedFilesAtom } from '~/lib/stores/workbench';
+import { lockedFilesAtom, workbenchStore } from '~/lib/stores/workbench';
 import { toast } from 'react-toastify';
 import { LockedFileWarning } from './LockedFileWarning';
 import { memo, useMemo } from 'react';
@@ -23,7 +23,6 @@ import { isMobile } from '~/utils/mobile';
 import { FileBreadcrumb } from './FileBreadcrumb';
 import { FileTree } from './FileTree';
 import { DEFAULT_TERMINAL_SIZE, TerminalTabs } from './terminal/TerminalTabs';
-import { workbenchStore } from '~/lib/stores/workbench';
 
 interface EditorPanelProps {
   files?: FileMap;
@@ -46,14 +45,14 @@ const editorSettings: EditorSettings = { tabSize: 2 };
 export const EditorPanel = memo(
   ({
     files,
-    unsavedFiles = new Set(),
+    unsavedFiles,
     editorDocument,
     selectedFile,
     isStreaming,
     fileHistory,
-    onFileSelect,
     onEditorChange,
     onEditorScroll,
+    onFileSelect,
     onFileSave,
     onFileReset,
   }: EditorPanelProps) => {
@@ -63,20 +62,28 @@ export const EditorPanel = memo(
     const showTerminal = useStore(workbenchStore.showTerminal);
     const lockedFiles = useStore(lockedFilesAtom);
 
-    // Helper to check if current file is locked
-    const isCurrentFileLocked = editorDocument && lockedFiles.has(editorDocument.filePath);
+    // Use normalized path for checking locked status
+    const isCurrentFileLocked = useMemo(() => {
+      if (!editorDocument) {
+        return false;
+      }
 
-    /*
-     * Remove unused handleEditorChange and update to fix lint errors.
-     * (Lint: handleEditorChange and update were unused)
-     */
+      const normalizedPath = workbenchStore.normalizePath(editorDocument.filePath);
+
+      return lockedFiles.has(normalizedPath);
+    }, [editorDocument, lockedFiles]);
+
+    const isLockMessageVisible = isCurrentFileLocked && editorDocument;
 
     const activeFileSegments = useMemo(() => {
       if (!editorDocument) {
         return undefined;
       }
 
-      return editorDocument.filePath.split('/');
+      // Don't include the initial slash or workdir
+      const segments = editorDocument.filePath.replace(WORK_DIR, '').replace(/^\/+/, '').split('/').filter(Boolean);
+
+      return segments.length > 0 ? segments : ['/'];
     }, [editorDocument]);
 
     const activeFileUnsaved = useMemo(() => {
@@ -127,22 +134,22 @@ export const EditorPanel = memo(
                 )}
               </PanelHeader>
               <div className="h-full flex-1 overflow-hidden">
-                {isCurrentFileLocked && editorDocument && <LockedFileWarning filePath={editorDocument.filePath} />}
+                {isLockMessageVisible && <LockedFileWarning filePath={editorDocument?.filePath || ''} />}
                 <CodeMirrorEditor
                   theme={theme}
-                  editable={
-                    !isStreaming &&
-                    editorDocument !== undefined &&
-                    !(editorDocument && lockedFiles.has(editorDocument.filePath))
-                  }
+                  editable={!isStreaming && editorDocument !== undefined && !isCurrentFileLocked}
                   settings={editorSettings}
                   doc={editorDocument}
                   autoFocusOnDocumentChange={!isMobile()}
                   onScroll={onEditorScroll}
                   onChange={
-                    editorDocument && lockedFiles.has(editorDocument.filePath)
+                    isCurrentFileLocked
                       ? () => {
-                          toast.error(`File "${editorDocument.filePath}" is locked and cannot be edited.`);
+                          if (editorDocument) {
+                            toast.error(`File "${editorDocument.filePath}" is locked and cannot be edited.`);
+                          } else {
+                            toast.error(`This file is locked and cannot be edited.`);
+                          }
                         }
                       : onEditorChange
                   }

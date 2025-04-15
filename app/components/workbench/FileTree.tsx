@@ -1,12 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useStore } from '@nanostores/react';
 import type { FileMap } from '~/lib/stores/files';
 import { classNames } from '~/utils/classNames';
 import { createScopedLogger } from '~/utils/logger';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import type { FileHistory } from '~/types/actions';
-import { diffLines, type Change } from 'diff';
+import { diffLines } from 'diff';
 import { workbenchStore, lockedFilesAtom } from '~/lib/stores/workbench';
-import { useStore } from '@nanostores/react';
 import { toast } from 'react-toastify';
 import { path } from '~/utils/path';
 
@@ -38,7 +38,6 @@ interface InlineInputProps {
 }
 
 export const FileTree = memo((props: Props) => {
-  const lockedFiles = useStore(lockedFilesAtom);
   const {
     files = {},
     onFileSelect,
@@ -151,7 +150,6 @@ export const FileTree = memo((props: Props) => {
                 file={fileOrFolder}
                 unsavedChanges={unsavedFiles?.has(fileOrFolder.fullPath)}
                 fileHistory={fileHistory}
-                lockedFiles={lockedFiles}
                 onCopyPath={() => {
                   onCopyPath(fileOrFolder);
                 }}
@@ -171,7 +169,6 @@ export const FileTree = memo((props: Props) => {
                 folder={fileOrFolder}
                 selected={allowFolderSelection && selectedFile === fileOrFolder.fullPath}
                 collapsed={collapsedFolders.has(fileOrFolder.fullPath)}
-                lockedFiles={lockedFiles}
                 onCopyPath={() => {
                   onCopyPath(fileOrFolder);
                 }}
@@ -199,7 +196,6 @@ interface FolderProps {
   folder: FolderNode;
   collapsed: boolean;
   selected?: boolean;
-  lockedFiles: Set<string>;
   onCopyPath: () => void;
   onCopyRelativePath: () => void;
   onClick: () => void;
@@ -288,6 +284,12 @@ function FileContextMenu({
   const [isDragging, setIsDragging] = useState(false);
   const depth = useMemo(() => fullPath.split('/').length, [fullPath]);
   const fileName = useMemo(() => path.basename(fullPath), [fullPath]);
+  const lockedFiles = useStore(lockedFilesAtom);
+  const isLocked = useMemo(() => {
+    // Normalize the path before checking
+    const normalizedPath = workbenchStore.normalizePath(fullPath);
+    return lockedFiles.has(normalizedPath);
+  }, [fullPath, lockedFiles]);
 
   const isFolder = useMemo(() => {
     const files = workbenchStore.files.get();
@@ -440,7 +442,41 @@ function FileContextMenu({
               <ContextMenuItem onSelect={onCopyPath}>Copy path</ContextMenuItem>
               <ContextMenuItem onSelect={onCopyRelativePath}>Copy relative path</ContextMenuItem>
             </ContextMenu.Group>
-            {/* Add delete option in a new group */}
+
+            {!isFolder && (
+              <ContextMenu.Group className="p-1 border-t-px border-solid border-bolt-elements-borderColor">
+                <ContextMenuItem onSelect={() => workbenchStore.toggleLockFile(fullPath)}>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={
+                        isLocked
+                          ? 'i-ph:lock-key text-bolt-elements-textSecondary'
+                          : 'i-ph:lock-key-open text-bolt-elements-textSecondary'
+                      }
+                    />
+                    {isLocked ? <span className="font-medium">Unlock File</span> : <span>Lock File</span>}
+                  </div>
+                </ContextMenuItem>
+              </ContextMenu.Group>
+            )}
+
+            {isFolder && (
+              <ContextMenu.Group className="p-1 border-t-px border-solid border-bolt-elements-borderColor">
+                <ContextMenuItem onSelect={() => workbenchStore.toggleLockFolder(fullPath)}>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={
+                        isLocked
+                          ? 'i-ph:lock-key text-bolt-elements-textSecondary'
+                          : 'i-ph:lock-key-open text-bolt-elements-textSecondary'
+                      }
+                    />
+                    {isLocked ? <span className="font-medium">Unlock Folder</span> : <span>Lock Folder</span>}
+                  </div>
+                </ContextMenuItem>
+              </ContextMenu.Group>
+            )}
+
             <ContextMenu.Group className="p-1 border-t-px border-solid border-bolt-elements-borderColor">
               <ContextMenuItem onSelect={handleDelete}>
                 <div className="flex items-center gap-2 text-red-500">
@@ -449,19 +485,6 @@ function FileContextMenu({
                 </div>
               </ContextMenuItem>
             </ContextMenu.Group>
-            {/* Lock/Unlock file option for files only */}
-            {!isFolder && (
-              <ContextMenu.Group className="p-1 border-t-px border-solid border-bolt-elements-borderColor">
-                <ContextMenuItem onSelect={() => workbenchStore.toggleLockFile(fullPath)}>
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={workbenchStore.isFileLocked(fullPath) ? 'i-ph:lock-open-duotone' : 'i-ph:lock-duotone'}
-                    />
-                    {workbenchStore.isFileLocked(fullPath) ? 'Unlock File' : 'Lock File'}
-                  </div>
-                </ContextMenuItem>
-              </ContextMenu.Group>
-            )}
           </ContextMenu.Content>
         </ContextMenu.Portal>
       </ContextMenu.Root>
@@ -485,22 +508,22 @@ function FileContextMenu({
   );
 }
 
-function Folder({
-  folder,
-  collapsed,
-  selected = false,
-  lockedFiles,
-  onCopyPath,
-  onCopyRelativePath,
-  onClick,
-}: FolderProps) {
+function Folder({ folder, collapsed, selected = false, onCopyPath, onCopyRelativePath, onClick }: FolderProps) {
+  const lockedFiles = useStore(lockedFilesAtom);
+  const isLocked = useMemo(() => {
+    // Normalize the path before checking
+    const normalizedPath = workbenchStore.normalizePath(folder.fullPath);
+    return lockedFiles.has(normalizedPath);
+  }, [folder.fullPath, lockedFiles]);
+
   return (
     <FileContextMenu onCopyPath={onCopyPath} onCopyRelativePath={onCopyRelativePath} fullPath={folder.fullPath}>
       <NodeButton
         className={classNames('group', {
           'bg-transparent text-bolt-elements-item-contentDefault hover:text-bolt-elements-item-contentActive hover:bg-bolt-elements-item-backgroundActive':
-            !selected,
+            !selected && !isLocked,
           'bg-bolt-elements-item-backgroundAccent text-bolt-elements-item-contentAccent': selected,
+          'bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30': isLocked && !selected,
         })}
         depth={folder.depth}
         iconClasses={classNames({
@@ -509,12 +532,8 @@ function Folder({
         })}
         onClick={onClick}
       >
-        <span className={lockedFiles && lockedFiles.has(folder.fullPath) ? 'text-gray-400' : undefined}>
-          {folder.name}
-        </span>
-        {lockedFiles && lockedFiles.has(folder.fullPath) && (
-          <span className="i-ph:lock-duotone text-blue-500 ml-1" title="Locked folder" />
-        )}
+        <span className={isLocked ? 'text-blue-600 font-medium' : undefined}>{folder.name}</span>
+        {isLocked && <span className="i-ph:lock-key-fill text-blue-500 ml-1 scale-90" title="Locked folder" />}
       </NodeButton>
     </FileContextMenu>
   );
@@ -525,7 +544,6 @@ interface FileProps {
   selected: boolean;
   unsavedChanges?: boolean;
   fileHistory?: Record<string, FileHistory>;
-  lockedFiles: Set<string>;
   onCopyPath: () => void;
   onCopyRelativePath: () => void;
   onClick: () => void;
@@ -539,10 +557,15 @@ function File({
   selected,
   unsavedChanges = false,
   fileHistory = {},
-  lockedFiles,
 }: FileProps) {
-  const isLocked = lockedFiles && lockedFiles.has(file.fullPath);
+  // removed duplicate isLocked declaration
   const { depth, name, fullPath } = file;
+  const lockedFiles = useStore(lockedFilesAtom);
+  const isLocked = useMemo(() => {
+    // Normalize the path before checking
+    const normalizedPath = workbenchStore.normalizePath(fullPath);
+    return lockedFiles.has(normalizedPath);
+  }, [fullPath, lockedFiles]);
 
   const fileModifications = fileHistory[fullPath];
 
@@ -561,18 +584,14 @@ function File({
 
     const changes = diffLines(normalizedOriginal, normalizedCurrent, {
       newlineIsToken: false,
-      ignoreWhitespace: true,
-      ignoreCase: false,
     });
 
     return changes.reduce(
-      (acc: { additions: number; deletions: number }, change: Change) => {
+      (acc, change) => {
         if (change.added) {
-          acc.additions += change.value.split('\n').length;
-        }
-
-        if (change.removed) {
-          acc.deletions += change.value.split('\n').length;
+          acc.additions += change.count || 0;
+        } else if (change.removed) {
+          acc.deletions += change.count || 0;
         }
 
         return acc;
