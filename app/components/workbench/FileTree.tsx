@@ -1,11 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { FileMap } from '~/lib/stores/files';
 import { classNames } from '~/utils/classNames';
-import { createScopedLogger, renderLogger } from '~/utils/logger';
+import { createScopedLogger } from '~/utils/logger';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import type { FileHistory } from '~/types/actions';
 import { diffLines, type Change } from 'diff';
-import { workbenchStore } from '~/lib/stores/workbench';
+import { workbenchStore, lockedFilesAtom } from '~/lib/stores/workbench';
+import { useStore } from '@nanostores/react';
 import { toast } from 'react-toastify';
 import { path } from '~/utils/path';
 
@@ -36,8 +37,9 @@ interface InlineInputProps {
   onCancel: () => void;
 }
 
-export const FileTree = memo(
-  ({
+export const FileTree = memo((props: Props) => {
+  const lockedFiles = useStore(lockedFilesAtom);
+  const {
     files = {},
     onFileSelect,
     selectedFile,
@@ -49,151 +51,147 @@ export const FileTree = memo(
     className,
     unsavedFiles,
     fileHistory = {},
-  }: Props) => {
-    renderLogger.trace('FileTree');
+  } = props;
 
-    const computedHiddenFiles = useMemo(() => [...DEFAULT_HIDDEN_FILES, ...(hiddenFiles ?? [])], [hiddenFiles]);
+  // --- Collapsed folders state ---
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
 
-    const fileList = useMemo(() => {
-      return buildFileList(files, rootFolder, hideRoot, computedHiddenFiles);
-    }, [files, rootFolder, hideRoot, computedHiddenFiles]);
+  // --- Build file list ---
+  const computedHiddenFiles = useMemo(() => [...DEFAULT_HIDDEN_FILES, ...(hiddenFiles ?? [])], [hiddenFiles]);
+  const fileList = useMemo(
+    () => buildFileList(files, rootFolder, hideRoot, computedHiddenFiles),
+    [files, rootFolder, hideRoot, computedHiddenFiles],
+  );
 
-    const [collapsedFolders, setCollapsedFolders] = useState(() => {
-      return collapsed
-        ? new Set(fileList.filter((item) => item.kind === 'folder').map((item) => item.fullPath))
-        : new Set<string>();
+  useEffect(() => {
+    if (collapsed) {
+      setCollapsedFolders(new Set(fileList.filter((item) => item.kind === 'folder').map((item) => item.fullPath)));
+      return;
+    }
+
+    setCollapsedFolders((prevCollapsed) => {
+      const newCollapsed = new Set<string>();
+
+      for (const folder of fileList) {
+        if (folder.kind === 'folder' && prevCollapsed.has(folder.fullPath)) {
+          newCollapsed.add(folder.fullPath);
+        }
+      }
+
+      return newCollapsed;
     });
+  }, [fileList, collapsed]);
 
-    useEffect(() => {
-      if (collapsed) {
-        setCollapsedFolders(new Set(fileList.filter((item) => item.kind === 'folder').map((item) => item.fullPath)));
-        return;
+  // --- Filtered file list ---
+  const filteredFileList = useMemo(() => {
+    const list: Node[] = [];
+    let lastDepth = Number.MAX_SAFE_INTEGER;
+
+    for (const fileOrFolder of fileList) {
+      const depth = fileOrFolder.depth;
+
+      if (lastDepth === depth) {
+        lastDepth = Number.MAX_SAFE_INTEGER;
       }
 
-      setCollapsedFolders((prevCollapsed) => {
-        const newCollapsed = new Set<string>();
+      if (collapsedFolders.has(fileOrFolder.fullPath)) {
+        lastDepth = Math.min(lastDepth, depth);
+      }
 
-        for (const folder of fileList) {
-          if (folder.kind === 'folder' && prevCollapsed.has(folder.fullPath)) {
-            newCollapsed.add(folder.fullPath);
+      if (lastDepth < depth) {
+        continue;
+      }
+
+      list.push(fileOrFolder);
+    }
+
+    return list;
+  }, [fileList, collapsedFolders]);
+
+  // --- Handlers ---
+  const toggleCollapseState = (fullPath: string) => {
+    setCollapsedFolders((prevSet: Set<string>) => {
+      const newSet = new Set(prevSet);
+
+      if (newSet.has(fullPath)) {
+        newSet.delete(fullPath);
+      } else {
+        newSet.add(fullPath);
+      }
+
+      return newSet;
+    });
+  };
+
+  const onCopyPath = (fileOrFolder: FileNode | FolderNode) => {
+    try {
+      navigator.clipboard.writeText(fileOrFolder.fullPath);
+    } catch (error) {
+      logger.error(error);
+    }
+  };
+
+  const onCopyRelativePath = (fileOrFolder: FileNode | FolderNode) => {
+    try {
+      navigator.clipboard.writeText(fileOrFolder.fullPath.substring((rootFolder || '').length));
+    } catch (error) {
+      logger.error(error);
+    }
+  };
+
+  return (
+    <div className={classNames('text-sm', className, 'overflow-y-auto')}>
+      {filteredFileList.map((fileOrFolder: Node) => {
+        switch (fileOrFolder.kind) {
+          case 'file': {
+            return (
+              <File
+                key={fileOrFolder.id}
+                selected={selectedFile === fileOrFolder.fullPath}
+                file={fileOrFolder}
+                unsavedChanges={unsavedFiles?.has(fileOrFolder.fullPath)}
+                fileHistory={fileHistory}
+                lockedFiles={lockedFiles}
+                onCopyPath={() => {
+                  onCopyPath(fileOrFolder);
+                }}
+                onCopyRelativePath={() => {
+                  onCopyRelativePath(fileOrFolder);
+                }}
+                onClick={() => {
+                  onFileSelect?.(fileOrFolder.fullPath);
+                }}
+              />
+            );
+          }
+          case 'folder': {
+            return (
+              <Folder
+                key={fileOrFolder.id}
+                folder={fileOrFolder}
+                selected={allowFolderSelection && selectedFile === fileOrFolder.fullPath}
+                collapsed={collapsedFolders.has(fileOrFolder.fullPath)}
+                lockedFiles={lockedFiles}
+                onCopyPath={() => {
+                  onCopyPath(fileOrFolder);
+                }}
+                onCopyRelativePath={() => {
+                  onCopyRelativePath(fileOrFolder);
+                }}
+                onClick={() => {
+                  toggleCollapseState(fileOrFolder.fullPath);
+                }}
+              />
+            );
+          }
+          default: {
+            return undefined;
           }
         }
-
-        return newCollapsed;
-      });
-    }, [fileList, collapsed]);
-
-    const filteredFileList = useMemo(() => {
-      const list = [];
-
-      let lastDepth = Number.MAX_SAFE_INTEGER;
-
-      for (const fileOrFolder of fileList) {
-        const depth = fileOrFolder.depth;
-
-        // if the depth is equal we reached the end of the collaped group
-        if (lastDepth === depth) {
-          lastDepth = Number.MAX_SAFE_INTEGER;
-        }
-
-        // ignore collapsed folders
-        if (collapsedFolders.has(fileOrFolder.fullPath)) {
-          lastDepth = Math.min(lastDepth, depth);
-        }
-
-        // ignore files and folders below the last collapsed folder
-        if (lastDepth < depth) {
-          continue;
-        }
-
-        list.push(fileOrFolder);
-      }
-
-      return list;
-    }, [fileList, collapsedFolders]);
-
-    const toggleCollapseState = (fullPath: string) => {
-      setCollapsedFolders((prevSet) => {
-        const newSet = new Set(prevSet);
-
-        if (newSet.has(fullPath)) {
-          newSet.delete(fullPath);
-        } else {
-          newSet.add(fullPath);
-        }
-
-        return newSet;
-      });
-    };
-
-    const onCopyPath = (fileOrFolder: FileNode | FolderNode) => {
-      try {
-        navigator.clipboard.writeText(fileOrFolder.fullPath);
-      } catch (error) {
-        logger.error(error);
-      }
-    };
-
-    const onCopyRelativePath = (fileOrFolder: FileNode | FolderNode) => {
-      try {
-        navigator.clipboard.writeText(fileOrFolder.fullPath.substring((rootFolder || '').length));
-      } catch (error) {
-        logger.error(error);
-      }
-    };
-
-    return (
-      <div className={classNames('text-sm', className, 'overflow-y-auto')}>
-        {filteredFileList.map((fileOrFolder) => {
-          switch (fileOrFolder.kind) {
-            case 'file': {
-              return (
-                <File
-                  key={fileOrFolder.id}
-                  selected={selectedFile === fileOrFolder.fullPath}
-                  file={fileOrFolder}
-                  unsavedChanges={unsavedFiles?.has(fileOrFolder.fullPath)}
-                  fileHistory={fileHistory}
-                  onCopyPath={() => {
-                    onCopyPath(fileOrFolder);
-                  }}
-                  onCopyRelativePath={() => {
-                    onCopyRelativePath(fileOrFolder);
-                  }}
-                  onClick={() => {
-                    onFileSelect?.(fileOrFolder.fullPath);
-                  }}
-                />
-              );
-            }
-            case 'folder': {
-              return (
-                <Folder
-                  key={fileOrFolder.id}
-                  folder={fileOrFolder}
-                  selected={allowFolderSelection && selectedFile === fileOrFolder.fullPath}
-                  collapsed={collapsedFolders.has(fileOrFolder.fullPath)}
-                  onCopyPath={() => {
-                    onCopyPath(fileOrFolder);
-                  }}
-                  onCopyRelativePath={() => {
-                    onCopyRelativePath(fileOrFolder);
-                  }}
-                  onClick={() => {
-                    toggleCollapseState(fileOrFolder.fullPath);
-                  }}
-                />
-              );
-            }
-            default: {
-              return undefined;
-            }
-          }
-        })}
-      </div>
-    );
-  },
-);
+      })}
+    </div>
+  );
+});
 
 export default FileTree;
 
@@ -201,6 +199,7 @@ interface FolderProps {
   folder: FolderNode;
   collapsed: boolean;
   selected?: boolean;
+  lockedFiles: Set<string>;
   onCopyPath: () => void;
   onCopyRelativePath: () => void;
   onClick: () => void;
@@ -450,6 +449,19 @@ function FileContextMenu({
                 </div>
               </ContextMenuItem>
             </ContextMenu.Group>
+            {/* Lock/Unlock file option for files only */}
+            {!isFolder && (
+              <ContextMenu.Group className="p-1 border-t-px border-solid border-bolt-elements-borderColor">
+                <ContextMenuItem onSelect={() => workbenchStore.toggleLockFile(fullPath)}>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={workbenchStore.isFileLocked(fullPath) ? 'i-ph:lock-open-duotone' : 'i-ph:lock-duotone'}
+                    />
+                    {workbenchStore.isFileLocked(fullPath) ? 'Unlock File' : 'Lock File'}
+                  </div>
+                </ContextMenuItem>
+              </ContextMenu.Group>
+            )}
           </ContextMenu.Content>
         </ContextMenu.Portal>
       </ContextMenu.Root>
@@ -473,7 +485,15 @@ function FileContextMenu({
   );
 }
 
-function Folder({ folder, collapsed, selected = false, onCopyPath, onCopyRelativePath, onClick }: FolderProps) {
+function Folder({
+  folder,
+  collapsed,
+  selected = false,
+  lockedFiles,
+  onCopyPath,
+  onCopyRelativePath,
+  onClick,
+}: FolderProps) {
   return (
     <FileContextMenu onCopyPath={onCopyPath} onCopyRelativePath={onCopyRelativePath} fullPath={folder.fullPath}>
       <NodeButton
@@ -489,7 +509,12 @@ function Folder({ folder, collapsed, selected = false, onCopyPath, onCopyRelativ
         })}
         onClick={onClick}
       >
-        {folder.name}
+        <span className={lockedFiles && lockedFiles.has(folder.fullPath) ? 'text-gray-400' : undefined}>
+          {folder.name}
+        </span>
+        {lockedFiles && lockedFiles.has(folder.fullPath) && (
+          <span className="i-ph:lock-duotone text-blue-500 ml-1" title="Locked folder" />
+        )}
       </NodeButton>
     </FileContextMenu>
   );
@@ -500,6 +525,7 @@ interface FileProps {
   selected: boolean;
   unsavedChanges?: boolean;
   fileHistory?: Record<string, FileHistory>;
+  lockedFiles: Set<string>;
   onCopyPath: () => void;
   onCopyRelativePath: () => void;
   onClick: () => void;
@@ -513,7 +539,9 @@ function File({
   selected,
   unsavedChanges = false,
   fileHistory = {},
+  lockedFiles,
 }: FileProps) {
+  const isLocked = lockedFiles && lockedFiles.has(file.fullPath);
   const { depth, name, fullPath } = file;
 
   const fileModifications = fileHistory[fullPath];
@@ -560,22 +588,31 @@ function File({
       <NodeButton
         className={classNames('group', {
           'bg-transparent hover:bg-bolt-elements-item-backgroundActive text-bolt-elements-item-contentDefault':
-            !selected,
+            !selected && !isLocked,
           'bg-bolt-elements-item-backgroundAccent text-bolt-elements-item-contentAccent': selected,
+          'bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30': isLocked && !selected,
         })}
         depth={depth}
         iconClasses={classNames('i-ph:file-duotone scale-98', {
-          'group-hover:text-bolt-elements-item-contentActive': !selected,
+          'group-hover:text-bolt-elements-item-contentActive': !selected && !isLocked,
+          'text-blue-500': isLocked,
         })}
         onClick={onClick}
       >
         <div
-          className={classNames('flex items-center', {
-            'group-hover:text-bolt-elements-item-contentActive': !selected,
+          className={classNames('flex items-center justify-between w-full', {
+            'group-hover:text-bolt-elements-item-contentActive': !selected && !isLocked,
           })}
         >
-          <div className="flex-1 truncate pr-2">{name}</div>
-          <div className="flex items-center gap-1">
+          <div
+            className={classNames('flex-1 truncate pr-2', {
+              'text-blue-600 font-medium': isLocked,
+            })}
+          >
+            {name}
+            {isLocked && <span className="text-xs text-blue-500 ml-1">(locked)</span>}
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
             {showStats && (
               <div className="flex items-center gap-1 text-xs">
                 {additions > 0 && <span className="text-green-500">+{additions}</span>}
@@ -583,6 +620,12 @@ function File({
               </div>
             )}
             {unsavedChanges && <span className="i-ph:circle-fill scale-68 shrink-0 text-orange-500" />}
+            {isLocked && (
+              <span
+                className="i-ph:lock-key-fill scale-100 shrink-0 text-blue-500"
+                title="This file is locked and protected from AI modifications"
+              />
+            )}
           </div>
         </div>
       </NodeButton>

@@ -1,4 +1,7 @@
 import { useStore } from '@nanostores/react';
+import { lockedFilesAtom } from '~/lib/stores/workbench';
+import { toast } from 'react-toastify';
+import { LockedFileWarning } from './LockedFileWarning';
 import { memo, useMemo } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import {
@@ -43,7 +46,7 @@ const editorSettings: EditorSettings = { tabSize: 2 };
 export const EditorPanel = memo(
   ({
     files,
-    unsavedFiles,
+    unsavedFiles = new Set(),
     editorDocument,
     selectedFile,
     isStreaming,
@@ -58,6 +61,15 @@ export const EditorPanel = memo(
 
     const theme = useStore(themeStore);
     const showTerminal = useStore(workbenchStore.showTerminal);
+    const lockedFiles = useStore(lockedFilesAtom);
+
+    // Helper to check if current file is locked
+    const isCurrentFileLocked = editorDocument && lockedFiles.has(editorDocument.filePath);
+
+    /*
+     * Remove unused handleEditorChange and update to fix lint errors.
+     * (Lint: handleEditorChange and update were unused)
+     */
 
     const activeFileSegments = useMemo(() => {
       if (!editorDocument) {
@@ -115,14 +127,25 @@ export const EditorPanel = memo(
                 )}
               </PanelHeader>
               <div className="h-full flex-1 overflow-hidden">
+                {isCurrentFileLocked && editorDocument && <LockedFileWarning filePath={editorDocument.filePath} />}
                 <CodeMirrorEditor
                   theme={theme}
-                  editable={!isStreaming && editorDocument !== undefined}
+                  editable={
+                    !isStreaming &&
+                    editorDocument !== undefined &&
+                    !(editorDocument && lockedFiles.has(editorDocument.filePath))
+                  }
                   settings={editorSettings}
                   doc={editorDocument}
                   autoFocusOnDocumentChange={!isMobile()}
                   onScroll={onEditorScroll}
-                  onChange={onEditorChange}
+                  onChange={
+                    editorDocument && lockedFiles.has(editorDocument.filePath)
+                      ? () => {
+                          toast.error(`File "${editorDocument.filePath}" is locked and cannot be edited.`);
+                        }
+                      : onEditorChange
+                  }
                   onSave={onFileSave}
                 />
               </div>

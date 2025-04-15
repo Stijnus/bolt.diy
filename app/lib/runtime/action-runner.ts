@@ -5,6 +5,7 @@ import type { ActionAlert, BoltAction, DeployAlert, FileHistory, SupabaseAction,
 import { createScopedLogger } from '~/utils/logger';
 import { unreachable } from '~/utils/unreachable';
 import type { ActionCallbackData } from './message-parser';
+import { workbenchStore, lockedFilesAtom } from '~/lib/stores/workbench';
 import type { BoltShell } from '~/utils/shell';
 
 const logger = createScopedLogger('ActionRunner');
@@ -304,8 +305,36 @@ export class ActionRunner {
       unreachable('Expected file action');
     }
 
+    const fileName = nodePath.basename(action.filePath);
     const webcontainer = await this.#webcontainer;
     const relativePath = nodePath.relative(webcontainer.workdir, action.filePath);
+
+    // Enhanced file lock check with better messaging
+    if (workbenchStore.isFileLocked(action.filePath)) {
+      logger.info(`Prevented modification of locked file: ${action.filePath}`);
+
+      // Show an informational alert dialog for locked files
+      this.onAlert?.({
+        type: 'info',
+        title: 'Protected File',
+        description: `${fileName} is locked`,
+        content: `This file is protected from AI modifications. You can unlock it from the file context menu if changes are needed.`,
+        source: 'terminal',
+        notificationType: 'notification',
+      });
+
+      // Mark the action as complete but with a note
+      const actionId = Object.entries(this.actions.get()).find(([_, act]) => act === action)?.[0];
+
+      if (actionId) {
+        this.#updateAction(actionId, {
+          status: 'complete', // Mark as complete rather than failed to avoid error alerts
+          executed: true,
+        });
+      }
+
+      return;
+    }
 
     let folder = nodePath.dirname(relativePath);
 
@@ -551,5 +580,37 @@ export class ActionRunner {
       deployStatus: deployStatus as any,
       source: details?.source || 'netlify',
     });
+  }
+
+  // Add a new method to check locked files before executing actions
+  checkLockedFiles(actions: ActionCallbackData[]): string[] {
+    const fileActions = actions.filter((action) => action.action.type === 'file');
+    const lockedFiles = lockedFilesAtom.get();
+
+    return fileActions.map((action) => (action.action as any).filePath).filter((path) => path && lockedFiles.has(path));
+  }
+
+  // Show notification for locked files
+  notifyAboutLockedFiles(lockedPaths: string[]): void {
+    if (lockedPaths.length === 0) {
+      return;
+    }
+
+    const fileNames = lockedPaths.map((filePath) => nodePath.basename(filePath));
+    const message =
+      fileNames.length === 1
+        ? `File "${fileNames[0]}" is locked and cannot be modified.`
+        : `Files ${fileNames.map((name) => `"${name}"`).join(', ')} are locked and cannot be modified.`;
+
+    if (this.onAlert) {
+      this.onAlert({
+        type: 'info',
+        title: 'Protected Files',
+        description: 'Some files are locked',
+        content: message,
+        source: 'terminal',
+        notificationType: 'notification',
+      });
+    }
   }
 }

@@ -2,6 +2,8 @@ import type { PathWatcherEvent, WebContainer } from '@webcontainer/api';
 import { getEncoding } from 'istextorbinary';
 import { map, type MapStore } from 'nanostores';
 import { Buffer } from 'node:buffer';
+import { toast } from 'react-toastify';
+import { lockedFilesAtom, isFileLocked } from './workbench';
 import { path } from '~/utils/path';
 import { bufferWatchEvents } from '~/utils/buffer';
 import { WORK_DIR } from '~/utils/constants';
@@ -128,6 +130,27 @@ export class FilesStore {
   }
 
   async saveFile(filePath: string, content: string) {
+    /*
+     * Prevent saving if file is locked
+     * Import lockedFilesAtom directly for up-to-date state
+     */
+
+    /*
+     * Replaced require() with ES import to fix lint error
+     * import { lockedFilesAtom, isFileLocked } from './workbench'; (moved to top of file)
+     * Use lockedFilesAtom directly
+     */
+
+    if (lockedFilesAtom.get().has(filePath)) {
+      if (typeof toast === 'function') {
+        toast.error(`File "${filePath}" is locked and cannot be modified.`);
+      } else {
+        console.error(`File "${filePath}" is locked and cannot be modified.`);
+      }
+
+      return;
+    }
+
     const webcontainer = await this.#webcontainer;
 
     try {
@@ -309,6 +332,11 @@ export class FilesStore {
   }
 
   async createFile(filePath: string, content: string | Uint8Array = '') {
+    // Prevent creating or overwriting if file is locked
+    if (isFileLocked(filePath)) {
+      throw new Error(`File "${filePath}" is locked and cannot be created or overwritten.`);
+    }
+
     const webcontainer = await this.#webcontainer;
 
     try {
@@ -375,6 +403,11 @@ export class FilesStore {
   }
 
   async deleteFile(filePath: string) {
+    // Prevent deleting if file is locked
+    if (isFileLocked(filePath)) {
+      throw new Error(`File "${filePath}" is locked and cannot be deleted.`);
+    }
+
     const webcontainer = await this.#webcontainer;
 
     try {
