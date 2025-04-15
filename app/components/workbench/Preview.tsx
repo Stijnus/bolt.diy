@@ -565,6 +565,12 @@ export const Preview = memo(() => {
     }
   };
 
+  const openInNewTab = () => {
+    if (activePreview?.baseUrl) {
+      window.open(activePreview?.baseUrl, '_blank');
+    }
+  };
+
   // Function to get the correct frame padding based on orientation
   const getFramePadding = useCallback(() => {
     if (!selectedWindowSize) {
@@ -767,8 +773,17 @@ export const Preview = memo(() => {
                       <span className="text-sm font-medium text-[#111827] dark:text-gray-300">Device Options</span>
                     </div>
                     <div className="flex flex-col gap-2">
+                      <button
+                        className={`flex w-full justify-between items-center text-start bg-transparent text-xs text-bolt-elements-textTertiary hover:text-bolt-elements-textPrimary`}
+                        onClick={() => {
+                          openInNewTab();
+                        }}
+                      >
+                        <span>Open in new tab</span>
+                        <div className="i-ph:arrow-square-out h-5 w-4" />
+                      </button>
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-[#6B7280] dark:text-gray-400">Show Device Frame</span>
+                        <span className="text-xs text-bolt-elements-textTertiary">Show Device Frame</span>
                         <button
                           className={`w-10 h-5 rounded-full transition-colors duration-200 ${
                             showDeviceFrame ? 'bg-[#6D28D9]' : 'bg-gray-300 dark:bg-gray-700'
@@ -786,7 +801,7 @@ export const Preview = memo(() => {
                         </button>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-[#6B7280] dark:text-gray-400">Landscape Mode</span>
+                        <span className="text-xs text-bolt-elements-textTertiary">Landscape Mode</span>
                         <button
                           className={`w-10 h-5 rounded-full transition-colors duration-200 ${
                             isLandscape ? 'bg-[#6D28D9]' : 'bg-gray-300 dark:bg-gray-700'

@@ -505,6 +505,238 @@ Here are some examples of correct usage of artifacts:
     </assistant_response>
   </example>
 </examples>
+
+<mobile_app_instructions>
+  The following instructions guide how you should handle mobile app development using Expo and React Native.
+  IMPORTANT: These instructions should only be used for mobile app development if the users requests it.
+
+  <core_requirements>
+    - Version: 2025
+    - Platform: Web-first with mobile compatibility
+    - Expo SDK: 52.0.30
+    - Expo Router: 4.0.20
+    - Type: Expo Managed Workflow
+    - You have been given an example package.json below you dont need to add every dependency to the package.json only the required dependencies and never add any unnecessary dependencies for the project at hand.
+
+    <design_philosophy>
+      - All designs MUST be beautiful and professional, not cookie cutter
+      - Apps MUST be fully featured and production-ready
+      - Implement unique, thoughtful user experiences
+      - Focus on clean, maintainable code structure
+      - Every component must be properly typed with TypeScript
+      - All UI must be responsive and work across all screen sizes
+    </design_philosophy>
+  </core_requirements>
+
+  <project_structure>
+    /app                    # All routes must be here
+      ├── _layout.tsx      # Root layout (required)
+      ├── +not-found.tsx   # 404 handler
+      └── (tabs)/          # Tab-based navigation group
+          ├── _layout.tsx  # Tab configuration
+          └── [tab].tsx    # Individual tab screens
+    /hooks                 # Custom hooks
+    /types                 # TypeScript type definitions
+    /assets               # Static assets (images, etc.)
+  </project_structure>
+
+  <critical_requirements>
+    <framework_setup>
+      - MUST preserve useFrameworkReady hook in app/_layout.tsx
+      - MUST maintain existing dependencies
+      - NO native code files (ios/android directories)
+      - NEVER modify the useFrameworkReady hook
+      - ALWAYS maintain the exact structure of _layout.tsx
+    </framework_setup>
+
+    <component_requirements>
+      - Every component must have proper TypeScript types
+      - All props must be explicitly typed
+      - Use proper React.FC typing for functional components
+      - Implement proper loading and error states
+      - Handle edge cases and empty states
+    </component_requirements>
+
+    <navigation_architecture>
+      <primary_navigation>
+        - Tab-based Navigation via expo-router
+        - Main sections accessible through tabs
+      </primary_navigation>
+
+      <secondary_navigation>
+        - Stack Navigation: For hierarchical flows
+        - Modal Navigation: For overlays
+        - Drawer Navigation: For additional menus
+      </secondary_navigation>
+    </navigation_architecture>
+
+    <styling_guidelines>
+      - Use StyleSheet.create exclusively
+      - NO NativeWind or alternative styling libraries
+      - Maintain consistent spacing and typography
+      - Follow 8-point grid system for spacing
+      - Use platform-specific shadows
+      - Implement proper dark mode support
+      - Handle safe area insets correctly
+      - Support dynamic text sizes
+    </styling_guidelines>
+
+    <font_management>
+      - Use @expo-google-fonts packages only
+      - NO local font files
+      - Implement proper font loading with SplashScreen
+      - Handle loading states appropriately
+      - Load fonts at root level
+      - Provide fallback fonts
+      - Handle font scaling
+    </font_management>
+
+    <icons>
+      Library: lucide-react-native
+      Default Props:
+        - size: 24
+        - color: 'currentColor'
+        - strokeWidth: 2
+        - absoluteStrokeWidth: false
+    </icons>
+
+    <image_handling>
+      - Use Unsplash for stock photos
+      - Direct URL linking only
+      - ONLY use valid, existing Unsplash URLs
+      - NO downloading or storing of images locally
+      - Proper Image component implementation
+      - Test all image URLs to ensure they load correctly
+      - Implement proper loading states
+      - Handle image errors gracefully
+      - Use appropriate image sizes
+      - Implement lazy loading where appropriate
+    </image_handling>
+
+    <error_handling>
+      - Display errors inline in UI
+      - NO Alert API usage
+      - Implement error states in components
+      - Handle network errors gracefully
+      - Provide user-friendly error messages
+      - Implement retry mechanisms where appropriate
+      - Log errors for debugging
+      - Handle edge cases appropriately
+      - Provide fallback UI for errors
+    </error_handling>
+
+    <environment_variables>
+      - Use Expo's env system
+      - NO Vite env variables
+      - Proper typing in env.d.ts
+      - Handle missing variables gracefully
+      - Validate environment variables at startup
+      - Use proper naming conventions (EXPO_PUBLIC_*)
+    </environment_variables>
+
+    <platform_compatibility>
+      - Check platform compatibility
+      - Use Platform.select() for specific code
+      - Implement web alternatives for native-only features
+      - Handle keyboard behavior differently per platform
+      - Implement proper scrolling behavior for web
+      - Handle touch events appropriately per platform
+      - Support both mouse and touch input on web
+      - Handle platform-specific styling
+      - Implement proper focus management
+    </platform_compatibility>
+
+    <api_routes>
+      Location: app/[route]+api.ts
+      Features:
+        - Secure server code
+        - Custom endpoints
+        - Request/Response handling
+        - Error management
+        - Proper validation
+        - Rate limiting
+        - CORS handling
+        - Security headers
+    </api_routes>
+
+    <animation_libraries>
+      Preferred:
+        - react-native-reanimated over Animated
+        - react-native-gesture-handler over PanResponder
+    </animation_libraries>
+
+    <performance_optimization>
+      - Implement proper list virtualization
+      - Use memo and useCallback appropriately
+      - Optimize re-renders
+      - Implement proper image caching
+      - Handle memory management
+      - Clean up resources properly
+      - Implement proper error boundaries
+      - Use proper loading states
+      - Handle offline functionality
+      - Implement proper data caching
+    </performance_optimization>
+
+    <security_best_practices>
+      - Implement proper authentication
+      - Handle sensitive data securely
+      - Validate all user input
+      - Implement proper session management
+      - Use secure storage for sensitive data
+      - Implement proper CORS policies
+      - Handle API keys securely
+      - Implement proper error handling
+      - Use proper security headers
+      - Handle permissions properly
+    </security_best_practices>
+
+    <accessibility>
+      - Implement proper ARIA labels
+      - Support screen readers
+      - Handle focus management
+      - Provide proper contrast
+      - Support keyboard navigation
+      - Handle reduced motion
+      - Implement proper semantic markup
+      - Support dynamic text sizing
+      - Handle color blindness
+      - Provide alternative text
+    </accessibility>
+  </critical_requirements>
+
+  <development_workflow>
+    1. Start with root layout
+    2. Implement navigation structure
+    3. Create reusable components
+    4. Add proper error handling
+    5. Implement platform-specific code
+    6. Add proper loading states
+    7. Test cross-platform compatibility
+    8. Implement proper security
+    9. Add proper accessibility
+    10. Optimize performance
+  </development_workflow>
+
+  <common_pitfalls>
+    - Removing useFrameworkReady hook
+    - Using native-only APIs without web alternatives
+    - Improper font loading implementation
+    - Missing platform-specific checks
+    - Not handling keyboard behavior properly
+    - Improper safe area handling
+    - Missing loading states
+    - Poor error handling
+    - Incomplete type definitions
+    - Not cleaning up resources properly
+    - Improper memory management
+    - Missing accessibility features
+    - Poor performance optimization
+    - Insecure data handling
+    - Missing validation
+    - Improper error boundaries
+  </common_pitfalls>
+</mobile_app_instructions>
 `;
 
 export const CONTINUE_PROMPT = stripIndents`
