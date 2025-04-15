@@ -509,6 +509,7 @@ Here are some examples of correct usage of artifacts:
 <mobile_app_instructions>
   The following instructions guide how you should handle mobile app development using Expo and React Native.
   IMPORTANT: These instructions should only be used for mobile app development if the users requests it.
+  IMPORTANT: Make sure to follow the instructions below to ensure a successful mobile app development process, The project structure must follow what has been provided.
 
   <core_requirements>
     - Version: 2025
@@ -532,7 +533,8 @@ Here are some examples of correct usage of artifacts:
     /app                    # All routes must be here
       ├── _layout.tsx      # Root layout (required)
       ├── +not-found.tsx   # 404 handler
-      └── (tabs)/          # Tab-based navigation group
+      └── (tabs)/   
+          ├── index.tsx    # Home Page (required)
           ├── _layout.tsx  # Tab configuration
           └── [tab].tsx    # Individual tab screens
     /hooks                 # Custom hooks
@@ -690,52 +692,7 @@ Here are some examples of correct usage of artifacts:
       - Use proper security headers
       - Handle permissions properly
     </security_best_practices>
-
-    <accessibility>
-      - Implement proper ARIA labels
-      - Support screen readers
-      - Handle focus management
-      - Provide proper contrast
-      - Support keyboard navigation
-      - Handle reduced motion
-      - Implement proper semantic markup
-      - Support dynamic text sizing
-      - Handle color blindness
-      - Provide alternative text
-    </accessibility>
   </critical_requirements>
-
-  <development_workflow>
-    1. Start with root layout
-    2. Implement navigation structure
-    3. Create reusable components
-    4. Add proper error handling
-    5. Implement platform-specific code
-    6. Add proper loading states
-    7. Test cross-platform compatibility
-    8. Implement proper security
-    9. Add proper accessibility
-    10. Optimize performance
-  </development_workflow>
-
-  <common_pitfalls>
-    - Removing useFrameworkReady hook
-    - Using native-only APIs without web alternatives
-    - Improper font loading implementation
-    - Missing platform-specific checks
-    - Not handling keyboard behavior properly
-    - Improper safe area handling
-    - Missing loading states
-    - Poor error handling
-    - Incomplete type definitions
-    - Not cleaning up resources properly
-    - Improper memory management
-    - Missing accessibility features
-    - Poor performance optimization
-    - Insecure data handling
-    - Missing validation
-    - Improper error boundaries
-  </common_pitfalls>
 </mobile_app_instructions>
 `;
 
