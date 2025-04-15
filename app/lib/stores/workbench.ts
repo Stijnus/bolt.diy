@@ -157,6 +157,7 @@ export class WorkbenchStore {
         description: `${fileName} is now unlocked`,
         content: `The file "${filePath}" is now unlocked and can be modified by AI. Any changes to this file will be applied immediately.`,
         source: 'terminal',
+        notificationType: 'notification', // Use notification-only mode
       });
     } else {
       newLockedFiles.add(filePath);
@@ -167,6 +168,7 @@ export class WorkbenchStore {
         description: `${fileName} is now locked`,
         content: `The file "${filePath}" is now locked and protected from AI modifications. The AI will be informed not to modify this file.`,
         source: 'terminal',
+        notificationType: 'notification', // Use notification-only mode
       });
     }
     

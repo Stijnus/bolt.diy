@@ -9,7 +9,7 @@ interface Props {
 }
 
 export default function ChatAlert({ alert, clearAlert, postMessage }: Props) {
-  const { description, content, source } = alert;
+  const { description, content, source, notificationType = 'interactive' } = alert;
 
   const isPreview = source === 'preview';
   const title = isPreview ? 'Preview Error' : 'Terminal Error';
@@ -68,36 +68,53 @@ export default function ChatAlert({ alert, clearAlert, postMessage }: Props) {
               transition={{ delay: 0.3 }}
             >
               <div className={classNames(' flex gap-2')}>
-                <button
-                  onClick={() =>
-                    postMessage(
-                      `*Fix this ${isPreview ? 'preview' : 'terminal'} error* \n\`\`\`${isPreview ? 'js' : 'sh'}\n${content}\n\`\`\`\n`,
-                    )
-                  }
-                  className={classNames(
-                    `px-2 py-1.5 rounded-md text-sm font-medium`,
-                    'bg-bolt-elements-button-primary-background',
-                    'hover:bg-bolt-elements-button-primary-backgroundHover',
-                    'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolt-elements-button-danger-background',
-                    'text-bolt-elements-button-primary-text',
-                    'flex items-center gap-1.5',
-                  )}
-                >
-                  <div className="i-ph:chat-circle-duotone"></div>
-                  Ask Bolt
-                </button>
-                <button
-                  onClick={clearAlert}
-                  className={classNames(
-                    `px-2 py-1.5 rounded-md text-sm font-medium`,
-                    'bg-bolt-elements-button-secondary-background',
-                    'hover:bg-bolt-elements-button-secondary-backgroundHover',
-                    'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolt-elements-button-secondary-background',
-                    'text-bolt-elements-button-secondary-text',
-                  )}
-                >
-                  Dismiss
-                </button>
+                {notificationType === 'interactive' ? (
+                  <>
+                    <button
+                      onClick={() =>
+                        postMessage(
+                          `*Fix this ${isPreview ? 'preview' : 'terminal'} error* \n\`\`\`${isPreview ? 'js' : 'sh'}\n${content}\n\`\`\`\n`,
+                        )
+                      }
+                      className={classNames(
+                        `px-2 py-1.5 rounded-md text-sm font-medium`,
+                        'bg-bolt-elements-button-primary-background',
+                        'hover:bg-bolt-elements-button-primary-backgroundHover',
+                        'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolt-elements-button-danger-background',
+                        'text-bolt-elements-button-primary-text',
+                        'flex items-center gap-1.5',
+                      )}
+                    >
+                      <div className="i-ph:chat-circle-duotone"></div>
+                      Ask Bolt
+                    </button>
+                    <button
+                      onClick={clearAlert}
+                      className={classNames(
+                        `px-2 py-1.5 rounded-md text-sm font-medium`,
+                        'bg-bolt-elements-button-secondary-background',
+                        'hover:bg-bolt-elements-button-secondary-backgroundHover',
+                        'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolt-elements-button-secondary-background',
+                        'text-bolt-elements-button-secondary-text',
+                      )}
+                    >
+                      Dismiss
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={clearAlert}
+                    className={classNames(
+                      `px-2 py-1.5 rounded-md text-sm font-medium`,
+                      'bg-bolt-elements-button-secondary-background',
+                      'hover:bg-bolt-elements-button-secondary-backgroundHover',
+                      'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-bolt-elements-button-secondary-background',
+                      'text-bolt-elements-button-secondary-text',
+                    )}
+                  >
+                    Dismiss
+                  </button>
+                )}
               </div>
             </motion.div>
           </div>

@@ -317,7 +317,9 @@ export class ActionRunner {
         type: 'error',
         title: '🔒 File Operation Blocked',
         description: `AI attempted to edit locked file "${fileName}"`,
-        content: `The file "${action.filePath}" is locked and protected from AI modifications. You can unlock it from the file context menu if you want to allow changes.`
+        content: `The file "${action.filePath}" is locked and protected from AI modifications. You can unlock it from the file context menu if you want to allow changes.`,
+        source: 'terminal',
+        notificationType: 'notification', // Use notification-only mode
       });
       
       // Mark the action as failed with strong error message

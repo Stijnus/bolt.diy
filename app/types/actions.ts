@@ -40,6 +40,7 @@ export interface ActionAlert {
   description: string;
   content: string;
   source?: 'terminal' | 'preview'; // Add source to differentiate between terminal and preview errors
+  notificationType?: 'notification' | 'interactive'; // New property for notification type
 }
 
 export interface SupabaseAlert {
