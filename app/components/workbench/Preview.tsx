@@ -4,6 +4,8 @@ import { IconButton } from '~/components/ui/IconButton';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { PortDropdown } from './PortDropdown';
 import { ScreenshotSelector } from './ScreenshotSelector';
+import { qrDetector } from '~/utils/qr-detector';
+import { ExpoQrPopup } from '~/components/qr/ExpoQrPopup';
 
 type ResizeSide = 'left' | 'right' | null;
 
@@ -86,6 +88,10 @@ export const Preview = memo(() => {
   const [isLandscape, setIsLandscape] = useState(false);
   const [showDeviceFrame, setShowDeviceFrame] = useState(true);
   const [showDeviceFrameInPreview, setShowDeviceFrameInPreview] = useState(false);
+
+  // QR code related state
+  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  const [showQRPopup, setShowQRPopup] = useState(false);
 
   useEffect(() => {
     if (!activePreview) {
@@ -635,6 +641,23 @@ export const Preview = memo(() => {
     };
   }, [showDeviceFrameInPreview]);
 
+  // Add effect to listen for QR code URLs
+  useEffect(() => {
+    // Listen for QR code URLs
+    const unsubscribe = qrDetector.addListener((url) => {
+      setQrCodeUrl(url);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  // Function to handle QR code button click
+  const handleShowQRCode = () => {
+    if (qrCodeUrl) {
+      setShowQRPopup(true);
+    }
+  };
+
   return (
     <div
       ref={containerRef}
@@ -644,15 +667,18 @@ export const Preview = memo(() => {
         <div className="z-iframe-overlay w-full h-full absolute" onClick={() => setIsPortDropdownOpen(false)} />
       )}
       <div className="bg-bolt-elements-background-depth-2 p-2 flex items-center gap-2">
+        {/* Reload and selection tools group */}
         <div className="flex items-center gap-2">
-          <IconButton icon="i-ph:arrow-clockwise" onClick={reloadPreview} />
+          <IconButton icon="i-ph:arrow-clockwise" onClick={reloadPreview} title="Reload Preview" />
           <IconButton
             icon="i-ph:selection"
             onClick={() => setIsSelectionMode(!isSelectionMode)}
             className={isSelectionMode ? 'bg-bolt-elements-background-depth-3' : ''}
+            title="Selection Mode"
           />
         </div>
 
+        {/* URL input field */}
         <div className="flex-grow flex items-center gap-1 bg-bolt-elements-preview-addressBar-background border border-bolt-elements-borderColor text-bolt-elements-preview-addressBar-text rounded-full px-3 py-1 text-sm hover:bg-bolt-elements-preview-addressBar-backgroundHover hover:focus-within:bg-bolt-elements-preview-addressBar-backgroundActive focus-within:bg-bolt-elements-preview-addressBar-backgroundActive focus-within-border-bolt-elements-borderColorActive focus-within:text-bolt-elements-preview-addressBar-textActive">
           <input
             title="URL"
@@ -675,82 +701,71 @@ export const Preview = memo(() => {
           />
         </div>
 
-        <div className="flex items-center gap-2">
-          {previews.length > 1 && (
-            <PortDropdown
-              activePreviewIndex={activePreviewIndex}
-              setActivePreviewIndex={setActivePreviewIndex}
-              isDropdownOpen={isPortDropdownOpen}
-              setHasSelectedPreview={(value) => (hasSelectedPreview.current = value)}
-              setIsDropdownOpen={setIsPortDropdownOpen}
-              previews={previews}
+        {/* Toolbar buttons on the right */}
+        <div className="flex items-center">
+          {/* Group 1: Preview source selection */}
+          <div className="flex items-center gap-2 border-r border-bolt-elements-borderColor pr-2 mr-2">
+            {previews.length > 1 && (
+              <PortDropdown
+                activePreviewIndex={activePreviewIndex}
+                setActivePreviewIndex={setActivePreviewIndex}
+                isDropdownOpen={isPortDropdownOpen}
+                setHasSelectedPreview={(value) => (hasSelectedPreview.current = value)}
+                setIsDropdownOpen={setIsPortDropdownOpen}
+                previews={previews}
+              />
+            )}
+          </div>
+
+          {/* Group 2: Display modes */}
+          <div className="flex items-center gap-2 border-r border-bolt-elements-borderColor pr-2 mr-2">
+            <IconButton
+              icon="i-ph:devices"
+              onClick={toggleDeviceMode}
+              title={isDeviceModeOn ? 'Switch to Responsive Mode' : 'Switch to Device Mode'}
             />
-          )}
 
-          <IconButton
-            icon="i-ph:devices"
-            onClick={toggleDeviceMode}
-            title={isDeviceModeOn ? 'Switch to Responsive Mode' : 'Switch to Device Mode'}
-          />
+            {isDeviceModeOn && (
+              <>
+                <IconButton
+                  icon="i-ph:rotate-right"
+                  onClick={() => setIsLandscape(!isLandscape)}
+                  title={isLandscape ? 'Switch to Portrait' : 'Switch to Landscape'}
+                />
+                <IconButton
+                  icon={showDeviceFrameInPreview ? 'i-ph:device-mobile' : 'i-ph:device-mobile-slash'}
+                  onClick={() => setShowDeviceFrameInPreview(!showDeviceFrameInPreview)}
+                  title={showDeviceFrameInPreview ? 'Hide Device Frame' : 'Show Device Frame'}
+                />
+              </>
+            )}
+          </div>
 
-          {isDeviceModeOn && (
-            <>
+          {/* Group 3: QR Code and view options */}
+          <div className="flex items-center gap-2 border-r border-bolt-elements-borderColor pr-2 mr-2">
+            {qrCodeUrl && (
               <IconButton
-                icon="i-ph:rotate-right"
-                onClick={() => setIsLandscape(!isLandscape)}
-                title={isLandscape ? 'Switch to Portrait' : 'Switch to Landscape'}
+                icon="i-ph:qr-code"
+                onClick={handleShowQRCode}
+                title="Show QR Code"
+                className="text-bolt-elements-loader-progress"
               />
-              <IconButton
-                icon={showDeviceFrameInPreview ? 'i-ph:device-mobile' : 'i-ph:device-mobile-slash'}
-                onClick={() => setShowDeviceFrameInPreview(!showDeviceFrameInPreview)}
-                title={showDeviceFrameInPreview ? 'Hide Device Frame' : 'Show Device Frame'}
-              />
-            </>
-          )}
+            )}
 
-          <IconButton
-            icon="i-ph:layout-light"
-            onClick={() => setIsPreviewOnly(!isPreviewOnly)}
-            title={isPreviewOnly ? 'Show Full Interface' : 'Show Preview Only'}
-          />
+            <IconButton
+              icon="i-ph:layout-light"
+              onClick={() => setIsPreviewOnly(!isPreviewOnly)}
+              title={isPreviewOnly ? 'Show Full Interface' : 'Show Preview Only'}
+            />
 
-          <IconButton
-            icon={isFullscreen ? 'i-ph:arrows-in' : 'i-ph:arrows-out'}
-            onClick={toggleFullscreen}
-            title={isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
-          />
+            <IconButton
+              icon={isFullscreen ? 'i-ph:arrows-in' : 'i-ph:arrows-out'}
+              onClick={toggleFullscreen}
+              title={isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
+            />
+          </div>
 
-          {/* Simple preview button */}
-          <IconButton
-            icon="i-ph:browser"
-            onClick={() => {
-              if (!activePreview?.baseUrl) {
-                console.warn('[Preview] No active preview available');
-                return;
-              }
-
-              const match = activePreview.baseUrl.match(
-                /^https?:\/\/([^.]+)\.local-credentialless\.webcontainer-api\.io/,
-              );
-
-              if (!match) {
-                console.warn('[Preview] Invalid WebContainer URL:', activePreview.baseUrl);
-                return;
-              }
-
-              const previewId = match[1];
-              const previewUrl = `/webcontainer/preview/${previewId}`;
-
-              // Open in a new window with simple parameters
-              window.open(
-                previewUrl,
-                `preview-${previewId}`,
-                'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no,resizable=yes',
-              );
-            }}
-            title="Open Preview in New Window"
-          />
-
+          {/* Group 4: Open in external window options */}
           <div className="flex items-center relative">
             <IconButton
               icon="i-ph:arrow-square-out"
@@ -1017,6 +1032,9 @@ export const Preview = memo(() => {
           )}
         </div>
       </div>
+
+      {/* Add QR code popup */}
+      {qrCodeUrl && <ExpoQrPopup qrCodeUrl={qrCodeUrl} isOpen={showQRPopup} onClose={() => setShowQRPopup(false)} />}
     </div>
   );
 });

@@ -1,11 +1,19 @@
 import { atom, map, type MapStore, type ReadableAtom, type WritableAtom } from 'nanostores';
+import { chatId } from '~/lib/persistence/useChatHistory';
+
+// Construct a project-specific key for locked files
+function getLockedFilesKey(): string {
+  const currentChatId = chatId.get();
+  return currentChatId ? `bolt-locked-files-${currentChatId}` : 'bolt-locked-files';
+}
 
 // Try to load locked files from localStorage first, if available
 let initialLockedFiles = new Set<string>();
 
 try {
   if (typeof localStorage !== 'undefined') {
-    const lockedFilesJson = localStorage.getItem('bolt-locked-files');
+    const lockedFilesKey = getLockedFilesKey();
+    const lockedFilesJson = localStorage.getItem(lockedFilesKey);
 
     if (lockedFilesJson) {
       const lockedFilesArray = JSON.parse(lockedFilesJson);
@@ -21,13 +29,14 @@ try {
 
 export const lockedFilesAtom: WritableAtom<Set<string>> = atom(initialLockedFiles);
 
-// Function to persist locked files to localStorage
+// Function to persist locked files to localStorage with project-specific key
 export function persistLockedFiles(lockedFiles: Set<string>) {
   try {
     if (typeof localStorage !== 'undefined') {
+      const lockedFilesKey = getLockedFilesKey();
       const lockedFilesArray = [...lockedFiles];
-      localStorage.setItem('bolt-locked-files', JSON.stringify(lockedFilesArray));
-      console.log('Persisted locked files:', lockedFilesArray);
+      localStorage.setItem(lockedFilesKey, JSON.stringify(lockedFilesArray));
+      console.log('Persisted locked files for project:', lockedFilesKey, lockedFilesArray);
     }
   } catch (error) {
     console.error('Failed to persist locked files to localStorage', error);
@@ -146,6 +155,9 @@ export class WorkbenchStore {
         }
       }
     }
+
+    // Initialize locked files from project-specific storage
+    syncLockedFilesOnChatChange();
 
     // Initialize the instance lockedFiles from lockedFilesAtom
     this.syncLockedFilesFromGlobal();
@@ -1121,10 +1133,88 @@ export class WorkbenchStore {
 export const workbenchStore = new WorkbenchStore();
 
 /**
+ * Synchronizes locked files when changing between projects/chats
+ * This should be called whenever the chat ID changes
+ */
+export function syncLockedFilesOnChatChange(): void {
+  try {
+    // Clear current locked files
+    const newLockedFiles = new Set<string>();
+
+    // Load locked files from localStorage based on current chat ID
+    if (typeof localStorage !== 'undefined') {
+      const lockedFilesKey = getLockedFilesKey();
+      const lockedFilesJson = localStorage.getItem(lockedFilesKey);
+
+      if (lockedFilesJson) {
+        const lockedFilesArray = JSON.parse(lockedFilesJson);
+
+        if (Array.isArray(lockedFilesArray)) {
+          lockedFilesArray.forEach((file) => newLockedFiles.add(file));
+        }
+      }
+    }
+
+    // Update the global atom with the new set of locked files
+    lockedFilesAtom.set(newLockedFiles);
+
+    // Update WorkbenchStore instance locked files
+    workbenchStore.syncLockedFilesFromGlobal();
+
+    console.log('Synchronized locked files for current chat:', [...newLockedFiles]);
+  } catch (error) {
+    console.error('Failed to synchronize locked files for current chat', error);
+  }
+}
+
+/**
  * Standalone function to check if a file is locked
  */
 export function isFileLocked(filePath: string): boolean {
   // Use the same normalization as in the class
   const normalizedPath = normalizePath(filePath);
   return lockedFilesAtom.get().has(normalizedPath);
+}
+
+// Function to migrate existing global locked files to project-specific structure
+export function migrateGlobalLockedFiles(): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const currentChatId = chatId.get();
+
+      // Skip migration if we don't have a chat ID yet
+      if (!currentChatId) {
+        return;
+      }
+
+      // Check if we have global locked files
+      const globalLockedFilesJson = localStorage.getItem('bolt-locked-files');
+
+      if (globalLockedFilesJson) {
+        try {
+          const globalLockedFilesArray = JSON.parse(globalLockedFilesJson);
+
+          if (Array.isArray(globalLockedFilesArray) && globalLockedFilesArray.length > 0) {
+            // Get project-specific key
+            const projectKey = `bolt-locked-files-${currentChatId}`;
+
+            // Don't migrate if project already has locked files
+            if (!localStorage.getItem(projectKey)) {
+              // Save global locked files to project-specific key
+              localStorage.setItem(projectKey, globalLockedFilesJson);
+              console.log('Migrated global locked files to project-specific storage:', projectKey);
+
+              // Clear global locked files
+              localStorage.removeItem('bolt-locked-files');
+              console.log('Removed global locked files after migration');
+            }
+          }
+        } catch (parseError) {
+          console.error('Failed to parse global locked files during migration', parseError);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Failed to migrate global locked files', error);
+  }
 }

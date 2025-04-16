@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { atom } from 'nanostores';
 import { generateId, type JSONValue, type Message } from 'ai';
 import { toast } from 'react-toastify';
-import { workbenchStore } from '~/lib/stores/workbench';
+import { workbenchStore, syncLockedFilesOnChatChange, migrateGlobalLockedFiles } from '~/lib/stores/workbench';
 import { logStore } from '~/lib/stores/logs'; // Import logStore
 import {
   getMessages,
@@ -37,6 +37,18 @@ export const db = persistenceEnabled ? await openDatabase() : undefined;
 export const chatId = atom<string | undefined>(undefined);
 export const description = atom<string | undefined>(undefined);
 export const chatMetadata = atom<IChatMetadata | undefined>(undefined);
+
+// Add listener for chatId changes to synchronize locked files
+chatId.listen((id) => {
+  if (id) {
+    // Migrate any global locked files to the project-specific storage
+    migrateGlobalLockedFiles();
+
+    // When chat ID changes, synchronize locked files
+    syncLockedFilesOnChatChange();
+  }
+});
+
 export function useChatHistory() {
   const navigate = useNavigate();
   const { id: mixedId } = useLoaderData<{ id?: string }>();

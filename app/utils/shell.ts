@@ -2,6 +2,7 @@ import type { WebContainer, WebContainerProcess } from '@webcontainer/api';
 import type { ITerminal } from '~/types/terminal';
 import { withResolvers } from './promises';
 import { atom } from 'nanostores';
+import { processTerminalOutputForQRCode } from './qr-code-detector';
 
 export async function newShellProcess(webcontainer: WebContainer, terminal: ITerminal) {
   const args: string[] = [];
@@ -130,6 +131,14 @@ export class BoltShell {
     if (resp) {
       try {
         resp.output = cleanTerminalOutput(resp.output);
+
+        // Check for Expo QR codes in the terminal output
+        if (
+          resp.output &&
+          (command.includes('expo start') || command.includes('npm start') || command.includes('yarn start'))
+        ) {
+          processTerminalOutputForQRCode(resp.output);
+        }
       } catch (error) {
         console.log('failed to format terminal output', error);
       }
@@ -172,6 +181,11 @@ export class BoltShell {
           }
 
           terminal.write(data);
+
+          // Check for Expo QR codes in terminal output
+          if (data) {
+            processTerminalOutputForQRCode(data);
+          }
         },
       }),
     );
