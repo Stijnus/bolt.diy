@@ -354,31 +354,27 @@ export class WorkbenchStore {
       lockedFiles.add(normalizedFolderPath);
     }
 
-    // Then, toggle all files within the folder
+    // Then, collect all files within the folder
+    // We'll store all affected files in case we need to reference them later
     for (const [filePath, dirent] of Object.entries(files)) {
       const normalizedFilePath = this.normalizePath(filePath);
 
       // Check if the file is within this folder
-      if (normalizedFilePath.startsWith(normalizedFolderPath + '/') && dirent?.type === 'file') {
-        affectedFiles.push(normalizedFilePath);
-
-        if (isLocked) {
-          lockedFiles.delete(normalizedFilePath);
-        } else {
-          lockedFiles.add(normalizedFilePath);
+      if (normalizedFilePath.startsWith(normalizedFolderPath + '/')) {
+        // Add to affected files list for reporting
+        if (dirent?.type === 'file') {
+          affectedFiles.push(normalizedFilePath);
         }
-      }
-    }
 
-    // Recursively handle subfolders too - find all folders that start with this path
-    for (const [filePath, dirent] of Object.entries(files)) {
-      const normalizedFilePath = this.normalizePath(filePath);
+        // Important: We should NOT individually lock/unlock files inside the folder
+        // This creates issues when reloading as we're using folder-based locking
+        // File locking state is determined by parent folder lock status
 
-      if (normalizedFilePath.startsWith(normalizedFolderPath + '/') && dirent?.type === 'folder') {
-        if (isLocked) {
-          lockedFiles.delete(normalizedFilePath);
-        } else {
+        // Instead, we only add subfolders to lockedFiles if we're locking
+        if (dirent?.type === 'folder' && !isLocked) {
           lockedFiles.add(normalizedFilePath);
+        } else if (dirent?.type === 'folder' && isLocked) {
+          lockedFiles.delete(normalizedFilePath);
         }
       }
     }

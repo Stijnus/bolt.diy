@@ -164,6 +164,29 @@ export const FileTree = memo((props: Props) => {
   // Force refresh when locked files change
   useEffect(() => {
     console.debug('Locked files updated in FileTree:', [...lockedFilesStore]);
+
+    // Ensure that all files inside locked folders are properly displayed as locked
+    if (lockedFilesStore.size > 0 && typeof workbenchStore !== 'undefined') {
+      // Get all files currently in the file system
+      const fileMap = workbenchStore.files.get();
+      const allFiles = Object.keys(fileMap);
+
+      // Get folders that are locked
+      const lockedFolderPaths = [...lockedFilesStore].filter(
+        (path) => !fileMap[path] || fileMap[path]?.type === 'folder',
+      );
+
+      if (lockedFolderPaths.length > 0) {
+        console.debug('Refreshing locked folder contents. Locked folders:', lockedFolderPaths);
+
+        // Trigger a refresh of the file tree to ensure proper display of locked state
+        setTimeout(() => {
+          if (typeof workbenchStore !== 'undefined') {
+            workbenchStore.refreshEditor();
+          }
+        }, 100);
+      }
+    }
   }, [lockedFilesStore]);
 
   // Instead of relying on Toast messages, manually suppress them on initial load
@@ -965,6 +988,7 @@ function buildFileList(
     const segments = lockedPath.split('/').filter(Boolean);
     let currentPath = '';
 
+    // For each segment in the path, ensure the folder structure exists
     for (let i = 0; i < segments.length; i++) {
       const name = segments[i];
       currentPath += `/${name}`;
@@ -986,6 +1010,43 @@ function buildFileList(
         fullPath: currentPath,
         depth: i + defaultDepth,
       });
+    }
+  }
+
+  // Third pass: ensure all files in locked folders are marked appropriately
+  // This is important for properly styling locked files inside locked folders
+  if (lockedFiles.size > 0) {
+    // Create a list of locked folder paths
+    const lockedFolderPaths = [...lockedFiles].filter(
+      (path) =>
+        // A path is considered a folder if it doesn't have a corresponding file entry
+        // or if it explicitly has a folder entry
+        !files[path] || files[path]?.type === 'folder',
+    );
+
+    console.debug('Locked folder paths:', lockedFolderPaths);
+
+    // Check each file to see if it's inside a locked folder
+    for (const node of fileList) {
+      if (node.kind === 'file') {
+        // Skip if already directly locked
+        if (lockedFiles.has(normalizePath(node.fullPath))) {
+          continue;
+        }
+
+        // Check if this file is inside any locked folder
+        const normalizedFilePath = normalizePath(node.fullPath);
+        for (const lockedFolder of lockedFolderPaths) {
+          if (normalizedFilePath.startsWith(lockedFolder + '/')) {
+            // Add this file to the locked files set if it's inside a locked folder
+            console.debug(
+              `Adding file ${normalizedFilePath} to locked files because it's in locked folder ${lockedFolder}`,
+            );
+            lockedFiles.add(normalizedFilePath);
+            break;
+          }
+        }
+      }
     }
   }
 
@@ -1147,8 +1208,8 @@ function compareNodes(a: Node, b: Node): number {
  * This checks both direct locks and parent folder locks
  */
 function isPathLocked(fullPath: string, lockedFiles: Set<string>): boolean {
-  // First normalize the path using workbenchStore's method
-  const normalizedPath = workbenchStore.normalizePath(fullPath);
+  // First normalize the path using our local normalizePath function
+  const normalizedPath = normalizePath(fullPath);
 
   // Direct lock check
   if (lockedFiles.has(normalizedPath)) {
@@ -1157,13 +1218,27 @@ function isPathLocked(fullPath: string, lockedFiles: Set<string>): boolean {
 
   // Check if any parent folder is locked
   const pathParts = normalizedPath.split('/');
+  let parentPath = '';
 
-  while (pathParts.length > 1) {
-    pathParts.pop(); // Remove the last part
+  // Build parent paths and check each one
+  for (let i = 0; i < pathParts.length - 1; i++) {
+    if (i === 0) {
+      parentPath = pathParts[i];
+    } else {
+      parentPath += '/' + pathParts[i];
+    }
 
-    const parentPath = pathParts.join('/');
-
+    // Check if this parent path is locked
     if (lockedFiles.has(parentPath)) {
+      return true;
+    }
+  }
+
+  // Additional check for paths with leading slash removed
+  if (normalizedPath.includes('/')) {
+    // Another way to extract parent path
+    const parentFolderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
+    if (lockedFiles.has(parentFolderPath)) {
       return true;
     }
   }
