@@ -52,6 +52,106 @@ export const FileTree = memo((props: Props) => {
     fileHistory = {},
   } = props;
 
+  // Use try-catch to handle potential workbenchStore initialization issues
+  let lockedFiles = new Set<string>();
+
+  try {
+    if (typeof workbenchStore !== 'undefined' && workbenchStore) {
+      lockedFiles = lockedFilesAtom.get();
+      console.debug('FileTree accessing locked files:', [...lockedFiles]);
+    } else {
+      console.warn('workbenchStore not yet initialized in FileTree component');
+    }
+  } catch (error) {
+    console.error('Error accessing locked files in FileTree:', error);
+  }
+
+  // Safe version of useStore that won't crash if atoms aren't ready
+  const safeUseStore = (atom: any, defaultValue: any) => {
+    try {
+      return useStore(atom);
+    } catch (error) {
+      console.warn('Error using store:', error);
+      return defaultValue;
+    }
+  };
+
+  /*
+   * We're not directly using these variables but they're kept for future reference
+   */
+  /*
+   * const filesStore = safeUseStore(workbenchStore?.files, {});
+   * const selectedFileStore = safeUseStore(workbenchStore?.selectedFile, undefined);
+   */
+  const lockedFilesStore = safeUseStore(lockedFilesAtom, new Set<string>());
+
+  /*
+   * Additional unused variables commented out
+   */
+  /*
+   * const unsavedFilesStore = safeUseStore(workbenchStore?.unsavedFiles, new Set<string>());
+   * const fileModifications = workbenchStore.getFileModifcations();
+   */
+
+  // Add debugging during mount to track locked files
+  useEffect(() => {
+    console.debug(
+      'FileTree mounted with locked files:',
+      lockedFilesStore instanceof Set ? [...lockedFilesStore] : 'not a Set',
+    );
+
+    // Debug function to check localStorage directly
+    if (typeof localStorage !== 'undefined') {
+      try {
+        // Find all lock-related keys in localStorage
+        const lockKeys = [];
+
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+
+          if (key && key.includes('bolt-locked-files')) {
+            lockKeys.push(key);
+          }
+        }
+
+        // Log all lock-related data
+        console.debug('Lock keys in localStorage:', lockKeys);
+        lockKeys.forEach((key) => {
+          const value = localStorage.getItem(key);
+
+          if (value) {
+            try {
+              const parsed = JSON.parse(value);
+              console.debug(`Locked files from ${key}:`, parsed);
+            } catch (e) {
+              console.error(`Error parsing ${key}:`, e);
+            }
+          }
+        });
+      } catch (error) {
+        console.error('Error checking localStorage:', error);
+      }
+    }
+  }, []);
+
+  // Force refresh when locked files change
+  useEffect(() => {
+    console.debug('Locked files updated in FileTree:', [...lockedFilesStore]);
+  }, [lockedFilesStore]);
+
+  // Instead of relying on Toast messages, manually suppress them on initial load
+  useEffect(() => {
+    // Disable toast notifications for initial load
+    toast.dismiss();
+
+    // Clear any pending toast messages
+    const toastQueue = (toast as any).queue;
+
+    if (toastQueue && Array.isArray(toastQueue)) {
+      toastQueue.length = 0;
+    }
+  }, []);
+
   // --- Collapsed folders state ---
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
 
@@ -284,11 +384,20 @@ function FileContextMenu({
   const [isDragging, setIsDragging] = useState(false);
   const depth = useMemo(() => fullPath.split('/').length, [fullPath]);
   const fileName = useMemo(() => path.basename(fullPath), [fullPath]);
-  const lockedFiles = useStore(lockedFilesAtom);
+
+  // Use safeUseStore to avoid initialization errors
+  const safeUseStore = (atom: any, defaultValue: any) => {
+    try {
+      return useStore(atom);
+    } catch (e) {
+      console.warn('Error using store in FileContextMenu:', e);
+      return defaultValue;
+    }
+  };
+
+  const lockedFiles = safeUseStore(lockedFilesAtom, new Set<string>());
   const isLocked = useMemo(() => {
-    // Normalize the path before checking
-    const normalizedPath = workbenchStore.normalizePath(fullPath);
-    return lockedFiles.has(normalizedPath);
+    return isPathLocked(fullPath, lockedFiles);
   }, [fullPath, lockedFiles]);
 
   const isFolder = useMemo(() => {
@@ -509,12 +618,27 @@ function FileContextMenu({
 }
 
 function Folder({ folder, collapsed, selected = false, onCopyPath, onCopyRelativePath, onClick }: FolderProps) {
-  const lockedFiles = useStore(lockedFilesAtom);
+  // Use safeUseStore to avoid initialization errors
+  const safeUseStore = (atom: any, defaultValue: any) => {
+    try {
+      return useStore(atom);
+    } catch (e) {
+      console.warn('Error using store in Folder component:', e);
+      return defaultValue;
+    }
+  };
+
+  const lockedFiles = safeUseStore(lockedFilesAtom, new Set<string>());
   const isLocked = useMemo(() => {
-    // Normalize the path before checking
-    const normalizedPath = workbenchStore.normalizePath(folder.fullPath);
-    return lockedFiles.has(normalizedPath);
+    return isPathLocked(folder.fullPath, lockedFiles);
   }, [folder.fullPath, lockedFiles]);
+
+  useEffect(() => {
+    // Log locked folders to help with debugging
+    if (isLocked) {
+      console.debug(`Folder is locked: ${folder.fullPath}`);
+    }
+  }, [isLocked, folder.fullPath]);
 
   return (
     <FileContextMenu onCopyPath={onCopyPath} onCopyRelativePath={onCopyRelativePath} fullPath={folder.fullPath}>
@@ -532,7 +656,10 @@ function Folder({ folder, collapsed, selected = false, onCopyPath, onCopyRelativ
         })}
         onClick={onClick}
       >
-        <span className={isLocked ? 'text-blue-600 font-medium' : undefined}>{folder.name}</span>
+        <span className={isLocked ? 'text-blue-600 font-medium' : undefined}>
+          {folder.name}
+          {isLocked && <span className="text-xs text-blue-500 ml-1">(locked)</span>}
+        </span>
         {isLocked && <span className="i-ph:lock-key-fill text-blue-500 ml-1 scale-90" title="Locked folder" />}
       </NodeButton>
     </FileContextMenu>
@@ -560,11 +687,20 @@ function File({
 }: FileProps) {
   // removed duplicate isLocked declaration
   const { depth, name, fullPath } = file;
-  const lockedFiles = useStore(lockedFilesAtom);
+
+  // Use safeUseStore to avoid initialization errors
+  const safeUseStore = (atom: any, defaultValue: any) => {
+    try {
+      return useStore(atom);
+    } catch (e) {
+      console.warn('Error using store in File component:', e);
+      return defaultValue;
+    }
+  };
+
+  const lockedFiles = safeUseStore(lockedFilesAtom, new Set<string>());
   const isLocked = useMemo(() => {
-    // Normalize the path before checking
-    const normalizedPath = workbenchStore.normalizePath(fullPath);
-    return lockedFiles.has(normalizedPath);
+    return isPathLocked(fullPath, lockedFiles);
   }, [fullPath, lockedFiles]);
 
   const fileModifications = fileHistory[fullPath];
@@ -702,6 +838,20 @@ function buildFileList(
   const folderPaths = new Set<string>();
   const fileList: Node[] = [];
 
+  // Safely get locked files
+  let lockedFiles = new Set<string>();
+
+  try {
+    if (typeof lockedFilesAtom !== 'undefined') {
+      lockedFiles = lockedFilesAtom.get();
+      console.debug(`Building file list with ${lockedFiles.size} locked files:`, [...lockedFiles]);
+    } else {
+      console.warn('lockedFilesAtom not available in buildFileList');
+    }
+  } catch (error) {
+    console.error('Error accessing lockedFilesAtom in buildFileList:', error);
+  }
+
   let defaultDepth = 0;
 
   if (rootFolder === '/' && !hideRoot) {
@@ -709,6 +859,7 @@ function buildFileList(
     fileList.push({ kind: 'folder', name: '/', depth: 0, id: 0, fullPath: '/' });
   }
 
+  // First pass: add all files from the files object
   for (const [filePath, dirent] of Object.entries(files)) {
     const segments = filePath.split('/').filter((segment) => segment);
     const fileName = segments.at(-1);
@@ -756,6 +907,41 @@ function buildFileList(
     }
   }
 
+  // Second pass: ensure locked files/folders are in the list even if they're not in the files object
+  for (const lockedPath of lockedFiles) {
+    // Skip if the path is already represented in the file list
+    if (fileList.some((item) => workbenchStore.normalizePath(item.fullPath) === lockedPath)) {
+      continue;
+    }
+
+    // Add any missing locked files/folders
+    const segments = lockedPath.split('/').filter(Boolean);
+    let currentPath = '';
+
+    for (let i = 0; i < segments.length; i++) {
+      const name = segments[i];
+      currentPath += `/${name}`;
+
+      // Skip if already in the list
+      if (folderPaths.has(currentPath)) {
+        continue;
+      }
+
+      folderPaths.add(currentPath);
+
+      const isLastSegment = i === segments.length - 1;
+      const isFile = isLastSegment && files[currentPath]?.type === 'file';
+
+      fileList.push({
+        kind: isFile ? 'file' : 'folder',
+        id: fileList.length,
+        name,
+        fullPath: currentPath,
+        depth: i + defaultDepth,
+      });
+    }
+  }
+
   return sortFileList(rootFolder, fileList, hideRoot);
 }
 
@@ -784,6 +970,9 @@ function isHiddenFile(filePath: string, fileName: string, hiddenFiles: Array<str
  */
 function sortFileList(rootFolder: string, nodeList: Node[], hideRoot: boolean): Node[] {
   logger.trace('sortFileList');
+
+  // Log the number of nodes before sorting
+  console.debug(`Sorting file list with ${nodeList.length} nodes`);
 
   const nodeMap = new Map<string, Node>();
   const childrenMap = new Map<string, Node[]>();
@@ -838,6 +1027,9 @@ function sortFileList(rootFolder: string, nodeList: Node[], hideRoot: boolean): 
     depthFirstTraversal(rootFolder);
   }
 
+  // Log the number of nodes after sorting
+  console.debug(`Sorted file list has ${sortedList.length} nodes`);
+
   return sortedList;
 }
 
@@ -847,4 +1039,33 @@ function compareNodes(a: Node, b: Node): number {
   }
 
   return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+/*
+ * Helper function to check if a path should be displayed as locked
+ * This checks both direct locks and parent folder locks
+ */
+function isPathLocked(fullPath: string, lockedFiles: Set<string>): boolean {
+  // First normalize the path using workbenchStore's method
+  const normalizedPath = workbenchStore.normalizePath(fullPath);
+
+  // Direct lock check
+  if (lockedFiles.has(normalizedPath)) {
+    return true;
+  }
+
+  // Check if any parent folder is locked
+  const pathParts = normalizedPath.split('/');
+
+  while (pathParts.length > 1) {
+    pathParts.pop(); // Remove the last part
+
+    const parentPath = pathParts.join('/');
+
+    if (lockedFiles.has(parentPath)) {
+      return true;
+    }
+  }
+
+  return false;
 }

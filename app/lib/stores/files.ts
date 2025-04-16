@@ -3,7 +3,9 @@ import { getEncoding } from 'istextorbinary';
 import { map, type MapStore } from 'nanostores';
 import { Buffer } from 'node:buffer';
 import { toast } from 'react-toastify';
-import { lockedFilesAtom, isFileLocked } from './workbench';
+
+// import { lockedFilesAtom, isFileLocked } from './workbench';
+import { isFileLocked } from './workbench';
 import { path } from '~/utils/path';
 import { bufferWatchEvents } from '~/utils/buffer';
 import { WORK_DIR } from '~/utils/constants';
@@ -31,37 +33,14 @@ export type FileMap = Record<string, Dirent | undefined>;
 
 export class FilesStore {
   #webcontainer: Promise<WebContainer>;
-  #isFileLocked?: (filePath: string) => boolean;
-
-  /**
-   * Tracks the number of files without folders.
-   */
+  files: MapStore<FileMap> = import.meta.hot?.data.files ?? map<FileMap>({});
+  #modifiedFiles: Map<string, string> = import.meta.hot?.data.modifiedFiles ?? new Map();
+  #pendingRefresh: Set<string> = new Set();
+  #deletedPaths: Set<string> = import.meta.hot?.data.deletedPaths ?? new Set();
   #size = 0;
 
-  /**
-   * @note Keeps track all modified files with their original content since the last user message.
-   * Needs to be reset when the user sends another message and all changes have to be submitted
-   * for the model to be aware of the changes.
-   */
-  #modifiedFiles: Map<string, string> = import.meta.hot?.data.modifiedFiles ?? new Map();
-
-  /**
-   * Keeps track of deleted files and folders to prevent them from reappearing on reload
-   */
-  #deletedPaths: Set<string> = import.meta.hot?.data.deletedPaths ?? new Set();
-
-  /**
-   * Map of files that matches the state of WebContainer.
-   */
-  files: MapStore<FileMap> = import.meta.hot?.data.files ?? map({});
-
-  get filesCount() {
-    return this.#size;
-  }
-
-  constructor(webcontainerPromise: Promise<WebContainer>, isFileLocked?: (filePath: string) => boolean) {
+  constructor(webcontainerPromise: Promise<WebContainer>) {
     this.#webcontainer = webcontainerPromise;
-    this.#isFileLocked = isFileLocked;
 
     // Load deleted paths from localStorage if available
     try {
@@ -88,6 +67,10 @@ export class FilesStore {
     }
 
     this.#init();
+  }
+
+  get filesCount() {
+    return this.#size;
   }
 
   getFile(filePath: string) {
@@ -133,19 +116,15 @@ export class FilesStore {
 
   async saveFile(filePath: string, content: string) {
     /*
-     * Prevent saving if file is locked
-     * Import lockedFilesAtom directly for up-to-date state
+     * Use the imported isFileLocked function for consistent lock checking
+     * Removing duplicate lock checking logic
      */
+    if (isFileLocked(filePath)) {
+      const fileName = path.basename(filePath);
+      logger.error(`Blocked save operation: File ${fileName} is locked`);
 
-    /*
-     * Replaced require() with ES import to fix lint error
-     * import { lockedFilesAtom, isFileLocked } from './workbench'; (moved to top of file)
-     * Use lockedFilesAtom directly
-     */
-
-    if (lockedFilesAtom.get().has(filePath)) {
       if (typeof toast === 'function') {
-        toast.error(`File "${filePath}" is locked and cannot be modified.`);
+        toast.error(`File "${fileName}" is locked and cannot be modified.`);
       } else {
         console.error(`File "${filePath}" is locked and cannot be modified.`);
       }
@@ -168,12 +147,7 @@ export class FilesStore {
         unreachable('Expected content to be defined');
       }
 
-      // Check if the file is locked before allowing the save
-      if (this.#isFileLocked && this.#isFileLocked(filePath)) {
-        const fileName = path.basename(filePath);
-        logger.error(`Blocked save operation: File ${fileName} is locked`);
-        throw new Error(`File "${fileName}" is locked and cannot be modified`);
-      }
+      // No need for duplicate isFileLocked check here
 
       await webcontainer.fs.writeFile(relativePath, content);
 
@@ -341,9 +315,11 @@ export class FilesStore {
   }
 
   async createFile(filePath: string, content: string | Uint8Array = '') {
-    // Prevent creating or overwriting if file is locked
+    // Use the improved isFileLocked function for consistent lock checking
     if (isFileLocked(filePath)) {
-      throw new Error(`File "${filePath}" is locked and cannot be created or overwritten.`);
+      const fileName = path.basename(filePath);
+      logger.error(`Blocked file creation/modification: File ${fileName} is locked`);
+      throw new Error(`File "${fileName}" is locked and cannot be created or overwritten.`);
     }
 
     const webcontainer = await this.#webcontainer;
@@ -355,12 +331,7 @@ export class FilesStore {
         throw new Error(`EINVAL: invalid file path, create '${relativePath}'`);
       }
 
-      // Check if the file is locked before allowing the creation/modification
-      if (this.#isFileLocked && this.#isFileLocked(filePath)) {
-        const fileName = path.basename(filePath);
-        logger.error(`Blocked file creation/modification: File ${fileName} is locked`);
-        throw new Error(`File "${fileName}" is locked and cannot be modified`);
-      }
+      // No need for duplicate lock check here
 
       const dirPath = path.dirname(relativePath);
 
@@ -419,9 +390,11 @@ export class FilesStore {
   }
 
   async deleteFile(filePath: string) {
-    // Prevent deleting if file is locked
+    // Use the improved isFileLocked function for consistent lock checking
     if (isFileLocked(filePath)) {
-      throw new Error(`File "${filePath}" is locked and cannot be deleted.`);
+      const fileName = path.basename(filePath);
+      logger.error(`Blocked file deletion: File ${fileName} is locked`);
+      throw new Error(`File "${fileName}" is locked and cannot be deleted.`);
     }
 
     const webcontainer = await this.#webcontainer;

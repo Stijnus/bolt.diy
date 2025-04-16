@@ -3,7 +3,8 @@ import { chatId } from '~/lib/persistence/useChatHistory';
 
 // Construct a project-specific key for locked files
 function getLockedFilesKey(): string {
-  const currentChatId = chatId.get();
+  // Use the safe getCurrentChatId function
+  const currentChatId = getCurrentChatId();
   return currentChatId ? `bolt-locked-files-${currentChatId}` : 'bolt-locked-files';
 }
 
@@ -30,13 +31,20 @@ try {
 export const lockedFilesAtom: WritableAtom<Set<string>> = atom(initialLockedFiles);
 
 // Function to persist locked files to localStorage with project-specific key
-export function persistLockedFiles(lockedFiles: Set<string>) {
+export function persistLockedFiles(lockedFiles: Set<string>, suppressToast: boolean = false) {
   try {
     if (typeof localStorage !== 'undefined') {
       const lockedFilesKey = getLockedFilesKey();
       const lockedFilesArray = [...lockedFiles];
       localStorage.setItem(lockedFilesKey, JSON.stringify(lockedFilesArray));
       console.log('Persisted locked files for project:', lockedFilesKey, lockedFilesArray);
+      
+      // Make sure WorkbenchStore instance is in sync
+      if (typeof workbenchStore !== 'undefined') {
+        workbenchStore.syncLockedFilesFromGlobal(suppressToast);
+      } else {
+        console.warn('workbenchStore not yet initialized, skipping instance sync in persistLockedFiles');
+      }
     }
   } catch (error) {
     console.error('Failed to persist locked files to localStorage', error);
@@ -45,21 +53,38 @@ export function persistLockedFiles(lockedFiles: Set<string>) {
 
 // Helper function to normalize paths consistently
 function normalizePath(filePath: string): string {
+  if (!filePath) return '';
+  
   // Remove potential workdir prefixes like /home/project/
   let normalizedPath = filePath;
-
-  // If it starts with the webcontainer workdir, strip it
-  const workdirPrefix = '/home/project/';
-
-  if (normalizedPath.startsWith(workdirPrefix)) {
-    normalizedPath = normalizedPath.substring(workdirPrefix.length);
+  
+  // Common workdir prefixes to strip
+  const workdirPrefixes = ['/home/project/', 'home/project/'];
+  
+  // Strip any known prefixes
+  for (const prefix of workdirPrefixes) {
+    if (normalizedPath.startsWith(prefix)) {
+      normalizedPath = normalizedPath.substring(prefix.length);
+      break;
+    }
   }
-
+  
   // Remove any leading slashes
   while (normalizedPath.startsWith('/')) {
     normalizedPath = normalizedPath.substring(1);
   }
-
+  
+  // Remove any trailing slashes (except for root dir)
+  while (normalizedPath.length > 1 && normalizedPath.endsWith('/')) {
+    normalizedPath = normalizedPath.substring(0, normalizedPath.length - 1);
+  }
+  
+  // Normalize consecutive slashes
+  normalizedPath = normalizedPath.replace(/\/+/g, '/');
+  
+  // Log for debugging
+  console.debug(`Path normalized: "${filePath}" → "${normalizedPath}"`);
+  
   return normalizedPath;
 }
 
@@ -103,12 +128,7 @@ export type WorkbenchViewType = 'code' | 'diff' | 'preview';
 
 export class WorkbenchStore {
   #previewsStore = new PreviewsStore(webcontainer);
-  #filesStore = new FilesStore(
-    webcontainer,
-
-    // Pass the lock check function to the FilesStore
-    (filePath: string) => this.isFileLocked(filePath),
-  );
+  #filesStore = new FilesStore(webcontainer);
   #editorStore = new EditorStore(this.#filesStore);
   #terminalStore = new TerminalStore(webcontainer);
 
@@ -156,17 +176,71 @@ export class WorkbenchStore {
       }
     }
 
-    // Initialize locked files from project-specific storage
-    syncLockedFilesOnChatChange();
+    // Use setTimeout to ensure all modules are fully initialized before calling
+    // functions that might depend on them
+    setTimeout(() => {
+      try {
+        // Initialize locked files from project-specific storage
+        // Pass true to suppress toast notifications during initial load
+        syncLockedFilesOnChatChange(true);
 
-    // Initialize the instance lockedFiles from lockedFilesAtom
-    this.syncLockedFilesFromGlobal();
+        // Initialize the instance lockedFiles from lockedFilesAtom
+        this.syncLockedFilesFromGlobal(true);
+      } catch (error) {
+        console.warn('Error during WorkbenchStore initialization:', error);
+      }
+    }, 0);
   }
 
   // Helper method to sync instance lockedFiles from global lockedFilesAtom
-  syncLockedFilesFromGlobal() {
+  syncLockedFilesFromGlobal(suppressToast: boolean = false) {
     const globalLockedFiles = lockedFilesAtom.get();
     this.lockedFiles.set(new Set([...globalLockedFiles]));
+
+    // Force a refresh of the files to ensure locked files appear in the file tree
+    const currentFiles = this.files.get();
+    if (Object.keys(currentFiles).length > 0) {
+      console.debug('Refreshing file list to ensure locked files are visible');
+      this.refreshEditor();
+      
+      // If there are locked files but no visible files in the tree,
+      // add a small delay and try again in case files are still loading
+      if (globalLockedFiles.size > 0) {
+        setTimeout(() => {
+          this.refreshEditor();
+          console.debug('Secondary refresh of file tree');
+        }, 500);
+      }
+    }
+
+    if (!suppressToast) {
+      // Show toast notification for locked files
+      const count = globalLockedFiles.size;
+      if (count > 0) {
+        // Get file and folder counts
+        const normalizedPaths = [...globalLockedFiles];
+        const fileCount = normalizedPaths.filter(path => {
+          const files = this.files.get();
+          return files[path]?.type === 'file';
+        }).length;
+        
+        const folderCount = count - fileCount;
+        
+        // Create a more informative message
+        let message = '';
+        if (fileCount > 0 && folderCount > 0) {
+          message = `${fileCount} files and ${folderCount} folders are locked`;
+        } else if (fileCount > 0) {
+          message = `${fileCount} files are locked`;
+        } else if (folderCount > 0) {
+          message = `${folderCount} folders are locked`;
+        }
+        
+        if (message) {
+          toast.info(message, { autoClose: 3000 });
+        }
+      }
+    }
   }
 
   toggleLockFile(filePath: string) {
@@ -215,7 +289,7 @@ export class WorkbenchStore {
     lockedFilesAtom.set(lockedFiles);
 
     // Persist locked files to localStorage
-    persistLockedFiles(lockedFiles);
+    persistLockedFiles(lockedFiles, false);
     console.log('Locked files after toggle:', [...lockedFiles]);
 
     // Also update the class-level lockedFiles atom - keep in sync with global
@@ -289,7 +363,7 @@ export class WorkbenchStore {
     lockedFilesAtom.set(lockedFiles);
 
     // Persist locked files to localStorage
-    persistLockedFiles(lockedFiles);
+    persistLockedFiles(lockedFiles, false);
     console.log('Locked files after folder toggle:', [...lockedFiles]);
 
     // Also update the class-level lockedFiles - keep in sync with global
@@ -328,25 +402,34 @@ export class WorkbenchStore {
   }
 
   isFileLocked(filePath: string): boolean {
-    // Normalize path for consistent checking
+    // Handle empty paths
+    if (!filePath) return false;
+    
+    // Use the same normalization as in the class
     const normalizedPath = this.normalizePath(filePath);
     const lockedFiles = lockedFilesAtom.get();
-
-    // Log for debugging
-    if (normalizedPath.includes('README.md')) {
-      console.log('Checking lock for path:', normalizedPath);
-      console.log('Current locked files:', [...lockedFiles]);
-      console.log('Is locked?', lockedFiles.has(normalizedPath));
-
-      // Also check if the path exists with a different prefix
-      for (const lockedPath of lockedFiles) {
-        if (lockedPath.endsWith(normalizedPath) || normalizedPath.endsWith(lockedPath)) {
-          console.log('Found matching locked path with different prefix:', lockedPath);
-        }
+    
+    // Direct match check
+    if (lockedFiles.has(normalizedPath)) {
+      return true;
+    }
+    
+    // Check if any parent folder is locked (folder locking applies to all files inside)
+    let pathParts = normalizedPath.split('/');
+    while (pathParts.length > 1) {
+      pathParts.pop(); // Remove the last part
+      const parentPath = pathParts.join('/');
+      
+      if (lockedFiles.has(parentPath)) {
+        console.debug(`File "${normalizedPath}" is locked because parent folder "${parentPath}" is locked`);
+        return true;
       }
     }
-
-    return lockedFiles.has(normalizedPath);
+    
+    // For debugging specific file issues, uncomment this
+    // console.debug(`Lock check: "${filePath}" (normalized: "${normalizedPath}") - Result: not locked`);
+    
+    return false;
   }
 
   normalizePath(filePath: string): string {
@@ -1130,36 +1213,108 @@ export class WorkbenchStore {
   }
 }
 
-export const workbenchStore = new WorkbenchStore();
+// Create a function to safely access lockedFilesAtom
+export function getLockedFiles(): Set<string> {
+  try {
+    if (typeof lockedFilesAtom !== 'undefined') {
+      return lockedFilesAtom.get();
+    }
+  } catch (error) {
+    console.warn('Error accessing lockedFilesAtom:', error);
+  }
+  return new Set<string>();
+}
+
+// Create a function to safely access chatId
+export function getCurrentChatId(): string | undefined {
+  try {
+    if (typeof chatId !== 'undefined') {
+      return chatId.get();
+    }
+  } catch (error) {
+    console.warn('Error accessing chatId:', error);
+  }
+  return undefined;
+}
+
+// Define workbenchStore but delay initialization
+export let workbenchStore: WorkbenchStore;
+
+// Wrap initialization in a function to ensure proper ordering
+function initializeWorkbenchStore() {
+  // Wait for DOM to be ready to ensure all modules are loaded
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        createWorkbenchStore();
+      });
+    } else {
+      // DOM already loaded, create immediately
+      createWorkbenchStore();
+    }
+  } else {
+    // Not in browser context, create with small delay
+    setTimeout(createWorkbenchStore, 10);
+  }
+}
+
+function createWorkbenchStore() {
+  try {
+    if (!workbenchStore) {
+      workbenchStore = new WorkbenchStore();
+      console.log('WorkbenchStore initialized successfully');
+    }
+  } catch (error) {
+    console.error('Error initializing WorkbenchStore:', error);
+  }
+}
+
+// Start initialization
+initializeWorkbenchStore();
 
 /**
  * Synchronizes locked files when changing between projects/chats
  * This should be called whenever the chat ID changes
+ * @param suppressToast Set to true during initial page load to avoid toast messages
  */
-export function syncLockedFilesOnChatChange(): void {
+export function syncLockedFilesOnChatChange(suppressToast: boolean = false): void {
   try {
+    // Skip synchronization if lockedFilesAtom is not yet available
+    if (typeof lockedFilesAtom === 'undefined') {
+      console.warn('lockedFilesAtom not yet initialized, skipping sync');
+      return;
+    }
+    
     // Clear current locked files
     const newLockedFiles = new Set<string>();
 
     // Load locked files from localStorage based on current chat ID
     if (typeof localStorage !== 'undefined') {
-      const lockedFilesKey = getLockedFilesKey();
-      const lockedFilesJson = localStorage.getItem(lockedFilesKey);
+      try {
+        const lockedFilesKey = getLockedFilesKey();
+        const lockedFilesJson = localStorage.getItem(lockedFilesKey);
 
-      if (lockedFilesJson) {
-        const lockedFilesArray = JSON.parse(lockedFilesJson);
+        if (lockedFilesJson) {
+          const lockedFilesArray = JSON.parse(lockedFilesJson);
 
-        if (Array.isArray(lockedFilesArray)) {
-          lockedFilesArray.forEach((file) => newLockedFiles.add(file));
+          if (Array.isArray(lockedFilesArray)) {
+            lockedFilesArray.forEach((file) => newLockedFiles.add(file));
+          }
         }
+      } catch (error) {
+        console.warn('Error accessing localStorage during sync', error);
       }
     }
 
     // Update the global atom with the new set of locked files
     lockedFilesAtom.set(newLockedFiles);
 
-    // Update WorkbenchStore instance locked files
-    workbenchStore.syncLockedFilesFromGlobal();
+    // Update WorkbenchStore instance locked files if it exists
+    if (typeof workbenchStore !== 'undefined') {
+      workbenchStore.syncLockedFilesFromGlobal(suppressToast);
+    } else {
+      console.warn('workbenchStore not yet initialized, skipping instance sync');
+    }
 
     console.log('Synchronized locked files for current chat:', [...newLockedFiles]);
   } catch (error) {
@@ -1169,11 +1324,37 @@ export function syncLockedFilesOnChatChange(): void {
 
 /**
  * Standalone function to check if a file is locked
+ * Enhanced with better path handling and debugging
  */
 export function isFileLocked(filePath: string): boolean {
+  // Handle empty paths
+  if (!filePath) return false;
+  
   // Use the same normalization as in the class
   const normalizedPath = normalizePath(filePath);
-  return lockedFilesAtom.get().has(normalizedPath);
+  const lockedFiles = lockedFilesAtom.get();
+  
+  // Direct match check
+  if (lockedFiles.has(normalizedPath)) {
+    return true;
+  }
+  
+  // Check if any parent folder is locked (folder locking applies to all files inside)
+  let pathParts = normalizedPath.split('/');
+  while (pathParts.length > 1) {
+    pathParts.pop(); // Remove the last part
+    const parentPath = pathParts.join('/');
+    
+    if (lockedFiles.has(parentPath)) {
+      console.debug(`File "${normalizedPath}" is locked because parent folder "${parentPath}" is locked`);
+      return true;
+    }
+  }
+  
+  // For debugging specific file issues, uncomment this
+  // console.debug(`Lock check: "${filePath}" (normalized: "${normalizedPath}") - Result: not locked`);
+  
+  return false;
 }
 
 // Function to migrate existing global locked files to project-specific structure
