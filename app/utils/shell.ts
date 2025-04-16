@@ -3,6 +3,7 @@ import type { ITerminal } from '~/types/terminal';
 import { withResolvers } from './promises';
 import { atom } from 'nanostores';
 import { processTerminalOutputForQRCode } from './qr-code-detector';
+import { qrDetector } from './qr-detector';
 
 export async function newShellProcess(webcontainer: WebContainer, terminal: ITerminal) {
   const args: string[] = [];
@@ -138,6 +139,7 @@ export class BoltShell {
           (command.includes('expo start') || command.includes('npm start') || command.includes('yarn start'))
         ) {
           processTerminalOutputForQRCode(resp.output);
+          qrDetector.processOutput(resp.output, command);
         }
       } catch (error) {
         console.log('failed to format terminal output', error);
@@ -185,6 +187,9 @@ export class BoltShell {
           // Check for Expo QR codes in terminal output
           if (data) {
             processTerminalOutputForQRCode(data);
+
+            // Pass empty string as command since we don't have command context here
+            qrDetector.processOutput(data, '');
           }
         },
       }),

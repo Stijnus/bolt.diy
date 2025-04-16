@@ -16,9 +16,13 @@ export function ExpoQrAlert({ className }: ExpoQrAlertProps) {
 
   useEffect(() => {
     // Listen for QR code URLs
-    const unsubscribe = qrDetector.addListener((url) => {
+    const unsubscribe = qrDetector.addListener((url, isNewDetection) => {
       setQrCodeUrl(url);
-      setShowAlert(true);
+
+      // Only show alert for newly detected QR codes, not for URLs loaded from localStorage
+      if (isNewDetection) {
+        setShowAlert(true);
+      }
     });
 
     return unsubscribe;

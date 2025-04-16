@@ -39,7 +39,7 @@ import type { ActionRunner } from '~/lib/runtime/action-runner';
 import { LOCAL_PROVIDERS } from '~/lib/stores/settings';
 import { SupabaseChatAlert } from '~/components/chat/SupabaseAlert';
 import { SupabaseConnection } from './SupabaseConnection';
-import { ExpoQrAlert } from '~/components/qr';
+import { ExpoQrDirectDialog } from '~/components/qr';
 
 const TEXTAREA_MIN_HEIGHT = 76;
 
@@ -391,8 +391,8 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                       }}
                     />
                   )}
-                  {/* QR Code Alert for Expo apps */}
-                  <ExpoQrAlert />
+                  {/* QR Code Dialog for Expo apps */}
+                  <ExpoQrDirectDialog />
                 </div>
                 {progressAnnotations && <ProgressCompilation data={progressAnnotations} />}
                 <div
