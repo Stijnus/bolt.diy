@@ -202,24 +202,37 @@ export class WorkbenchStore {
   syncLockedFilesFromGlobal(suppressToast: boolean = false) {
     const globalLockedFiles = lockedFilesAtom.get();
     this.lockedFiles.set(new Set([...globalLockedFiles]));
+    console.debug('Synced WorkbenchStore locked files:', [...globalLockedFiles]);
 
     // Force a refresh of the files to ensure locked files appear in the file tree
     const currentFiles = this.files.get();
 
-    if (Object.keys(currentFiles).length > 0) {
-      console.debug('Refreshing file list to ensure locked files are visible');
-      this.refreshEditor();
+    // Always refresh file tree when we have locked files, even if no files are loaded yet
+    console.debug('Refreshing file list to ensure locked files are visible');
+    this.refreshEditor();
 
-      /*
-       * If there are locked files but no visible files in the tree,
-       * add a small delay and try again in case files are still loading
-       */
-      if (globalLockedFiles.size > 0) {
-        setTimeout(() => {
-          this.refreshEditor();
-          console.debug('Secondary refresh of file tree');
-        }, 500);
-      }
+    // Multi-stage refresh approach to handle async loading of files
+    if (globalLockedFiles.size > 0) {
+      // First retry - quick refresh
+      setTimeout(() => {
+        this.refreshEditor();
+        console.debug('First retry refresh of file tree');
+
+        // Check if we have files loaded yet
+        const filesAfterFirstRetry = this.files.get();
+
+        if (Object.keys(filesAfterFirstRetry).length === 0) {
+          // Second retry - longer wait for files to load
+          setTimeout(() => {
+            console.debug('Second retry refresh of file tree');
+            this.refreshEditor();
+
+            // Trigger a re-render of components using the files store by doing a no-op update
+            const currentFiles = this.files.get();
+            this.files.set({ ...currentFiles });
+          }, 1000);
+        }
+      }, 300);
     }
 
     if (!suppressToast) {
@@ -1309,6 +1322,7 @@ export function syncLockedFilesOnChatChange(suppressToast: boolean = false): voi
     if (typeof localStorage !== 'undefined') {
       try {
         const lockedFilesKey = getLockedFilesKey();
+        console.debug('Syncing locked files using key:', lockedFilesKey);
         const lockedFilesJson = localStorage.getItem(lockedFilesKey);
 
         if (lockedFilesJson) {
@@ -1316,7 +1330,10 @@ export function syncLockedFilesOnChatChange(suppressToast: boolean = false): voi
 
           if (Array.isArray(lockedFilesArray)) {
             lockedFilesArray.forEach((file) => newLockedFiles.add(file));
+            console.debug('Loaded locked files from storage:', lockedFilesArray);
           }
+        } else {
+          console.debug('No locked files found in localStorage with key:', lockedFilesKey);
         }
       } catch (error) {
         console.warn('Error accessing localStorage during sync', error);
@@ -1325,12 +1342,33 @@ export function syncLockedFilesOnChatChange(suppressToast: boolean = false): voi
 
     // Update the global atom with the new set of locked files
     lockedFilesAtom.set(newLockedFiles);
+    console.debug('Updated lockedFilesAtom with', newLockedFiles.size, 'locked files');
 
     // Update WorkbenchStore instance locked files if it exists
     if (typeof workbenchStore !== 'undefined') {
-      workbenchStore.syncLockedFilesFromGlobal(suppressToast);
+      // Use setTimeout to ensure the WorkbenchStore instance is fully initialized
+      setTimeout(() => {
+        try {
+          workbenchStore.syncLockedFilesFromGlobal(suppressToast);
+          console.debug('Synced WorkbenchStore instance with global locked files');
+        } catch (error) {
+          console.error('Error syncing WorkbenchStore instance:', error);
+        }
+      }, 100);
     } else {
       console.warn('workbenchStore not yet initialized, skipping instance sync');
+
+      // Setup a temporary listener to retry sync when workbenchStore becomes available
+      const checkInterval = setInterval(() => {
+        if (typeof workbenchStore !== 'undefined') {
+          clearInterval(checkInterval);
+          workbenchStore.syncLockedFilesFromGlobal(suppressToast);
+          console.debug('Delayed sync of WorkbenchStore instance completed');
+        }
+      }, 500);
+
+      // Clear interval after 10 seconds to avoid memory leaks
+      setTimeout(() => clearInterval(checkInterval), 10000);
     }
 
     console.log('Synchronized locked files for current chat:', [...newLockedFiles]);

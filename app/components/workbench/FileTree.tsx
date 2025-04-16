@@ -9,6 +9,7 @@ import { diffLines } from 'diff';
 import { workbenchStore, lockedFilesAtom } from '~/lib/stores/workbench';
 import { toast } from 'react-toastify';
 import { path } from '~/utils/path';
+import { chatId } from '~/lib/persistence/useChatHistory';
 
 const logger = createScopedLogger('FileTree');
 
@@ -128,6 +129,32 @@ export const FileTree = memo((props: Props) => {
             }
           }
         });
+
+        // Check if we need to force synchronize locked files
+        if (lockedFilesStore.size === 0 && lockKeys.length > 0) {
+          console.debug('Found locked files in localStorage but none in store, forcing sync');
+
+          // Try to sync from localStorage directly if the current chat ID is available
+          const currentId = getCurrentChatId();
+          if (currentId) {
+            const chatKey = `bolt-locked-files-${currentId}`;
+            const lockedFilesJson = localStorage.getItem(chatKey);
+
+            if (lockedFilesJson) {
+              try {
+                setTimeout(() => {
+                  // Force a sync if workbenchStore is available
+                  if (typeof workbenchStore !== 'undefined') {
+                    console.debug('Force syncing locked files to workbenchStore');
+                    workbenchStore.syncLockedFilesFromGlobal(true);
+                  }
+                }, 300);
+              } catch (syncError) {
+                console.error('Error force syncing locked files:', syncError);
+              }
+            }
+          }
+        }
       } catch (error) {
         console.error('Error checking localStorage:', error);
       }
@@ -852,6 +879,26 @@ function buildFileList(
     console.error('Error accessing lockedFilesAtom in buildFileList:', error);
   }
 
+  // Check localStorage directly as a fallback for locked files
+  // This can help when the atom hasn't been properly initialized yet
+  if (lockedFiles.size === 0 && typeof localStorage !== 'undefined') {
+    try {
+      // Try to get chat-specific locked files
+      const chatKey = `bolt-locked-files-${getCurrentChatId()}`;
+      const lockedFilesJson = localStorage.getItem(chatKey);
+
+      if (lockedFilesJson) {
+        const lockedFilesArray = JSON.parse(lockedFilesJson);
+        if (Array.isArray(lockedFilesArray)) {
+          lockedFilesArray.forEach((file) => lockedFiles.add(file));
+          console.debug('Loaded locked files from localStorage:', lockedFilesArray);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading locked files from localStorage:', err);
+    }
+  }
+
   let defaultDepth = 0;
 
   if (rootFolder === '/' && !hideRoot) {
@@ -910,7 +957,7 @@ function buildFileList(
   // Second pass: ensure locked files/folders are in the list even if they're not in the files object
   for (const lockedPath of lockedFiles) {
     // Skip if the path is already represented in the file list
-    if (fileList.some((item) => workbenchStore.normalizePath(item.fullPath) === lockedPath)) {
+    if (fileList.some((item) => normalizePath(item.fullPath) === lockedPath)) {
       continue;
     }
 
@@ -943,6 +990,60 @@ function buildFileList(
   }
 
   return sortFileList(rootFolder, fileList, hideRoot);
+}
+
+// Helper function to get current chat ID (extract from workbench.ts)
+function getCurrentChatId(): string | undefined {
+  try {
+    // First try to get from atom if available
+    if (typeof chatId !== 'undefined') {
+      return chatId.get();
+    }
+
+    // Fallback: extract from URL if on client side
+    if (typeof window !== 'undefined') {
+      const match = window.location.pathname.match(/\/chat\/([^/]+)/);
+      return match ? match[1] : undefined;
+    }
+  } catch (error) {
+    console.error('Error getting current chat ID:', error);
+  }
+
+  return undefined;
+}
+
+// Reuse the normalizePath function to ensure consistency
+function normalizePath(filePath: string): string {
+  if (!filePath) return '';
+
+  // Remove potential workdir prefixes like /home/project/
+  let normalizedPath = filePath;
+
+  // Common workdir prefixes to strip
+  const workdirPrefixes = ['/home/project/', 'home/project/'];
+
+  // Strip any known prefixes
+  for (const prefix of workdirPrefixes) {
+    if (normalizedPath.startsWith(prefix)) {
+      normalizedPath = normalizedPath.substring(prefix.length);
+      break;
+    }
+  }
+
+  // Remove any leading slashes
+  while (normalizedPath.startsWith('/')) {
+    normalizedPath = normalizedPath.substring(1);
+  }
+
+  // Remove any trailing slashes (except for root dir)
+  while (normalizedPath.length > 1 && normalizedPath.endsWith('/')) {
+    normalizedPath = normalizedPath.substring(0, normalizedPath.length - 1);
+  }
+
+  // Normalize consecutive slashes
+  normalizedPath = normalizedPath.replace(/\/+/g, '/');
+
+  return normalizedPath;
 }
 
 function isHiddenFile(filePath: string, fileName: string, hiddenFiles: Array<string | RegExp>) {
