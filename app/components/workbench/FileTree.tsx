@@ -6,7 +6,7 @@ import { createScopedLogger } from '~/utils/logger';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import type { FileHistory } from '~/types/actions';
 import { diffLines } from 'diff';
-import { workbenchStore, lockedFilesAtom } from '~/lib/stores/workbench';
+import { workbenchStore, lockedFilesAtom, syncLockedFilesOnChatChange } from '~/lib/stores/workbench';
 import { toast } from 'react-toastify';
 import { path } from '~/utils/path';
 import { chatId } from '~/lib/persistence/useChatHistory';
@@ -287,6 +287,12 @@ export const FileTree = memo((props: Props) => {
       logger.error(error);
     }
   };
+
+  // On mount, always force a sync of locked files from localStorage
+  useEffect(() => {
+    console.debug('[FileTree] Forcing syncLockedFilesOnChatChange on mount');
+    syncLockedFilesOnChatChange(true);
+  }, []);
 
   return (
     <div className={classNames('text-sm', className, 'overflow-y-auto')}>
