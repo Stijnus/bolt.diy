@@ -15,9 +15,8 @@ export function ExpoQrAlert({ className }: ExpoQrAlertProps) {
   const [showPopup, setShowPopup] = useState(false);
 
   useEffect(() => {
-    
     // Listen for QR code URLs
-    
+
     const unsubscribe = qrDetector.addListener((url) => {
       setQrCodeUrl(url);
       setShowAlert(true);

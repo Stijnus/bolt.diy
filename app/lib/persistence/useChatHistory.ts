@@ -44,8 +44,10 @@ chatId.listen((id) => {
     // Migrate any global locked files to the project-specific storage
     migrateGlobalLockedFiles();
 
-    // When chat ID changes, synchronize locked files with suppressToast=true
-    // to avoid showing toast messages during navigation
+    /*
+     * When chat ID changes, synchronize locked files with suppressToast=true
+     * to avoid showing toast messages during navigation
+     */
     syncLockedFilesOnChatChange(true);
   }
 });

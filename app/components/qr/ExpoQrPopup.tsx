@@ -56,9 +56,7 @@ export function ExpoQrPopup({ qrCodeUrl, isOpen, onClose }: ExpoQrPopupProps) {
   };
 
   // Create a formatted version of the URL for better clarity
-  const formattedUrl = isWebUrl 
-    ? qrCodeUrl 
-    : qrCodeUrl ? `exp://${qrCodeUrl.replace(/^exp:\/\//, '')}` : '';
+  const formattedUrl = isWebUrl ? qrCodeUrl : qrCodeUrl ? `exp://${qrCodeUrl.replace(/^exp:\/\//, '')}` : '';
 
   return (
     <RadixDialog.Root open={isOpen} onOpenChange={onClose}>
@@ -69,7 +67,7 @@ export function ExpoQrPopup({ qrCodeUrl, isOpen, onClose }: ExpoQrPopupProps) {
             {isWebUrl ? 'Web Preview Available' : 'Scan QR Code'}
           </DialogTitle>
           <DialogDescription className="mb-4">
-            {isWebUrl 
+            {isWebUrl
               ? 'Your Expo app is running. Click to open in browser or scan QR code to view on mobile.'
               : 'Install Expo Go on your device and scan this QR code to view your project'}
           </DialogDescription>
@@ -79,7 +77,7 @@ export function ExpoQrPopup({ qrCodeUrl, isOpen, onClose }: ExpoQrPopupProps) {
               <div
                 className="bg-white p-4 rounded-lg mb-4 cursor-pointer"
                 onClick={isWebUrl ? handleOpenWebUrl : handleCopyUrl}
-                title={isWebUrl ? "Click to open in browser" : "Click to copy URL"}
+                title={isWebUrl ? 'Click to open in browser' : 'Click to copy URL'}
               >
                 {isLoading ? (
                   <div className="flex items-center justify-center w-[200px] h-[200px]">
