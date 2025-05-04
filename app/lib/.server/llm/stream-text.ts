@@ -157,7 +157,7 @@ ${props.summary}
 
   // console.log(systemPrompt, processedMessages);
 
-  return await _streamText({
+  const result = await _streamText({
     model: provider.getModelInstance({
       model: modelDetails.name,
       serverEnv,
@@ -169,4 +169,6 @@ ${props.summary}
     messages: convertToCoreMessages(processedMessages as any),
     ...options,
   });
+
+  return result;
 }

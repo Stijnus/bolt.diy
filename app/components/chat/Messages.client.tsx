@@ -1,4 +1,4 @@
-import type { Message } from 'ai';
+import type { ExtendedMessage } from '~/types/message';
 import { Fragment } from 'react';
 import { classNames } from '~/utils/classNames';
 import { AssistantMessage } from './AssistantMessage';
@@ -16,7 +16,7 @@ interface MessagesProps {
   id?: string;
   className?: string;
   isStreaming?: boolean;
-  messages?: Message[];
+  messages?: ExtendedMessage[];
 }
 
 export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
@@ -94,6 +94,8 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
                         messageId={messageId}
                         onRewind={handleRewind}
                         onFork={handleFork}
+                        reasoning={message.reasoning}
+                        sources={message.sources}
                       />
                     )}
                   </div>

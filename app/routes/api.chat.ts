@@ -342,6 +342,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
       }),
     );
 
+    // Create a standard Response with the dataStream
     return new Response(dataStream, {
       status: 200,
       headers: {

@@ -111,7 +111,7 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
 
       logger.info(`Generating response Provider: ${provider.name}, Model: ${modelDetails.name}`);
 
-      const result = await generateText({
+      const { text, reasoning } = await generateText({
         system,
         messages: [
           {
@@ -130,7 +130,7 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
       });
       logger.info(`Generated response`);
 
-      return new Response(JSON.stringify(result), {
+      return new Response(JSON.stringify({ text, reasoning }), {
         status: 200,
         headers: {
           'Content-Type': 'application/json',
