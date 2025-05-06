@@ -197,11 +197,12 @@ export default function FeaturesTab() {
       },
       {
         id: 'contextOptimization',
-        title: 'Context Optimization',
-        description: 'Optimize context for better responses',
+        title: 'Enhanced Context Optimization',
+        description: 'Intelligently select and optimize code context for better AI responses',
         icon: 'i-ph:brain',
         enabled: contextOptimizationEnabled,
-        tooltip: 'Enabled by default for improved AI responses',
+        tooltip:
+          'Enabled by default. Uses smart file selection and content optimization to provide the most relevant code context to the AI while managing token usage efficiently.',
       },
       {
         id: 'eventLogs',

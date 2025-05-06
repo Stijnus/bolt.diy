@@ -3,7 +3,13 @@ import ignore from 'ignore';
 import type { IProviderSetting } from '~/types/model';
 import { IGNORE_PATTERNS, type FileMap } from './constants';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROVIDER_LIST } from '~/utils/constants';
-import { createFilesContext, extractCurrentContext, extractPropertiesFromMessage, simplifyBoltActions } from './utils';
+import {
+  createFilesContext,
+  extractCurrentContext,
+  extractPropertiesFromMessage,
+  simplifyBoltActions,
+  type FilesContextOptions,
+} from './utils';
 import { createScopedLogger } from '~/utils/logger';
 import { LLMManager } from '~/lib/modules/llm/manager';
 
@@ -11,6 +17,12 @@ import { LLMManager } from '~/lib/modules/llm/manager';
 
 const ig = ignore().add(IGNORE_PATTERNS);
 const logger = createScopedLogger('select-context');
+
+export interface SelectContextOptions {
+  tokenBudget?: number;
+  maxFilesCount?: number;
+  optimizeContent?: boolean;
+}
 
 export async function selectContext(props: {
   messages: Message[];
@@ -21,9 +33,22 @@ export async function selectContext(props: {
   promptId?: string;
   contextOptimization?: boolean;
   summary: string;
+  options?: SelectContextOptions;
   onFinish?: (resp: GenerateTextResult<Record<string, CoreTool<any, any>>, never>) => void;
 }) {
-  const { messages, env: serverEnv, apiKeys, files, providerSettings, summary, onFinish } = props;
+  const {
+    messages,
+    env: serverEnv,
+    apiKeys,
+    files,
+    providerSettings,
+    summary,
+    contextOptimization = true,
+    options = {},
+    onFinish,
+  } = props;
+
+  const { tokenBudget = 6000, maxFilesCount = 10, optimizeContent = true } = options;
   let currentModel = DEFAULT_MODEL;
   let currentProvider = DEFAULT_PROVIDER.name;
   const processedMessages = messages.map((message) => {
@@ -88,6 +113,19 @@ export async function selectContext(props: {
   const currrentFiles: string[] = [];
   const contextFiles: FileMap = {};
 
+  // Extract the user's query to help with content optimization
+  const lastUserMessage = processedMessages.filter((x) => x.role == 'user').pop();
+
+  if (!lastUserMessage) {
+    throw new Error('No user message found');
+  }
+
+  const userQuery = lastUserMessage
+    ? Array.isArray(lastUserMessage.content)
+      ? lastUserMessage.content.find((item) => item.type === 'text')?.text || ''
+      : lastUserMessage.content
+    : '';
+
   if (codeContext?.type === 'codeContext') {
     const codeContextFiles: string[] = codeContext.files;
     Object.keys(files || {}).forEach((path) => {
@@ -102,7 +140,19 @@ export async function selectContext(props: {
         currrentFiles.push(relativePath);
       }
     });
-    context = createFilesContext(contextFiles);
+
+    // Create context with optimization if enabled
+    if (contextOptimization && optimizeContent) {
+      logger.info(`Creating optimized context with token budget ${tokenBudget}`);
+      context = createFilesContext(contextFiles, {
+        useRelativePath: true,
+        optimizeContent: true,
+        tokenBudget,
+        query: userQuery,
+      });
+    } else {
+      context = createFilesContext(contextFiles, true);
+    }
   }
 
   const summaryText = `Here is the summary of the chat till now: ${summary}`;
@@ -111,12 +161,6 @@ export async function selectContext(props: {
     Array.isArray(message.content)
       ? (message.content.find((item) => item.type === 'text')?.text as string) || ''
       : message.content;
-
-  const lastUserMessage = processedMessages.filter((x) => x.role == 'user').pop();
-
-  if (!lastUserMessage) {
-    throw new Error('No user message found');
-  }
 
   // select files from the list of code file from the project that might be useful for the current request from the user
   const resp = await generateText({
@@ -193,9 +237,13 @@ export async function selectContext(props: {
       ?.map((x) => x.replace('<excludeFile path="', '').replace('"', '')) || [];
 
   const filteredFiles: FileMap = {};
+
+  // Process excluded files
   excludeFiles.forEach((path) => {
     delete contextFiles[path];
   });
+
+  // Process included files
   includeFiles.forEach((path) => {
     let fullPath = path;
 
@@ -206,8 +254,6 @@ export async function selectContext(props: {
     if (!filePaths.includes(fullPath)) {
       logger.error(`File ${path} is not in the list of files above.`);
       return;
-
-      // throw new Error(`File ${path} is not in the list of files above.`);
     }
 
     if (currrentFiles.includes(path)) {
@@ -217,18 +263,61 @@ export async function selectContext(props: {
     filteredFiles[path] = files[fullPath];
   });
 
+  // Limit the number of files if needed
+  const selectedFiles = Object.keys(filteredFiles);
+  if (selectedFiles.length > maxFilesCount) {
+    logger.info(`Limiting selected files from ${selectedFiles.length} to ${maxFilesCount}`);
+    const limitedFiles: FileMap = {};
+    selectedFiles.slice(0, maxFilesCount).forEach((path) => {
+      limitedFiles[path] = filteredFiles[path];
+    });
+
+    // Replace filteredFiles with the limited set
+    Object.keys(filteredFiles).forEach((key) => {
+      delete filteredFiles[key];
+    });
+    Object.keys(limitedFiles).forEach((key) => {
+      filteredFiles[key] = limitedFiles[key];
+    });
+  }
+
   if (onFinish) {
     onFinish(resp);
   }
 
-  const totalFiles = Object.keys(filteredFiles).length;
-  logger.info(`Total files: ${totalFiles}`);
+  // Use the userQuery that was already extracted above
 
-  if (totalFiles == 0) {
-    throw new Error(`Bolt failed to select files`);
+  // Apply content optimization if enabled
+  if (contextOptimization && optimizeContent) {
+    logger.info(`Optimizing selected files content with token budget ${tokenBudget}`);
+
+    // Create a new optimized FileMap
+    const optimizedFiles = createFilesContext(filteredFiles, {
+      useRelativePath: true,
+      optimizeContent: true,
+      tokenBudget,
+      query: userQuery,
+    });
+
+    // Log optimization metrics
+    const totalFiles = Object.keys(filteredFiles).length;
+    logger.info(`Selected ${totalFiles} files for context`);
+
+    if (totalFiles == 0) {
+      throw new Error(`Bolt failed to select files`);
+    }
+
+    return filteredFiles;
+  } else {
+    const totalFiles = Object.keys(filteredFiles).length;
+    logger.info(`Selected ${totalFiles} files for context (without optimization)`);
+
+    if (totalFiles == 0) {
+      throw new Error(`Bolt failed to select files`);
+    }
+
+    return filteredFiles;
   }
-
-  return filteredFiles;
 
   // generateText({
 }

@@ -3,6 +3,8 @@ import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODEL_REGEX, PROVIDER_REGEX } from '~/
 import { IGNORE_PATTERNS, type FileMap } from './constants';
 import ignore from 'ignore';
 import type { ContextAnnotation } from '~/types/context';
+import { optimizeFilesContent } from './content-optimizer';
+import { createScopedLogger } from '~/utils/logger';
 
 export function extractPropertiesFromMessage(message: Omit<Message, 'id'>): {
   model: string;
@@ -54,7 +56,24 @@ export function simplifyBoltActions(input: string): string {
   });
 }
 
-export function createFilesContext(files: FileMap, useRelativePath?: boolean) {
+const logger = createScopedLogger('files-context');
+
+export interface FilesContextOptions {
+  useRelativePath?: boolean;
+  optimizeContent?: boolean;
+  tokenBudget?: number;
+  query?: string;
+}
+
+export function createFilesContext(files: FileMap, optionsOrUseRelativePath?: FilesContextOptions | boolean) {
+  // Handle backward compatibility with the old boolean parameter
+  const options: FilesContextOptions =
+    typeof optionsOrUseRelativePath === 'boolean'
+      ? { useRelativePath: optionsOrUseRelativePath }
+      : optionsOrUseRelativePath || {};
+
+  const { useRelativePath, optimizeContent = true, tokenBudget = 6000, query } = options;
+
   const ig = ignore().add(IGNORE_PATTERNS);
   let filePaths = Object.keys(files);
   filePaths = filePaths.filter((x) => {
@@ -62,10 +81,18 @@ export function createFilesContext(files: FileMap, useRelativePath?: boolean) {
     return !ig.ignores(relPath);
   });
 
+  // Apply content optimization if enabled
+  let processedFiles = files;
+  if (optimizeContent) {
+    logger.info(`Optimizing content for ${filePaths.length} files with token budget ${tokenBudget}`);
+    processedFiles = optimizeFilesContent(files, { tokenBudget }, query);
+    logger.info(`Optimization complete, ${Object.keys(processedFiles).length} files included`);
+  }
+
   const fileContexts = filePaths
-    .filter((x) => files[x] && files[x].type == 'file')
+    .filter((x) => processedFiles[x] && processedFiles[x].type == 'file')
     .map((path) => {
-      const dirent = files[path];
+      const dirent = processedFiles[path];
 
       if (!dirent || dirent.type == 'folder') {
         return '';

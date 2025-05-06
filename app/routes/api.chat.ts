@@ -6,7 +6,7 @@ import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/
 import SwitchableStream from '~/lib/.server/llm/switchable-stream';
 import type { IProviderSetting } from '~/types/model';
 import { createScopedLogger } from '~/utils/logger';
-import { getFilePaths, selectContext } from '~/lib/.server/llm/select-context';
+import { getFilePaths, selectContext, type SelectContextOptions } from '~/lib/.server/llm/select-context';
 import type { ContextAnnotation, ProgressAnnotation } from '~/types/context';
 import { WORK_DIR } from '~/utils/constants';
 import { createSummary } from '~/lib/.server/llm/create-summary';
@@ -140,6 +140,22 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
           // Select context files
           console.log(`Messages count: ${messages.length}`);
+
+          // Extract the user's query for better context selection
+          const lastUserMessage = messages.filter((x) => x.role == 'user').slice(-1)[0];
+          const userQuery = lastUserMessage
+            ? Array.isArray(lastUserMessage.content)
+              ? lastUserMessage.content.find((item) => item.type === 'text')?.text || ''
+              : lastUserMessage.content
+            : '';
+
+          // Configure context optimization options
+          const contextOptions: SelectContextOptions = {
+            tokenBudget: 6000, // Default token budget
+            maxFilesCount: 10, // Allow up to 10 files if they fit in the token budget
+            optimizeContent: true, // Enable smart content optimization
+          };
+
           filteredFiles = await selectContext({
             messages: [...messages],
             env: context.cloudflare?.env,
@@ -149,6 +165,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             promptId,
             contextOptimization,
             summary,
+            options: contextOptions,
             onFinish(resp) {
               if (resp.usage) {
                 logger.debug('selectContext token usage', JSON.stringify(resp.usage));

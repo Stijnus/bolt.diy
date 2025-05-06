@@ -7,7 +7,7 @@ import { PromptLibrary } from '~/lib/common/prompt-library';
 import { allowedHTMLElements } from '~/utils/markdown';
 import { LLMManager } from '~/lib/modules/llm/manager';
 import { createScopedLogger } from '~/utils/logger';
-import { createFilesContext, extractPropertiesFromMessage } from './utils';
+import { createFilesContext, extractPropertiesFromMessage, type FilesContextOptions } from './utils';
 
 export type Messages = Message[];
 
@@ -121,7 +121,24 @@ export async function streamText(props: {
     }) ?? getSystemPrompt();
 
   if (contextFiles && contextOptimization) {
-    const codeContext = createFilesContext(contextFiles, true);
+    // Extract the user's query to help with content optimization
+    const lastUserMessage = processedMessages.filter((x) => x.role == 'user').pop();
+    const userQuery = lastUserMessage
+      ? Array.isArray(lastUserMessage.content)
+        ? lastUserMessage.content.find((item) => item.type === 'text')?.text || ''
+        : lastUserMessage.content
+      : '';
+
+    // Create optimized context with the user's query for better relevance
+    const contextOptions: FilesContextOptions = {
+      useRelativePath: true,
+      optimizeContent: true,
+      tokenBudget: 6000, // Default token budget
+      query: userQuery,
+    };
+
+    logger.info(`Creating optimized context with token budget ${contextOptions.tokenBudget}`);
+    const codeContext = createFilesContext(contextFiles, contextOptions);
 
     systemPrompt = `${systemPrompt}
 
