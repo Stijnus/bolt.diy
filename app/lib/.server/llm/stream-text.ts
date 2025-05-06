@@ -8,6 +8,7 @@ import { allowedHTMLElements } from '~/utils/markdown';
 import { LLMManager } from '~/lib/modules/llm/manager';
 import { createScopedLogger } from '~/utils/logger';
 import { createFilesContext, extractPropertiesFromMessage, type FilesContextOptions } from './utils';
+import { parseCodeUpdateOperations, applyCodeUpdateOperations } from './partial-code-service';
 
 export type Messages = Message[];
 
@@ -23,6 +24,31 @@ export interface StreamingOptions extends Omit<Parameters<typeof _streamText>[0]
 }
 
 const logger = createScopedLogger('stream-text');
+
+/**
+ * Process partial code updates in the AI response
+ */
+function processPartialCodeUpdates(response: string, files: FileMap): FileMap {
+  try {
+    // Parse code update operations from the response
+    const operations = parseCodeUpdateOperations(response);
+
+    if (operations.length === 0) {
+      // No partial code updates found
+      return files;
+    }
+
+    logger.info(`Found ${operations.length} partial code update operations`);
+
+    // Apply the operations to the files
+    const updatedFiles = applyCodeUpdateOperations(operations, files);
+
+    return updatedFiles;
+  } catch (error) {
+    logger.error('Error processing partial code updates:', error);
+    return files;
+  }
+}
 
 export async function streamText(props: {
   messages: Omit<Message, 'id'>[];
@@ -138,6 +164,7 @@ export async function streamText(props: {
     };
 
     logger.info(`Creating optimized context with token budget ${contextOptions.tokenBudget}`);
+
     const codeContext = createFilesContext(contextFiles, contextOptions);
 
     systemPrompt = `${systemPrompt}
@@ -174,6 +201,37 @@ ${props.summary}
 
   // console.log(systemPrompt, processedMessages);
 
+  // Create a wrapper for the onFinish callback to process partial code updates
+  const originalOnFinish = options.onFinish;
+  const wrappedOptions = {
+    ...options,
+    onFinish: originalOnFinish
+      ? (result: any) => {
+          // Process partial code updates in the response
+          if (files && result.text) {
+            const updatedFiles = processPartialCodeUpdates(result.text, files);
+
+            // If files were updated, log the changes
+            if (updatedFiles !== files) {
+              logger.info('Applied partial code updates to files');
+
+              // Update the files reference
+              Object.keys(files).forEach((key) => {
+                delete files[key];
+              });
+
+              Object.keys(updatedFiles).forEach((key) => {
+                files[key] = updatedFiles[key];
+              });
+            }
+          }
+
+          // Call the original onFinish callback
+          return originalOnFinish(result);
+        }
+      : undefined,
+  };
+
   return await _streamText({
     model: provider.getModelInstance({
       model: modelDetails.name,
@@ -184,6 +242,6 @@ ${props.summary}
     system: systemPrompt,
     maxTokens: dynamicMaxTokens,
     messages: convertToCoreMessages(processedMessages as any),
-    ...options,
+    ...wrappedOptions,
   });
 }
