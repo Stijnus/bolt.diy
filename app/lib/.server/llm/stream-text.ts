@@ -1,4 +1,4 @@
-import { convertToCoreMessages, streamText as _streamText, type Message } from 'ai';
+import { streamText as _streamText, type Message } from 'ai';
 import { MAX_TOKENS, type FileMap } from './constants';
 import { getSystemPrompt } from '~/lib/common/prompts/prompts';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODIFICATIONS_TAG_NAME, PROVIDER_LIST, WORK_DIR } from '~/utils/constants';
@@ -9,6 +9,7 @@ import { LLMManager } from '~/lib/modules/llm/manager';
 import { createScopedLogger } from '~/utils/logger';
 import { createFilesContext, extractPropertiesFromMessage, type FilesContextOptions } from './utils';
 import { parseCodeUpdateOperations, applyCodeUpdateOperations } from './partial-code-service';
+import { adaptMessages } from './message-adapter';
 
 export type Messages = Message[];
 
@@ -81,6 +82,21 @@ export async function streamText(props: {
   if (!Array.isArray(messages)) {
     logger.error('Invalid messages format: messages must be an array');
     throw new Error('Invalid messages format: messages must be an array');
+  }
+
+  // Validate each message has the required properties
+  for (const message of messages) {
+    if (!message.role || !['user', 'assistant', 'system', 'function', 'tool', 'data'].includes(message.role)) {
+      logger.error(`Invalid message role: ${message.role}`);
+      throw new Error(
+        `Invalid message role: ${message.role}. Must be one of: user, assistant, system, function, tool, data`,
+      );
+    }
+
+    if (message.content === undefined) {
+      logger.error('Message missing content property');
+      throw new Error('Message missing content property');
+    }
   }
 
   let processedMessages = messages.map((message) => {
@@ -250,7 +266,7 @@ ${props.summary}
     }),
     system: systemPrompt,
     maxTokens: dynamicMaxTokens,
-    messages: Array.isArray(processedMessages) ? convertToCoreMessages(processedMessages as any) : [],
+    messages: Array.isArray(processedMessages) ? (adaptMessages(processedMessages as any) as any) : [],
     ...wrappedOptions,
   });
 }
