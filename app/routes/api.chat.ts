@@ -141,13 +141,8 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           // Select context files
           console.log(`Messages count: ${messages.length}`);
 
-          // Extract the user's query for better context selection
-          const lastUserMessage = messages.filter((x) => x.role == 'user').slice(-1)[0];
-          const userQuery = lastUserMessage
-            ? Array.isArray(lastUserMessage.content)
-              ? lastUserMessage.content.find((item) => item.type === 'text')?.text || ''
-              : lastUserMessage.content
-            : '';
+          // Log the number of messages for debugging
+          console.log(`Processing ${messages.filter((x) => x.role == 'user').length} user messages`);
 
           // Configure context optimization options
           const contextOptions: SelectContextOptions = {

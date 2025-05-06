@@ -202,34 +202,36 @@ ${props.summary}
   // console.log(systemPrompt, processedMessages);
 
   // Create a wrapper for the onFinish callback to process partial code updates
-  const originalOnFinish = options.onFinish;
+  const originalOnFinish = options?.onFinish;
+  const { files } = props;
   const wrappedOptions = {
     ...options,
-    onFinish: originalOnFinish
-      ? (result: any) => {
-          // Process partial code updates in the response
-          if (files && result.text) {
-            const updatedFiles = processPartialCodeUpdates(result.text, files);
+    onFinish:
+      originalOnFinish && files
+        ? (result: any) => {
+            // Process partial code updates in the response
+            if (result.text) {
+              const updatedFiles = processPartialCodeUpdates(result.text, files);
 
-            // If files were updated, log the changes
-            if (updatedFiles !== files) {
-              logger.info('Applied partial code updates to files');
+              // If files were updated, log the changes
+              if (updatedFiles !== files) {
+                logger.info('Applied partial code updates to files');
 
-              // Update the files reference
-              Object.keys(files).forEach((key) => {
-                delete files[key];
-              });
+                // Update the files reference
+                Object.keys(files).forEach((key) => {
+                  delete files[key];
+                });
 
-              Object.keys(updatedFiles).forEach((key) => {
-                files[key] = updatedFiles[key];
-              });
+                Object.keys(updatedFiles).forEach((key) => {
+                  files[key] = updatedFiles[key];
+                });
+              }
             }
-          }
 
-          // Call the original onFinish callback
-          return originalOnFinish(result);
-        }
-      : undefined,
+            // Call the original onFinish callback
+            return originalOnFinish(result);
+          }
+        : originalOnFinish,
   };
 
   return await _streamText({

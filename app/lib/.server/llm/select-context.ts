@@ -3,13 +3,7 @@ import ignore from 'ignore';
 import type { IProviderSetting } from '~/types/model';
 import { IGNORE_PATTERNS, type FileMap } from './constants';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROVIDER_LIST } from '~/utils/constants';
-import {
-  createFilesContext,
-  extractCurrentContext,
-  extractPropertiesFromMessage,
-  simplifyBoltActions,
-  type FilesContextOptions,
-} from './utils';
+import { createFilesContext, extractCurrentContext, extractPropertiesFromMessage, simplifyBoltActions } from './utils';
 import { createScopedLogger } from '~/utils/logger';
 import { LLMManager } from '~/lib/modules/llm/manager';
 
@@ -265,8 +259,10 @@ export async function selectContext(props: {
 
   // Limit the number of files if needed
   const selectedFiles = Object.keys(filteredFiles);
+
   if (selectedFiles.length > maxFilesCount) {
     logger.info(`Limiting selected files from ${selectedFiles.length} to ${maxFilesCount}`);
+
     const limitedFiles: FileMap = {};
     selectedFiles.slice(0, maxFilesCount).forEach((path) => {
       limitedFiles[path] = filteredFiles[path];
@@ -291,8 +287,8 @@ export async function selectContext(props: {
   if (contextOptimization && optimizeContent) {
     logger.info(`Optimizing selected files content with token budget ${tokenBudget}`);
 
-    // Create a new optimized FileMap
-    const optimizedFiles = createFilesContext(filteredFiles, {
+    // Create optimized context (not storing the result as we're returning the original files)
+    createFilesContext(filteredFiles, {
       useRelativePath: true,
       optimizeContent: true,
       tokenBudget,

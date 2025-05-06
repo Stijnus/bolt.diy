@@ -83,6 +83,7 @@ export function createFilesContext(files: FileMap, optionsOrUseRelativePath?: Fi
 
   // Apply content optimization if enabled
   let processedFiles = files;
+
   if (optimizeContent) {
     logger.info(`Optimizing content for ${filePaths.length} files with token budget ${tokenBudget}`);
     processedFiles = optimizeFilesContent(files, { tokenBudget }, query);

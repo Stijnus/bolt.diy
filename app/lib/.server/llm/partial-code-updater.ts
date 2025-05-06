@@ -1,7 +1,6 @@
 import { createScopedLogger } from '~/utils/logger';
 import * as parser from '@babel/parser';
 import traverse from '@babel/traverse';
-import generate from '@babel/generator';
 import * as t from '@babel/types';
 import { diff_match_patch } from 'diff-match-patch';
 
@@ -87,6 +86,7 @@ export function extractCodeElements(code: string, options: ParseOptions = {}): C
     traverse(ast, {
       FunctionDeclaration(path) {
         const node = path.node;
+
         if (node.id && node.id.name) {
           const name = node.id.name;
           const { start, end } = node.loc || { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } };
@@ -110,6 +110,7 @@ export function extractCodeElements(code: string, options: ParseOptions = {}): C
 
       ClassDeclaration(path) {
         const node = path.node;
+
         if (node.id && node.id.name) {
           const name = node.id.name;
           const { start, end } = node.loc || { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } };
