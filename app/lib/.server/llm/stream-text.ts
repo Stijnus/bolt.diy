@@ -76,6 +76,13 @@ export async function streamText(props: {
   } = props;
   let currentModel = DEFAULT_MODEL;
   let currentProvider = DEFAULT_PROVIDER.name;
+
+  // Ensure messages is an array before processing
+  if (!Array.isArray(messages)) {
+    logger.error('Invalid messages format: messages must be an array');
+    throw new Error('Invalid messages format: messages must be an array');
+  }
+
   let processedMessages = messages.map((message) => {
     if (message.role === 'user') {
       const { model, provider, content } = extractPropertiesFromMessage(message);
@@ -234,7 +241,7 @@ ${props.summary}
         : originalOnFinish,
   };
 
-  return await _streamText({
+  return _streamText({
     model: provider.getModelInstance({
       model: modelDetails.name,
       serverEnv,
@@ -243,7 +250,7 @@ ${props.summary}
     }),
     system: systemPrompt,
     maxTokens: dynamicMaxTokens,
-    messages: convertToCoreMessages(processedMessages as any),
+    messages: Array.isArray(processedMessages) ? convertToCoreMessages(processedMessages as any) : [],
     ...wrappedOptions,
   });
 }
