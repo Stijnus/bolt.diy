@@ -39,27 +39,13 @@ if (!import.meta.env.SSR) {
           console.log('WebContainer preview message:', message);
 
           // Handle both uncaught exceptions and unhandled promise rejections
-          if (
-            message.type === 'PREVIEW_UNCAUGHT_EXCEPTION' ||
-            message.type === 'PREVIEW_UNHANDLED_REJECTION' ||
-            message.type === 'PREVIEW_CONSOLE_ERROR'
-          ) {
+          if (message.type === 'PREVIEW_UNCAUGHT_EXCEPTION' || message.type === 'PREVIEW_UNHANDLED_REJECTION') {
             const isPromise = message.type === 'PREVIEW_UNHANDLED_REJECTION';
-            const isConsoleError = message.type === 'PREVIEW_CONSOLE_ERROR';
-            const title = isPromise
-              ? 'Unhandled Promise Rejection'
-              : isConsoleError
-                ? 'Console Error'
-                : 'Uncaught Exception';
+            const title = isPromise ? 'Unhandled Promise Rejection' : 'Uncaught Exception';
             workbenchStore.actionAlert.set({
               type: 'preview',
               title,
-              description:
-                'message' in message
-                  ? message.message
-                  : 'args' in message && Array.isArray(message.args) && message.args.length > 0
-                    ? message.args[0]
-                    : 'Unknown error',
+              description: 'message' in message ? message.message : 'Unknown error',
               content: `Error occurred at ${message.pathname}${message.search}${message.hash}\nPort: ${message.port}\n\nStack trace:\n${cleanStackTrace(message.stack || '')}`,
               source: 'preview',
             });

@@ -1,7 +1,7 @@
 import { useStore } from '@nanostores/react';
 import { memo, useMemo } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
-import * as Tabs from '@radix-ui/react-tabs'; // <-- Import Radix UI Tabs
+import * as Tabs from '@radix-ui/react-tabs';
 import {
   CodeMirrorEditor,
   type EditorDocument,
@@ -24,6 +24,7 @@ import { DEFAULT_TERMINAL_SIZE, TerminalTabs } from './terminal/TerminalTabs';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { Search } from './Search'; // <-- Ensure Search is imported
 import { classNames } from '~/utils/classNames'; // <-- Import classNames if not already present
+import { LockManager } from './LockManager'; // <-- Import LockManager
 
 interface EditorPanelProps {
   files?: FileMap;
@@ -71,7 +72,12 @@ export const EditorPanel = memo(
     }, [editorDocument]);
 
     const activeFileUnsaved = useMemo(() => {
-      return editorDocument !== undefined && unsavedFiles?.has(editorDocument.filePath);
+      if (!editorDocument || !unsavedFiles) {
+        return false;
+      }
+
+      // Make sure unsavedFiles is a Set before calling has()
+      return unsavedFiles instanceof Set && unsavedFiles.has(editorDocument.filePath);
     }, [editorDocument, unsavedFiles]);
 
     return (
@@ -79,45 +85,61 @@ export const EditorPanel = memo(
         <Panel defaultSize={showTerminal ? DEFAULT_EDITOR_SIZE : 100} minSize={20}>
           <PanelGroup direction="horizontal">
             <Panel defaultSize={20} minSize={15} collapsible className="border-r border-bolt-elements-borderColor">
-              <Tabs.Root defaultValue="files" className="flex flex-col h-full">
-                <PanelHeader className="w-full text-sm font-medium text-bolt-elements-textSecondary px-1">
-                  <Tabs.List className="h-full flex-shrink-0 flex items-center">
-                    <Tabs.Trigger
-                      value="files"
-                      className={classNames(
-                        'h-full bg-transparent hover:bg-bolt-elements-background-depth-3 py-0.5 px-2 rounded-lg text-sm font-medium text-bolt-elements-textTertiary hover:text-bolt-elements-textPrimary data-[state=active]:text-bolt-elements-textPrimary',
-                      )}
-                    >
-                      Files
-                    </Tabs.Trigger>
-                    <Tabs.Trigger
-                      value="search"
-                      className={classNames(
-                        'h-full bg-transparent hover:bg-bolt-elements-background-depth-3 py-0.5 px-2 rounded-lg text-sm font-medium text-bolt-elements-textTertiary hover:text-bolt-elements-textPrimary data-[state=active]:text-bolt-elements-textPrimary',
-                      )}
-                    >
-                      Search
-                    </Tabs.Trigger>
-                  </Tabs.List>
-                </PanelHeader>
+              <div className="h-full">
+                <Tabs.Root defaultValue="files" className="flex flex-col h-full">
+                  <PanelHeader className="w-full text-sm font-medium text-bolt-elements-textSecondary px-1">
+                    <div className="h-full flex-shrink-0 flex items-center justify-between w-full">
+                      <Tabs.List className="h-full flex-shrink-0 flex items-center">
+                        <Tabs.Trigger
+                          value="files"
+                          className={classNames(
+                            'h-full bg-transparent hover:bg-bolt-elements-background-depth-3 py-0.5 px-2 rounded-lg text-sm font-medium text-bolt-elements-textTertiary hover:text-bolt-elements-textPrimary data-[state=active]:text-bolt-elements-textPrimary',
+                          )}
+                        >
+                          Files
+                        </Tabs.Trigger>
+                        <Tabs.Trigger
+                          value="search"
+                          className={classNames(
+                            'h-full bg-transparent hover:bg-bolt-elements-background-depth-3 py-0.5 px-2 rounded-lg text-sm font-medium text-bolt-elements-textTertiary hover:text-bolt-elements-textPrimary data-[state=active]:text-bolt-elements-textPrimary',
+                          )}
+                        >
+                          Search
+                        </Tabs.Trigger>
+                        <Tabs.Trigger
+                          value="locks"
+                          className={classNames(
+                            'h-full bg-transparent hover:bg-bolt-elements-background-depth-3 py-0.5 px-2 rounded-lg text-sm font-medium text-bolt-elements-textTertiary hover:text-bolt-elements-textPrimary data-[state=active]:text-bolt-elements-textPrimary',
+                          )}
+                        >
+                          Locks
+                        </Tabs.Trigger>
+                      </Tabs.List>
+                    </div>
+                  </PanelHeader>
 
-                <Tabs.Content value="files" className="flex-grow overflow-auto focus-visible:outline-none">
-                  <FileTree
-                    className="h-full"
-                    files={files}
-                    hideRoot
-                    unsavedFiles={unsavedFiles}
-                    fileHistory={fileHistory}
-                    rootFolder={WORK_DIR}
-                    selectedFile={selectedFile}
-                    onFileSelect={onFileSelect}
-                  />
-                </Tabs.Content>
+                  <Tabs.Content value="files" className="flex-grow overflow-auto focus-visible:outline-none">
+                    <FileTree
+                      className="h-full"
+                      files={files}
+                      hideRoot
+                      unsavedFiles={unsavedFiles}
+                      fileHistory={fileHistory}
+                      rootFolder={WORK_DIR}
+                      selectedFile={selectedFile}
+                      onFileSelect={onFileSelect}
+                    />
+                  </Tabs.Content>
 
-                <Tabs.Content value="search" className="flex-grow overflow-auto focus-visible:outline-none">
-                  <Search />
-                </Tabs.Content>
-              </Tabs.Root>
+                  <Tabs.Content value="search" className="flex-grow overflow-auto focus-visible:outline-none">
+                    <Search />
+                  </Tabs.Content>
+
+                  <Tabs.Content value="locks" className="flex-grow overflow-auto focus-visible:outline-none">
+                    <LockManager />
+                  </Tabs.Content>
+                </Tabs.Root>
+              </div>
             </Panel>
 
             <PanelResizeHandle />

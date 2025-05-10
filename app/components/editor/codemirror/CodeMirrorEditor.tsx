@@ -21,6 +21,7 @@ import type { Theme } from '~/types/theme';
 import { classNames } from '~/utils/classNames';
 import { debounce } from '~/utils/debounce';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
+import { isFileLocked, getCurrentChatId } from '~/utils/fileLocks';
 import { BinaryContent } from './BinaryContent';
 import { getTheme, reconfigureTheme } from './cm-theme';
 import { indentKeyBinding } from './indent';
@@ -28,6 +29,9 @@ import { getLanguage } from './languages';
 import { createEnvMaskingExtension } from './EnvMasking';
 
 const logger = createScopedLogger('CodeMirrorEditor');
+
+// Create a module-level reference to the current document for use in tooltip functions
+let currentDocRef: EditorDocument | undefined;
 
 export interface EditorDocument {
   value: string;
@@ -158,6 +162,9 @@ export const CodeMirrorEditor = memo(
       onChangeRef.current = onChange;
       onSaveRef.current = onSave;
       docRef.current = doc;
+
+      // Update the module-level reference for use in tooltip functions
+      currentDocRef = doc;
       themeRef.current = theme;
     });
 
@@ -169,12 +176,25 @@ export const CodeMirrorEditor = memo(
       if (typeof doc.scroll?.line === 'number') {
         const line = doc.scroll.line;
         const column = doc.scroll.column ?? 0;
-        const linePos = viewRef.current.state.doc.line(line + 1).from + column;
-        viewRef.current.dispatch({
-          selection: { anchor: linePos },
-          scrollIntoView: true,
-        });
-        viewRef.current.focus();
+
+        try {
+          // Check if the line number is valid for the current document
+          const totalLines = viewRef.current.state.doc.lines;
+
+          // Only proceed if the line number is within the document's range
+          if (line < totalLines) {
+            const linePos = viewRef.current.state.doc.line(line + 1).from + column;
+            viewRef.current.dispatch({
+              selection: { anchor: linePos },
+              scrollIntoView: true,
+            });
+            viewRef.current.focus();
+          } else {
+            logger.warn(`Invalid line number ${line + 1} in ${totalLines}-line document`);
+          }
+        } catch (error) {
+          logger.error('Error scrolling to line:', error);
+        }
       } else if (typeof doc.scroll?.top === 'number' || typeof doc.scroll?.left === 'number') {
         viewRef.current.scrollDOM.scrollTo(doc.scroll.left ?? 0, doc.scroll.top ?? 0);
       }
@@ -278,6 +298,16 @@ export const CodeMirrorEditor = memo(
         autoFocusOnDocumentChange,
         doc as TextEditorDocument,
       );
+
+      // Check if the file is locked and update the editor state accordingly
+      const currentChatId = getCurrentChatId();
+      const { locked } = isFileLocked(doc.filePath, currentChatId);
+
+      if (locked) {
+        view.dispatch({
+          effects: [editableStateEffect.of(false)],
+        });
+      }
     }, [doc?.value, editable, doc?.filePath, autoFocusOnDocumentChange]);
 
     return (
@@ -419,8 +449,13 @@ function setEditorDocument(
     });
   }
 
+  // Check if the file is locked
+  const currentChatId = getCurrentChatId();
+  const { locked } = isFileLocked(doc.filePath, currentChatId);
+
+  // Set editable state based on both the editable prop and the file's lock state
   view.dispatch({
-    effects: [editableStateEffect.of(editable && !doc.isBinary)],
+    effects: [editableStateEffect.of(editable && !doc.isBinary && !locked)],
   });
 
   getLanguage(doc.filePath).then((languageSupport) => {
@@ -441,12 +476,25 @@ function setEditorDocument(
       if (typeof doc.scroll?.line === 'number') {
         const line = doc.scroll.line;
         const column = doc.scroll.column ?? 0;
-        const linePos = view.state.doc.line(line + 1).from + column;
-        view.dispatch({
-          selection: { anchor: linePos },
-          scrollIntoView: true,
-        });
-        view.focus();
+
+        try {
+          // Check if the line number is valid for the current document
+          const totalLines = view.state.doc.lines;
+
+          // Only proceed if the line number is within the document's range
+          if (line < totalLines) {
+            const linePos = view.state.doc.line(line + 1).from + column;
+            view.dispatch({
+              selection: { anchor: linePos },
+              scrollIntoView: true,
+            });
+            view.focus();
+          } else {
+            logger.warn(`Invalid line number ${line + 1} in ${totalLines}-line document`);
+          }
+        } catch (error) {
+          logger.error('Error scrolling to line:', error);
+        }
 
         return;
       }
@@ -477,6 +525,20 @@ function getReadOnlyTooltip(state: EditorState) {
     return [];
   }
 
+  // Get the current document from the module-level reference
+  const currentDoc = currentDocRef;
+  let tooltipMessage = 'Cannot edit file while AI response is being generated';
+
+  // If we have a current document, check if it's locked
+  if (currentDoc?.filePath) {
+    const currentChatId = getCurrentChatId();
+    const { locked } = isFileLocked(currentDoc.filePath, currentChatId);
+
+    if (locked) {
+      tooltipMessage = 'This file is locked and cannot be edited';
+    }
+  }
+
   return state.selection.ranges
     .filter((range) => {
       return range.empty;
@@ -490,7 +552,7 @@ function getReadOnlyTooltip(state: EditorState) {
         create: () => {
           const divElement = document.createElement('div');
           divElement.className = 'cm-readonly-tooltip';
-          divElement.textContent = 'Cannot edit file while AI response is being generated';
+          divElement.textContent = tooltipMessage;
 
           return { dom: divElement };
         },

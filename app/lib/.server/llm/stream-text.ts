@@ -42,6 +42,7 @@ export async function streamText(props: {
     env: serverEnv,
     options,
     apiKeys,
+    files,
     providerSettings,
     promptId,
     contextOptimization,
@@ -151,6 +152,30 @@ ${props.summary}
         }
       }
     }
+  }
+
+  const effectiveLockedFilePaths = new Set<string>();
+
+  if (files) {
+    for (const [filePath, fileDetails] of Object.entries(files)) {
+      if (fileDetails?.isLocked) {
+        effectiveLockedFilePaths.add(filePath);
+      }
+    }
+  }
+
+  if (effectiveLockedFilePaths.size > 0) {
+    const lockedFilesListString = Array.from(effectiveLockedFilePaths)
+      .map((filePath) => `- ${filePath}`)
+      .join('\n');
+    systemPrompt = `${systemPrompt}
+
+IMPORTANT: The following files are locked and MUST NOT be modified in any way. Do not suggest or make any changes to these files. You can proceed with the request but DO NOT make any changes to these files specifically:
+${lockedFilesListString}
+---
+`;
+  } else {
+    console.log('No locked files found from any source for prompt.');
   }
 
   logger.info(`Sending llm call to ${provider.name} with model ${modelDetails.name}`);

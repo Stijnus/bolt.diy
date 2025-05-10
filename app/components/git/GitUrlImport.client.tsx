@@ -31,7 +31,8 @@ const IGNORE_PATTERNS = [
   '**/npm-debug.log*',
   '**/yarn-debug.log*',
   '**/yarn-error.log*',
-  '**/*lock.json',
+
+  // Include this so npm install runs much faster '**/*lock.json',
   '**/*lock.yaml',
 ];
 

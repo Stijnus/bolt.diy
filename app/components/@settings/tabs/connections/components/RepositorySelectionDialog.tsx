@@ -4,10 +4,17 @@ import { toast } from 'react-toastify';
 import * as Dialog from '@radix-ui/react-dialog';
 import { classNames } from '~/utils/classNames';
 import { getLocalStorage } from '~/lib/persistence';
-import { motion } from 'framer-motion';
-import { formatSize } from '~/utils/formatSize';
-import { Input } from '~/components/ui/Input';
+import { motion, AnimatePresence } from 'framer-motion';
 import Cookies from 'js-cookie';
+
+// Import UI components
+import { Input, SearchInput, Badge, FilterChip } from '~/components/ui';
+
+// Import the components we've extracted
+import { RepositoryList } from './RepositoryList';
+import { StatsDialog } from './StatsDialog';
+import { GitHubAuthDialog } from './GitHubAuthDialog';
+import { RepositoryDialogContext } from './RepositoryDialogContext';
 
 interface GitHubTreeResponse {
   tree: Array<{
@@ -27,278 +34,6 @@ interface SearchFilters {
   language?: string;
   stars?: number;
   forks?: number;
-}
-
-interface StatsDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  stats: RepositoryStats;
-  isLargeRepo?: boolean;
-}
-
-function StatsDialog({ isOpen, onClose, onConfirm, stats, isLargeRepo }: StatsDialogProps) {
-  return (
-    <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999]" />
-        <div className="fixed inset-0 flex items-center justify-center z-[9999]">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className="w-[90vw] md:w-[500px]"
-          >
-            <Dialog.Content className="bg-white dark:bg-[#1E1E1E] rounded-lg border border-[#E5E5E5] dark:border-[#333333] shadow-xl">
-              <div className="p-6 space-y-4">
-                <div>
-                  <h3 className="text-lg font-medium text-[#111111] dark:text-white">Repository Overview</h3>
-                  <div className="mt-4 space-y-2">
-                    <p className="text-sm text-[#666666] dark:text-[#999999]">Repository Statistics:</p>
-                    <div className="space-y-2 text-sm text-[#111111] dark:text-white">
-                      <div className="flex items-center gap-2">
-                        <span className="i-ph:files text-purple-500 w-4 h-4" />
-                        <span>Total Files: {stats.totalFiles}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="i-ph:database text-purple-500 w-4 h-4" />
-                        <span>Total Size: {formatSize(stats.totalSize)}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="i-ph:code text-purple-500 w-4 h-4" />
-                        <span>
-                          Languages:{' '}
-                          {Object.entries(stats.languages)
-                            .sort(([, a], [, b]) => b - a)
-                            .slice(0, 3)
-                            .map(([lang, size]) => `${lang} (${formatSize(size)})`)
-                            .join(', ')}
-                        </span>
-                      </div>
-                      {stats.hasPackageJson && (
-                        <div className="flex items-center gap-2">
-                          <span className="i-ph:package text-purple-500 w-4 h-4" />
-                          <span>Has package.json</span>
-                        </div>
-                      )}
-                      {stats.hasDependencies && (
-                        <div className="flex items-center gap-2">
-                          <span className="i-ph:tree-structure text-purple-500 w-4 h-4" />
-                          <span>Has dependencies</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  {isLargeRepo && (
-                    <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-500/10 rounded-lg text-sm flex items-start gap-2">
-                      <span className="i-ph:warning text-yellow-600 dark:text-yellow-500 w-4 h-4 flex-shrink-0 mt-0.5" />
-                      <div className="text-yellow-800 dark:text-yellow-500">
-                        This repository is quite large ({formatSize(stats.totalSize)}). Importing it might take a while
-                        and could impact performance.
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="border-t border-[#E5E5E5] dark:border-[#333333] p-4 flex justify-end gap-3 bg-[#F9F9F9] dark:bg-[#252525] rounded-b-lg">
-                <button
-                  onClick={onClose}
-                  className="px-4 py-2 rounded-lg bg-[#F5F5F5] dark:bg-[#333333] text-[#666666] hover:text-[#111111] dark:text-[#999999] dark:hover:text-white transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={onConfirm}
-                  className="px-4 py-2 rounded-lg bg-purple-500 text-white hover:bg-purple-600 transition-colors"
-                >
-                  OK
-                </button>
-              </div>
-            </Dialog.Content>
-          </motion.div>
-        </div>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
-}
-
-function GitHubAuthDialog({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const [token, setToken] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [tokenType, setTokenType] = useState<'classic' | 'fine-grained'>('classic');
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!token.trim()) {
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const response = await fetch('https://api.github.com/user', {
-        headers: {
-          Accept: 'application/vnd.github.v3+json',
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const userData = (await response.json()) as GitHubUserResponse;
-
-        // Save connection data
-        const connectionData = {
-          token,
-          tokenType,
-          user: {
-            login: userData.login,
-            avatar_url: userData.avatar_url,
-            name: userData.name || userData.login,
-          },
-          connected_at: new Date().toISOString(),
-        };
-
-        localStorage.setItem('github_connection', JSON.stringify(connectionData));
-
-        // Set cookies for API requests
-        Cookies.set('githubToken', token);
-        Cookies.set('githubUsername', userData.login);
-        Cookies.set('git:github.com', JSON.stringify({ username: token, password: 'x-oauth-basic' }));
-
-        toast.success(`Successfully connected as ${userData.login}`);
-        onClose();
-      } else {
-        if (response.status === 401) {
-          toast.error('Invalid GitHub token. Please check and try again.');
-        } else {
-          toast.error(`GitHub API error: ${response.status} ${response.statusText}`);
-        }
-      }
-    } catch (error) {
-      console.error('Error connecting to GitHub:', error);
-      toast.error('Failed to connect to GitHub. Please try again.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999]" />
-        <div className="fixed inset-0 flex items-center justify-center z-[9999]">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-          >
-            <Dialog.Content className="bg-white dark:bg-[#1A1A1A] rounded-lg shadow-xl max-w-sm w-full mx-4 overflow-hidden">
-              <div className="p-4 space-y-3">
-                <h2 className="text-lg font-semibold text-[#111111] dark:text-white">Access Private Repositories</h2>
-
-                <p className="text-sm text-[#666666] dark:text-[#999999]">
-                  To access private repositories, you need to connect your GitHub account by providing a personal access
-                  token.
-                </p>
-
-                <div className="bg-[#F9F9F9] dark:bg-[#252525] p-4 rounded-lg space-y-3">
-                  <h3 className="text-base font-medium text-[#111111] dark:text-white">Connect with GitHub Token</h3>
-
-                  <form onSubmit={handleSubmit} className="space-y-3">
-                    <div>
-                      <label className="block text-sm text-[#666666] dark:text-[#999999] mb-1">
-                        GitHub Personal Access Token
-                      </label>
-                      <input
-                        type="password"
-                        value={token}
-                        onChange={(e) => setToken(e.target.value)}
-                        placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                        className="w-full px-3 py-1.5 rounded-lg border border-[#E5E5E5] dark:border-[#333333] bg-white dark:bg-[#1A1A1A] text-[#111111] dark:text-white placeholder-[#999999] text-sm"
-                      />
-                      <div className="mt-1 text-xs text-[#666666] dark:text-[#999999]">
-                        Get your token at{' '}
-                        <a
-                          href="https://github.com/settings/tokens"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-purple-500 hover:underline"
-                        >
-                          github.com/settings/tokens
-                        </a>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="block text-sm text-[#666666] dark:text-[#999999]">Token Type</label>
-                      <div className="flex gap-4">
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            checked={tokenType === 'classic'}
-                            onChange={() => setTokenType('classic')}
-                            className="w-3.5 h-3.5 accent-purple-500"
-                          />
-                          <span className="text-sm text-[#111111] dark:text-white">Classic</span>
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            checked={tokenType === 'fine-grained'}
-                            onChange={() => setTokenType('fine-grained')}
-                            className="w-3.5 h-3.5 accent-purple-500"
-                          />
-                          <span className="text-sm text-[#111111] dark:text-white">Fine-grained</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="w-full py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                    >
-                      {isSubmitting ? 'Connecting...' : 'Connect to GitHub'}
-                    </button>
-                  </form>
-                </div>
-
-                <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg space-y-1.5">
-                  <h3 className="text-sm text-amber-800 dark:text-amber-300 font-medium flex items-center gap-1.5">
-                    <span className="i-ph:warning-circle w-4 h-4" />
-                    Accessing Private Repositories
-                  </h3>
-                  <p className="text-xs text-amber-700 dark:text-amber-400">
-                    Important things to know about accessing private repositories:
-                  </p>
-                  <ul className="list-disc pl-4 text-xs text-amber-700 dark:text-amber-400 space-y-0.5">
-                    <li>You must be granted access to the repository by its owner</li>
-                    <li>Your GitHub token must have the 'repo' scope</li>
-                    <li>For organization repositories, you may need additional permissions</li>
-                    <li>No token can give you access to repositories you don't have permission for</li>
-                  </ul>
-                </div>
-              </div>
-
-              <div className="border-t border-[#E5E5E5] dark:border-[#333333] p-3 flex justify-end">
-                <Dialog.Close asChild>
-                  <button
-                    onClick={onClose}
-                    className="px-4 py-1.5 bg-[#F5F5F5] hover:bg-[#E5E5E5] dark:bg-[#252525] dark:hover:bg-[#333333] rounded-lg text-[#111111] dark:text-white transition-colors text-sm"
-                  >
-                    Close
-                  </button>
-                </Dialog.Close>
-              </div>
-            </Dialog.Content>
-          </motion.div>
-        </div>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
 }
 
 export function RepositorySelectionDialog({ isOpen, onClose, onSelect }: RepositorySelectionDialogProps) {
@@ -798,7 +533,7 @@ export function RepositorySelectionDialog({ isOpen, onClose, onSelect }: Reposit
   };
 
   return (
-    <>
+    <RepositoryDialogContext.Provider value={{ setShowAuthDialog }}>
       <Dialog.Root
         open={isOpen}
         onOpenChange={(open) => {
@@ -809,15 +544,26 @@ export function RepositorySelectionDialog({ isOpen, onClose, onSelect }: Reposit
       >
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50" />
-          <Dialog.Content className="fixed top-[50%] left-[50%] -translate-x-1/2 -translate-y-1/2 w-[90vw] md:w-[600px] max-h-[85vh] overflow-hidden bg-white dark:bg-[#1A1A1A] rounded-xl shadow-xl z-[51] border border-[#E5E5E5] dark:border-[#333333]">
-            <div className="p-4 border-b border-[#E5E5E5] dark:border-[#333333] flex items-center justify-between">
-              <Dialog.Title className="text-lg font-semibold text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark">
-                Import GitHub Repository
-              </Dialog.Title>
+          <Dialog.Content className="fixed top-[50%] left-[50%] -translate-x-1/2 -translate-y-1/2 w-[90vw] md:w-[650px] max-h-[85vh] overflow-hidden bg-white dark:bg-bolt-elements-background-depth-1 rounded-xl shadow-xl z-[51] border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark">
+            {/* Header */}
+            <div className="p-5 border-b border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-blue-500/10 flex items-center justify-center text-purple-500 shadow-sm">
+                  <span className="i-ph:github-logo w-5 h-5" />
+                </div>
+                <div>
+                  <Dialog.Title className="text-lg font-semibold text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark">
+                    Import GitHub Repository
+                  </Dialog.Title>
+                  <p className="text-sm text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark">
+                    Clone a repository from GitHub to your workspace
+                  </p>
+                </div>
+              </div>
               <Dialog.Close
                 onClick={handleClose}
                 className={classNames(
-                  'p-2 rounded-lg transition-all duration-200 ease-in-out',
+                  'p-2 rounded-lg transition-all duration-200 ease-in-out bg-transparent',
                   'text-bolt-elements-textTertiary hover:text-bolt-elements-textPrimary',
                   'dark:text-bolt-elements-textTertiary-dark dark:hover:text-bolt-elements-textPrimary-dark',
                   'hover:bg-bolt-elements-background-depth-2 dark:hover:bg-bolt-elements-background-depth-3',
@@ -829,148 +575,389 @@ export function RepositorySelectionDialog({ isOpen, onClose, onSelect }: Reposit
               </Dialog.Close>
             </div>
 
-            <div className="p-4 border-b border-[#E5E5E5] dark:border-[#333333] flex items-center justify-between">
+            {/* Auth Info Banner */}
+            <div className="p-4 border-b border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark flex items-center justify-between bg-gradient-to-r from-bolt-elements-background-depth-2 to-bolt-elements-background-depth-1 dark:from-bolt-elements-background-depth-3 dark:to-bolt-elements-background-depth-2">
               <div className="flex items-center gap-2">
                 <span className="i-ph:info text-blue-500" />
                 <span className="text-sm text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark">
                   Need to access private repositories?
                 </span>
               </div>
-              <button
+              <motion.button
                 onClick={() => setShowAuthDialog(true)}
-                className="px-3 py-1.5 rounded-lg bg-purple-500 hover:bg-purple-600 text-white text-sm transition-colors flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded-lg bg-purple-500 hover:bg-purple-600 text-white text-sm transition-colors flex items-center gap-1.5 shadow-sm"
+                whileHover={{ scale: 1.02, boxShadow: '0 4px 8px rgba(124, 58, 237, 0.2)' }}
+                whileTap={{ scale: 0.98 }}
               >
-                <span className="i-ph:key" />
+                <span className="i-ph:github-logo w-4 h-4" />
                 Connect GitHub Account
-              </button>
+              </motion.button>
             </div>
 
-            <div className="p-4">
-              <div className="flex gap-2 mb-4">
-                <TabButton active={activeTab === 'my-repos'} onClick={() => setActiveTab('my-repos')}>
-                  <span className="i-ph:book-bookmark" />
-                  My Repos
-                </TabButton>
-                <TabButton active={activeTab === 'search'} onClick={() => setActiveTab('search')}>
-                  <span className="i-ph:magnifying-glass" />
-                  Search
-                </TabButton>
-                <TabButton active={activeTab === 'url'} onClick={() => setActiveTab('url')}>
-                  <span className="i-ph:link" />
-                  URL
-                </TabButton>
+            {/* Content */}
+            <div className="p-5">
+              {/* Tabs */}
+              <div className="mb-6">
+                <div className="bg-[#f0f0f0] dark:bg-[#1e1e1e] rounded-lg overflow-hidden border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark">
+                  <div className="flex">
+                    <button
+                      onClick={() => setActiveTab('my-repos')}
+                      className={classNames(
+                        'flex-1 py-3 px-4 text-center text-sm font-medium transition-colors',
+                        activeTab === 'my-repos'
+                          ? 'bg-[#e6e6e6] dark:bg-[#2a2a2a] text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark'
+                          : 'bg-[#f0f0f0] dark:bg-[#1e1e1e] text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark hover:bg-[#e6e6e6] dark:hover:bg-[#2a2a2a]/50',
+                      )}
+                    >
+                      My Repos
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('search')}
+                      className={classNames(
+                        'flex-1 py-3 px-4 text-center text-sm font-medium transition-colors',
+                        activeTab === 'search'
+                          ? 'bg-[#e6e6e6] dark:bg-[#2a2a2a] text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark'
+                          : 'bg-[#f0f0f0] dark:bg-[#1e1e1e] text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark hover:bg-[#e6e6e6] dark:hover:bg-[#2a2a2a]/50',
+                      )}
+                    >
+                      Search
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('url')}
+                      className={classNames(
+                        'flex-1 py-3 px-4 text-center text-sm font-medium transition-colors',
+                        activeTab === 'url'
+                          ? 'bg-[#e6e6e6] dark:bg-[#2a2a2a] text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark'
+                          : 'bg-[#f0f0f0] dark:bg-[#1e1e1e] text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark hover:bg-[#e6e6e6] dark:hover:bg-[#2a2a2a]/50',
+                      )}
+                    >
+                      From URL
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {activeTab === 'url' ? (
-                <div className="space-y-4">
-                  <Input
-                    type="text"
-                    placeholder="Enter GitHub repository URL"
-                    value={customUrl}
-                    onChange={(e) => setCustomUrl(e.target.value)}
-                    className="w-full"
-                  />
+                <div className="space-y-5">
+                  <div className="bg-gradient-to-br from-bolt-elements-background-depth-1 to-bolt-elements-background-depth-1 dark:from-bolt-elements-background-depth-2-dark dark:to-bolt-elements-background-depth-2-dark p-5 rounded-xl border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark">
+                    <h3 className="text-base font-medium text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark mb-3 flex items-center gap-2">
+                      <span className="i-ph:link-simple w-4 h-4 text-purple-500" />
+                      Repository URL
+                    </h3>
 
-                  <button
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-purple-500">
+                        <span className="i-ph:github-logo w-5 h-5" />
+                      </div>
+                      <Input
+                        type="text"
+                        placeholder="Enter GitHub repository URL (e.g., https://github.com/user/repo)"
+                        value={customUrl}
+                        onChange={(e) => setCustomUrl(e.target.value)}
+                        className="w-full pl-10 py-3 border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      />
+                    </div>
+
+                    <div className="mt-3 text-xs text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark bg-white/50 dark:bg-bolt-elements-background-depth-4/50 p-3 rounded-lg border border-bolt-elements-borderColor/30 dark:border-bolt-elements-borderColor-dark/30 backdrop-blur-sm">
+                      <p className="flex items-start gap-2">
+                        <span className="i-ph:info w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-blue-500" />
+                        <span>
+                          You can paste any GitHub repository URL, including specific branches or tags.
+                          <br />
+                          <span className="text-bolt-elements-textTertiary dark:text-bolt-elements-textTertiary-dark">
+                            Example: https://github.com/username/repository/tree/branch-name
+                          </span>
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 text-sm text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark">
+                    <div className="h-px flex-grow bg-bolt-elements-borderColor dark:bg-bolt-elements-borderColor-dark"></div>
+                    <span>Ready to import?</span>
+                    <div className="h-px flex-grow bg-bolt-elements-borderColor dark:bg-bolt-elements-borderColor-dark"></div>
+                  </div>
+
+                  <motion.button
                     onClick={handleImport}
                     disabled={!customUrl}
                     className={classNames(
-                      'w-full h-10 px-4 py-2 rounded-lg text-white transition-all duration-200 flex items-center gap-2 justify-center',
+                      'w-full h-12 px-4 py-2 rounded-xl text-white transition-all duration-200 flex items-center gap-2 justify-center',
                       customUrl
-                        ? 'bg-purple-500 hover:bg-purple-600'
+                        ? 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 shadow-md'
                         : 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed',
                     )}
+                    whileHover={customUrl ? { scale: 1.02, boxShadow: '0 4px 12px rgba(124, 58, 237, 0.3)' } : {}}
+                    whileTap={customUrl ? { scale: 0.98 } : {}}
                   >
+                    <span className="i-ph:git-pull-request w-5 h-5" />
                     Import Repository
-                  </button>
+                  </motion.button>
                 </div>
               ) : (
                 <>
                   {activeTab === 'search' && (
-                    <div className="space-y-4 mb-4">
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          placeholder="Search repositories..."
-                          value={searchQuery}
-                          onChange={(e) => {
-                            setSearchQuery(e.target.value);
-                            handleSearch(e.target.value);
-                          }}
-                          className="flex-1 px-4 py-2 rounded-lg bg-[#F5F5F5] dark:bg-[#252525] border border-[#E5E5E5] dark:border-[#333333] text-bolt-elements-textPrimary"
-                        />
-                        <button
-                          onClick={() => setFilters({})}
-                          className="px-3 py-2 rounded-lg bg-[#F5F5F5] dark:bg-[#252525] text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary"
-                        >
-                          <span className="i-ph:funnel-simple" />
-                        </button>
+                    <div className="space-y-5 mb-5">
+                      <div className="bg-gradient-to-br from-blue-500/5 to-cyan-500/5 p-5 rounded-xl border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark">
+                        <h3 className="text-base font-medium text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark mb-3 flex items-center gap-2">
+                          <span className="i-ph:magnifying-glass w-4 h-4 text-blue-500" />
+                          Search GitHub
+                        </h3>
+
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <SearchInput
+                              placeholder="Search GitHub repositories..."
+                              value={searchQuery}
+                              onChange={(e) => {
+                                setSearchQuery(e.target.value);
+
+                                if (e.target.value.length > 2) {
+                                  handleSearch(e.target.value);
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && searchQuery.length > 2) {
+                                  handleSearch(searchQuery);
+                                }
+                              }}
+                              onClear={() => {
+                                setSearchQuery('');
+                                setSearchResults([]);
+                              }}
+                              iconClassName="text-blue-500"
+                              className="py-3 bg-white dark:bg-bolt-elements-background-depth-4 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+                              loading={isLoading}
+                            />
+                          </div>
+                          <motion.button
+                            onClick={() => setFilters({})}
+                            className="px-3 py-2 rounded-lg bg-white dark:bg-bolt-elements-background-depth-4 text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark shadow-sm"
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            title="Clear filters"
+                          >
+                            <span className="i-ph:funnel-simple w-4 h-4" />
+                          </motion.button>
+                        </div>
+
+                        <div className="mt-3">
+                          <div className="text-xs text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark mb-2">
+                            Filters
+                          </div>
+
+                          {/* Active filters */}
+                          {(filters.language || filters.stars || filters.forks) && (
+                            <div className="flex flex-wrap gap-2 mb-3">
+                              <AnimatePresence>
+                                {filters.language && (
+                                  <FilterChip
+                                    label="Language"
+                                    value={filters.language}
+                                    icon="i-ph:code"
+                                    active
+                                    onRemove={() => {
+                                      const newFilters = { ...filters };
+                                      delete newFilters.language;
+                                      setFilters(newFilters);
+
+                                      if (searchQuery.length > 2) {
+                                        handleSearch(searchQuery);
+                                      }
+                                    }}
+                                  />
+                                )}
+                                {filters.stars && (
+                                  <FilterChip
+                                    label="Stars"
+                                    value={`>${filters.stars}`}
+                                    icon="i-ph:star"
+                                    active
+                                    onRemove={() => {
+                                      const newFilters = { ...filters };
+                                      delete newFilters.stars;
+                                      setFilters(newFilters);
+
+                                      if (searchQuery.length > 2) {
+                                        handleSearch(searchQuery);
+                                      }
+                                    }}
+                                  />
+                                )}
+                                {filters.forks && (
+                                  <FilterChip
+                                    label="Forks"
+                                    value={`>${filters.forks}`}
+                                    icon="i-ph:git-fork"
+                                    active
+                                    onRemove={() => {
+                                      const newFilters = { ...filters };
+                                      delete newFilters.forks;
+                                      setFilters(newFilters);
+
+                                      if (searchQuery.length > 2) {
+                                        handleSearch(searchQuery);
+                                      }
+                                    }}
+                                  />
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="relative col-span-3 md:col-span-1">
+                              <div className="absolute left-2 top-1/2 -translate-y-1/2 text-bolt-elements-textTertiary dark:text-bolt-elements-textTertiary-dark">
+                                <span className="i-ph:code w-3.5 h-3.5" />
+                              </div>
+                              <input
+                                type="text"
+                                placeholder="Language (e.g., javascript)"
+                                value={filters.language || ''}
+                                onChange={(e) => {
+                                  setFilters({ ...filters, language: e.target.value });
+
+                                  if (searchQuery.length > 2) {
+                                    handleSearch(searchQuery);
+                                  }
+                                }}
+                                className="w-full pl-8 px-3 py-2 text-sm rounded-lg bg-white dark:bg-bolt-elements-background-depth-4 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            </div>
+                            <div className="relative">
+                              <div className="absolute left-2 top-1/2 -translate-y-1/2 text-bolt-elements-textTertiary dark:text-bolt-elements-textTertiary-dark">
+                                <span className="i-ph:star w-3.5 h-3.5" />
+                              </div>
+                              <input
+                                type="number"
+                                placeholder="Min stars"
+                                value={filters.stars || ''}
+                                onChange={(e) => handleFilterChange('stars', e.target.value)}
+                                className="w-full pl-8 px-3 py-2 text-sm rounded-lg bg-white dark:bg-bolt-elements-background-depth-4 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            </div>
+                            <div className="relative">
+                              <div className="absolute left-2 top-1/2 -translate-y-1/2 text-bolt-elements-textTertiary dark:text-bolt-elements-textTertiary-dark">
+                                <span className="i-ph:git-fork w-3.5 h-3.5" />
+                              </div>
+                              <input
+                                type="number"
+                                placeholder="Min forks"
+                                value={filters.forks || ''}
+                                onChange={(e) => handleFilterChange('forks', e.target.value)}
+                                className="w-full pl-8 px-3 py-2 text-sm rounded-lg bg-white dark:bg-bolt-elements-background-depth-4 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 text-xs text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark bg-white/50 dark:bg-bolt-elements-background-depth-4/50 p-3 rounded-lg border border-bolt-elements-borderColor/30 dark:border-bolt-elements-borderColor-dark/30 backdrop-blur-sm">
+                          <p className="flex items-start gap-2">
+                            <span className="i-ph:info w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-blue-500" />
+                            <span>
+                              Search for repositories by name, description, or topics. Use filters to narrow down
+                              results.
+                            </span>
+                          </p>
+                        </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          type="text"
-                          placeholder="Filter by language..."
-                          value={filters.language || ''}
-                          onChange={(e) => {
-                            setFilters({ ...filters, language: e.target.value });
-                            handleSearch(searchQuery);
-                          }}
-                          className="px-3 py-1.5 text-sm rounded-lg bg-[#F5F5F5] dark:bg-[#252525] border border-[#E5E5E5] dark:border-[#333333]"
-                        />
-                        <input
-                          type="number"
-                          placeholder="Min stars..."
-                          value={filters.stars || ''}
-                          onChange={(e) => handleFilterChange('stars', e.target.value)}
-                          className="px-3 py-1.5 text-sm rounded-lg bg-[#F5F5F5] dark:bg-[#252525] border border-[#E5E5E5] dark:border-[#333333]"
-                        />
-                      </div>
-                      <input
-                        type="number"
-                        placeholder="Min forks..."
-                        value={filters.forks || ''}
-                        onChange={(e) => handleFilterChange('forks', e.target.value)}
-                        className="px-3 py-1.5 text-sm rounded-lg bg-[#F5F5F5] dark:bg-[#252525] border border-[#E5E5E5] dark:border-[#333333]"
-                      />
                     </div>
                   )}
 
                   <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                     {selectedRepository ? (
-                      <div className="space-y-4">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setSelectedRepository(null)}
-                            className="p-1.5 rounded-lg hover:bg-[#F5F5F5] dark:hover:bg-[#252525]"
-                          >
-                            <span className="i-ph:arrow-left w-4 h-4" />
-                          </button>
-                          <h3 className="font-medium">{selectedRepository.full_name}</h3>
+                      <div className="space-y-5 bg-gradient-to-br from-purple-500/5 to-blue-500/5 p-5 rounded-xl border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <motion.button
+                              onClick={() => setSelectedRepository(null)}
+                              className="p-2 rounded-lg hover:bg-white dark:hover:bg-bolt-elements-background-depth-4 text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary shadow-sm"
+                              whileHover={{ scale: 1.1 }}
+                              whileTap={{ scale: 0.9 }}
+                            >
+                              <span className="i-ph:arrow-left w-4 h-4" />
+                            </motion.button>
+                            <div>
+                              <h3 className="font-medium text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark text-lg">
+                                {selectedRepository.name}
+                              </h3>
+                              <p className="text-xs text-bolt-elements-textTertiary dark:text-bolt-elements-textTertiary-dark flex items-center gap-1">
+                                <span className="i-ph:user w-3 h-3" />
+                                {selectedRepository.full_name.split('/')[0]}
+                              </p>
+                            </div>
+                          </div>
+
+                          {selectedRepository.private && (
+                            <Badge variant="primary" size="md" icon="i-ph:lock w-3 h-3">
+                              Private
+                            </Badge>
+                          )}
                         </div>
-                        <div className="space-y-2">
-                          <label className="text-sm text-bolt-elements-textSecondary">Select Branch</label>
+
+                        {selectedRepository.description && (
+                          <div className="bg-white/50 dark:bg-bolt-elements-background-depth-4/50 p-3 rounded-lg border border-bolt-elements-borderColor/30 dark:border-bolt-elements-borderColor-dark/30 backdrop-blur-sm">
+                            <p className="text-sm text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark">
+                              {selectedRepository.description}
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          {selectedRepository.language && (
+                            <Badge variant="subtle" size="md" icon="i-ph:code w-3 h-3">
+                              {selectedRepository.language}
+                            </Badge>
+                          )}
+                          <Badge variant="subtle" size="md" icon="i-ph:star w-3 h-3">
+                            {selectedRepository.stargazers_count.toLocaleString()}
+                          </Badge>
+                          {selectedRepository.forks_count > 0 && (
+                            <Badge variant="subtle" size="md" icon="i-ph:git-fork w-3 h-3">
+                              {selectedRepository.forks_count.toLocaleString()}
+                            </Badge>
+                          )}
+                        </div>
+
+                        <div className="pt-3 border-t border-bolt-elements-borderColor/30 dark:border-bolt-elements-borderColor-dark/30">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="i-ph:git-branch w-4 h-4 text-purple-500" />
+                            <label className="text-sm font-medium text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark">
+                              Select Branch
+                            </label>
+                          </div>
                           <select
                             value={selectedBranch}
                             onChange={(e) => setSelectedBranch(e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark focus:outline-none focus:ring-2 focus:ring-bolt-elements-borderColor dark:focus:ring-bolt-elements-borderColor-dark"
+                            className="w-full px-3 py-3 rounded-lg bg-white dark:bg-bolt-elements-background-depth-4 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm"
                           >
                             {branches.map((branch) => (
                               <option
                                 key={branch.name}
                                 value={branch.name}
-                                className="bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark"
+                                className="bg-white dark:bg-bolt-elements-background-depth-4 text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark"
                               >
                                 {branch.name} {branch.default ? '(default)' : ''}
                               </option>
                             ))}
                           </select>
-                          <button
-                            onClick={handleImport}
-                            className="w-full h-10 px-4 py-2 rounded-lg bg-purple-500 text-white hover:bg-purple-600 transition-all duration-200 flex items-center gap-2 justify-center"
-                          >
-                            Import Selected Branch
-                          </button>
                         </div>
+
+                        <div className="flex items-center gap-3 text-sm text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark">
+                          <div className="h-px flex-grow bg-bolt-elements-borderColor/30 dark:bg-bolt-elements-borderColor-dark/30"></div>
+                          <span>Ready to import?</span>
+                          <div className="h-px flex-grow bg-bolt-elements-borderColor/30 dark:bg-bolt-elements-borderColor-dark/30"></div>
+                        </div>
+
+                        <motion.button
+                          onClick={handleImport}
+                          className="w-full h-12 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white transition-all duration-200 flex items-center gap-2 justify-center shadow-md"
+                          whileHover={{ scale: 1.02, boxShadow: '0 4px 12px rgba(124, 58, 237, 0.3)' }}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          <span className="i-ph:git-pull-request w-5 h-5" />
+                          Import {selectedRepository.name}
+                        </motion.button>
                       </div>
                     ) : (
                       <RepositoryList
@@ -1001,91 +988,6 @@ export function RepositorySelectionDialog({ isOpen, onClose, onSelect }: Reposit
           />
         )}
       </Dialog.Root>
-    </>
-  );
-}
-
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={classNames(
-        'px-4 py-2 h-10 rounded-lg transition-all duration-200 flex items-center gap-2 min-w-[120px] justify-center',
-        active
-          ? 'bg-purple-500 text-white hover:bg-purple-600'
-          : 'bg-[#F5F5F5] dark:bg-[#252525] text-bolt-elements-textPrimary dark:text-white hover:bg-[#E5E5E5] dark:hover:bg-[#333333] border border-[#E5E5E5] dark:border-[#333333]',
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-function RepositoryList({
-  repos,
-  isLoading,
-  onSelect,
-  activeTab,
-}: {
-  repos: GitHubRepoInfo[];
-  isLoading: boolean;
-  onSelect: (repo: GitHubRepoInfo) => void;
-  activeTab: string;
-}) {
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-8 text-bolt-elements-textSecondary">
-        <span className="i-ph:spinner animate-spin mr-2" />
-        Loading repositories...
-      </div>
-    );
-  }
-
-  if (repos.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-8 text-bolt-elements-textSecondary">
-        <span className="i-ph:folder-simple-dashed w-12 h-12 mb-2 opacity-50" />
-        <p>{activeTab === 'my-repos' ? 'No repositories found' : 'Search for repositories'}</p>
-      </div>
-    );
-  }
-
-  return repos.map((repo) => <RepositoryCard key={repo.full_name} repo={repo} onSelect={() => onSelect(repo)} />);
-}
-
-function RepositoryCard({ repo, onSelect }: { repo: GitHubRepoInfo; onSelect: () => void }) {
-  return (
-    <div className="p-4 rounded-lg bg-bolt-elements-background-depth-1 border border-bolt-elements-borderColor hover:border-bolt-elements-borderColorActive/70 transition-colors">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className="i-ph:git-branch text-bolt-elements-textTertiary" />
-          <h3 className="font-medium text-bolt-elements-textPrimary dark:text-white">{repo.name}</h3>
-        </div>
-        <button
-          onClick={onSelect}
-          className="px-4 py-2 h-10 rounded-lg bg-purple-500 text-white hover:bg-purple-600 transition-all duration-200 flex items-center gap-2 min-w-[120px] justify-center"
-        >
-          <span className="i-ph:download-simple w-4 h-4" />
-          Import
-        </button>
-      </div>
-      {repo.description && <p className="text-sm text-bolt-elements-textSecondary mb-3">{repo.description}</p>}
-      <div className="flex items-center gap-4 text-sm text-bolt-elements-textTertiary">
-        {repo.language && (
-          <span className="flex items-center gap-1">
-            <span className="i-ph:code" />
-            {repo.language}
-          </span>
-        )}
-        <span className="flex items-center gap-1">
-          <span className="i-ph:star" />
-          {repo.stargazers_count.toLocaleString()}
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="i-ph:clock" />
-          {new Date(repo.updated_at).toLocaleDateString()}
-        </span>
-      </div>
-    </div>
+    </RepositoryDialogContext.Provider>
   );
 }

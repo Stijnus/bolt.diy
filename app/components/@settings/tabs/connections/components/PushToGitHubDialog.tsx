@@ -1,7 +1,10 @@
 import * as Dialog from '@radix-ui/react-dialog';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
 import { motion } from 'framer-motion';
+import { Octokit } from '@octokit/rest';
+
+// Internal imports
 import { getLocalStorage } from '~/lib/persistence';
 import { classNames } from '~/utils/classNames';
 import type { GitHubUserResponse } from '~/types/GitHub';
@@ -10,7 +13,9 @@ import { workbenchStore } from '~/lib/stores/workbench';
 import { extractRelativePath } from '~/utils/diff';
 import { formatSize } from '~/utils/formatSize';
 import type { FileMap, File } from '~/lib/stores/files';
-import { Octokit } from '@octokit/rest';
+
+// UI Components
+import { Badge, EmptyState, StatusIndicator, SearchInput } from '~/components/ui';
 
 interface PushToGitHubDialogProps {
   isOpen: boolean;
@@ -37,6 +42,8 @@ export function PushToGitHubDialog({ isOpen, onClose, onPush }: PushToGitHubDial
   const [isLoading, setIsLoading] = useState(false);
   const [user, setUser] = useState<GitHubUserResponse | null>(null);
   const [recentRepos, setRecentRepos] = useState<GitHubRepo[]>([]);
+  const [filteredRepos, setFilteredRepos] = useState<GitHubRepo[]>([]);
+  const [repoSearchQuery, setRepoSearchQuery] = useState('');
   const [isFetchingRepos, setIsFetchingRepos] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [createdRepoUrl, setCreatedRepoUrl] = useState('');
@@ -58,7 +65,34 @@ export function PushToGitHubDialog({ isOpen, onClose, onPush }: PushToGitHubDial
     }
   }, [isOpen]);
 
-  const fetchRecentRepos = async (token: string) => {
+  /*
+   * Filter repositories based on search query
+   * const debouncedSetRepoSearchQuery = useDebouncedCallback((value: string) => setRepoSearchQuery(value), 300);
+   */
+
+  useEffect(() => {
+    if (recentRepos.length === 0) {
+      setFilteredRepos([]);
+      return;
+    }
+
+    if (!repoSearchQuery.trim()) {
+      setFilteredRepos(recentRepos);
+      return;
+    }
+
+    const query = repoSearchQuery.toLowerCase().trim();
+    const filtered = recentRepos.filter(
+      (repo) =>
+        repo.name.toLowerCase().includes(query) ||
+        (repo.description && repo.description.toLowerCase().includes(query)) ||
+        (repo.language && repo.language.toLowerCase().includes(query)),
+    );
+
+    setFilteredRepos(filtered);
+  }, [recentRepos, repoSearchQuery]);
+
+  const fetchRecentRepos = useCallback(async (token: string) => {
     if (!token) {
       logStore.logError('No GitHub token available');
       toast.error('GitHub authentication required');
@@ -68,53 +102,89 @@ export function PushToGitHubDialog({ isOpen, onClose, onPush }: PushToGitHubDial
 
     try {
       setIsFetchingRepos(true);
+      console.log('Fetching GitHub repositories with token:', token.substring(0, 5) + '...');
 
-      const response = await fetch(
-        'https://api.github.com/user/repos?sort=updated&per_page=5&type=all&affiliation=owner,organization_member',
-        {
+      // Fetch ALL repos by paginating through all pages
+      let allRepos: GitHubRepo[] = [];
+      let page = 1;
+      let hasMore = true;
+
+      while (hasMore) {
+        const requestUrl = `https://api.github.com/user/repos?sort=updated&per_page=100&page=${page}&affiliation=owner,organization_member`;
+        const response = await fetch(requestUrl, {
           headers: {
             Accept: 'application/vnd.github.v3+json',
             Authorization: `Bearer ${token.trim()}`,
           },
-        },
-      );
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          let errorData: { message?: string } = {};
 
-        if (response.status === 401) {
-          toast.error('GitHub token expired. Please reconnect your account.');
-
-          // Clear invalid token
-          const connection = getLocalStorage('github_connection');
-
-          if (connection) {
-            localStorage.removeItem('github_connection');
-            setUser(null);
+          try {
+            errorData = await response.json();
+            console.error('Error response data:', errorData);
+          } catch (e) {
+            errorData = { message: 'Could not parse error response' };
+            console.error('Could not parse error response:', e);
           }
-        } else {
-          logStore.logError('Failed to fetch GitHub repositories', {
-            status: response.status,
-            statusText: response.statusText,
-            error: errorData,
-          });
-          toast.error(`Failed to fetch repositories: ${response.statusText}`);
+
+          if (response.status === 401) {
+            toast.error('GitHub token expired. Please reconnect your account.');
+
+            // Clear invalid token
+            const connection = getLocalStorage('github_connection');
+
+            if (connection) {
+              localStorage.removeItem('github_connection');
+              setUser(null);
+            }
+          } else if (response.status === 403 && response.headers.get('x-ratelimit-remaining') === '0') {
+            // Rate limit exceeded
+            const resetTime = response.headers.get('x-ratelimit-reset');
+            const resetDate = resetTime ? new Date(parseInt(resetTime) * 1000).toLocaleTimeString() : 'soon';
+            toast.error(`GitHub API rate limit exceeded. Limit resets at ${resetDate}`);
+          } else {
+            logStore.logError('Failed to fetch GitHub repositories', {
+              status: response.status,
+              statusText: response.statusText,
+              error: errorData,
+            });
+            toast.error(`Failed to fetch repositories: ${errorData.message || response.statusText}`);
+          }
+
+          return;
         }
 
-        return;
-      }
+        try {
+          const repos = (await response.json()) as GitHubRepo[];
+          allRepos = allRepos.concat(repos);
 
-      const repos = (await response.json()) as GitHubRepo[];
-      setRecentRepos(repos);
+          if (repos.length < 100) {
+            hasMore = false;
+          } else {
+            page += 1;
+          }
+        } catch (parseError) {
+          console.error('Error parsing JSON response:', parseError);
+          logStore.logError('Failed to parse GitHub repositories response', { parseError });
+          toast.error('Failed to parse repository data');
+          setRecentRepos([]);
+
+          return;
+        }
+      }
+      setRecentRepos(allRepos);
     } catch (error) {
+      console.error('Exception while fetching GitHub repositories:', error);
       logStore.logError('Failed to fetch GitHub repositories', { error });
       toast.error('Failed to fetch recent repositories');
     } finally {
       setIsFetchingRepos(false);
     }
-  };
+  }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     const connection = getLocalStorage('github_connection');
@@ -186,7 +256,7 @@ export function PushToGitHubDialog({ isOpen, onClose, onPush }: PushToGitHubDial
     } finally {
       setIsLoading(false);
     }
-  };
+  }
 
   const handleClose = () => {
     setRepoName('');
@@ -210,27 +280,46 @@ export function PushToGitHubDialog({ isOpen, onClose, onPush }: PushToGitHubDial
               transition={{ duration: 0.2 }}
               className="w-[90vw] md:w-[600px] max-h-[85vh] overflow-y-auto"
             >
-              <Dialog.Content className="bg-white dark:bg-[#1E1E1E] rounded-lg border border-[#E5E5E5] dark:border-[#333333] shadow-xl">
+              <Dialog.Content
+                className="bg-white dark:bg-bolt-elements-background-depth-1 rounded-lg border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark shadow-xl"
+                aria-describedby="success-dialog-description"
+              >
                 <div className="p-6 space-y-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-green-500">
-                      <div className="i-ph:check-circle w-5 h-5" />
-                      <h3 className="text-lg font-medium">Successfully pushed to GitHub</h3>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center text-green-500">
+                        <div className="i-ph:check-circle w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-medium text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark">
+                          Successfully pushed to GitHub
+                        </h3>
+                        <p
+                          id="success-dialog-description"
+                          className="text-sm text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark"
+                        >
+                          Your code is now available on GitHub
+                        </p>
+                      </div>
                     </div>
-                    <Dialog.Close
-                      onClick={handleClose}
-                      className="p-2 text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400"
-                    >
-                      <div className="i-ph:x w-5 h-5" />
+                    <Dialog.Close asChild>
+                      <button
+                        onClick={handleClose}
+                        className="p-2 rounded-lg transition-all duration-200 ease-in-out bg-transparent text-bolt-elements-textTertiary hover:text-bolt-elements-textPrimary dark:text-bolt-elements-textTertiary-dark dark:hover:text-bolt-elements-textPrimary-dark hover:bg-bolt-elements-background-depth-2 dark:hover:bg-bolt-elements-background-depth-3 focus:outline-none focus:ring-2 focus:ring-bolt-elements-borderColor dark:focus:ring-bolt-elements-borderColor-dark"
+                      >
+                        <span className="i-ph:x block w-5 h-5" aria-hidden="true" />
+                        <span className="sr-only">Close dialog</span>
+                      </button>
                     </Dialog.Close>
                   </div>
 
-                  <div className="bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 rounded-lg p-3 text-left">
-                    <p className="text-xs text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark mb-2">
+                  <div className="bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 rounded-lg p-4 text-left border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark">
+                    <p className="text-sm font-medium text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark mb-2 flex items-center gap-2">
+                      <span className="i-ph:github-logo w-4 h-4 text-purple-500" />
                       Repository URL
                     </p>
                     <div className="flex items-center gap-2">
-                      <code className="flex-1 text-sm bg-bolt-elements-background dark:bg-bolt-elements-background-dark px-3 py-2 rounded border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark font-mono">
+                      <code className="flex-1 text-sm bg-bolt-elements-background-depth-1 dark:bg-bolt-elements-background-depth-4 px-3 py-2 rounded border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark font-mono">
                         {createdRepoUrl}
                       </code>
                       <motion.button
@@ -238,27 +327,28 @@ export function PushToGitHubDialog({ isOpen, onClose, onPush }: PushToGitHubDial
                           navigator.clipboard.writeText(createdRepoUrl);
                           toast.success('URL copied to clipboard');
                         }}
-                        className="p-2 text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary dark:text-bolt-elements-textSecondary-dark dark:hover:text-bolt-elements-textPrimary-dark"
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
+                        className="p-2 text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary dark:text-bolt-elements-textSecondary-dark dark:hover:text-bolt-elements-textPrimary-dark bg-bolt-elements-background-depth-1 dark:bg-bolt-elements-background-depth-4 rounded-lg border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark"
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
                       >
                         <div className="i-ph:copy w-4 h-4" />
                       </motion.button>
                     </div>
                   </div>
 
-                  <div className="bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 rounded-lg p-3">
-                    <p className="text-xs text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark mb-2">
+                  <div className="bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 rounded-lg p-4 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark">
+                    <p className="text-sm font-medium text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark mb-2 flex items-center gap-2">
+                      <span className="i-ph:files w-4 h-4 text-purple-500" />
                       Pushed Files ({pushedFiles.length})
                     </p>
-                    <div className="max-h-[200px] overflow-y-auto custom-scrollbar">
+                    <div className="max-h-[200px] overflow-y-auto custom-scrollbar pr-2">
                       {pushedFiles.map((file) => (
                         <div
                           key={file.path}
-                          className="flex items-center justify-between py-1 text-sm text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark"
+                          className="flex items-center justify-between py-1.5 text-sm text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark border-b border-bolt-elements-borderColor/30 dark:border-bolt-elements-borderColor-dark/30 last:border-0"
                         >
-                          <span className="font-mono truncate flex-1">{file.path}</span>
-                          <span className="text-xs text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark ml-2">
+                          <span className="font-mono truncate flex-1 text-xs">{file.path}</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-bolt-elements-background-depth-3 dark:bg-bolt-elements-background-depth-4 text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark ml-2">
                             {formatSize(file.size)}
                           </span>
                         </div>
@@ -283,7 +373,7 @@ export function PushToGitHubDialog({ isOpen, onClose, onPush }: PushToGitHubDial
                         navigator.clipboard.writeText(createdRepoUrl);
                         toast.success('URL copied to clipboard');
                       }}
-                      className="px-4 py-2 rounded-lg bg-[#F5F5F5] dark:bg-[#1A1A1A] text-gray-600 dark:text-gray-400 hover:bg-[#E5E5E5] dark:hover:bg-[#252525] text-sm inline-flex items-center gap-2"
+                      className="px-4 py-2 rounded-lg bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark hover:bg-bolt-elements-background-depth-3 dark:hover:bg-bolt-elements-background-depth-4 text-sm inline-flex items-center gap-2 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark"
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >
@@ -292,7 +382,7 @@ export function PushToGitHubDialog({ isOpen, onClose, onPush }: PushToGitHubDial
                     </motion.button>
                     <motion.button
                       onClick={handleClose}
-                      className="px-4 py-2 rounded-lg bg-[#F5F5F5] dark:bg-[#1A1A1A] text-gray-600 dark:text-gray-400 hover:bg-[#E5E5E5] dark:hover:bg-[#252525] text-sm"
+                      className="px-4 py-2 rounded-lg bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark hover:bg-bolt-elements-background-depth-3 dark:hover:bg-bolt-elements-background-depth-4 text-sm border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark"
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >
@@ -321,29 +411,57 @@ export function PushToGitHubDialog({ isOpen, onClose, onPush }: PushToGitHubDial
               transition={{ duration: 0.2 }}
               className="w-[90vw] md:w-[500px]"
             >
-              <Dialog.Content className="bg-white dark:bg-[#0A0A0A] rounded-lg p-6 border border-[#E5E5E5] dark:border-[#1A1A1A] shadow-xl">
-                <div className="text-center space-y-4">
+              <Dialog.Content
+                className="bg-white dark:bg-bolt-elements-background-depth-1 rounded-lg p-6 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark shadow-xl"
+                aria-describedby="connection-required-description"
+              >
+                <div className="relative text-center space-y-4">
+                  <Dialog.Close asChild>
+                    <button
+                      onClick={handleClose}
+                      className="absolute right-0 top-0 p-2 rounded-lg transition-all duration-200 ease-in-out bg-transparent text-bolt-elements-textTertiary hover:text-bolt-elements-textPrimary dark:text-bolt-elements-textTertiary-dark dark:hover:text-bolt-elements-textPrimary-dark hover:bg-bolt-elements-background-depth-2 dark:hover:bg-bolt-elements-background-depth-3 focus:outline-none focus:ring-2 focus:ring-bolt-elements-borderColor dark:focus:ring-bolt-elements-borderColor-dark"
+                    >
+                      <span className="i-ph:x block w-5 h-5" aria-hidden="true" />
+                      <span className="sr-only">Close dialog</span>
+                    </button>
+                  </Dialog.Close>
                   <motion.div
                     initial={{ scale: 0.8 }}
                     animate={{ scale: 1 }}
                     transition={{ delay: 0.1 }}
-                    className="mx-auto w-12 h-12 rounded-xl bg-bolt-elements-background-depth-3 flex items-center justify-center text-purple-500"
+                    className="mx-auto w-16 h-16 rounded-xl bg-bolt-elements-background-depth-3 flex items-center justify-center text-purple-500"
                   >
-                    <div className="i-ph:github-logo w-6 h-6" />
+                    <div className="i-ph:github-logo w-8 h-8" />
                   </motion.div>
-                  <h3 className="text-lg font-medium text-gray-900 dark:text-white">GitHub Connection Required</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Please connect your GitHub account in Settings {'>'} Connections to push your code to GitHub.
-                  </p>
-                  <motion.button
-                    className="px-4 py-2 rounded-lg bg-purple-500 text-white text-sm hover:bg-purple-600 inline-flex items-center gap-2"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={handleClose}
+                  <h3 className="text-lg font-medium text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark">
+                    GitHub Connection Required
+                  </h3>
+                  <p
+                    id="connection-required-description"
+                    className="text-sm text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark max-w-md mx-auto"
                   >
-                    <div className="i-ph:x-circle" />
-                    Close
-                  </motion.button>
+                    To push your code to GitHub, you need to connect your GitHub account in Settings {'>'} Connections
+                    first.
+                  </p>
+                  <div className="pt-2 flex justify-center gap-3">
+                    <motion.button
+                      className="px-4 py-2 rounded-lg bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark text-sm hover:bg-bolt-elements-background-depth-3 dark:hover:bg-bolt-elements-background-depth-4 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={handleClose}
+                    >
+                      Close
+                    </motion.button>
+                    <motion.a
+                      href="/settings/connections"
+                      className="px-4 py-2 rounded-lg bg-purple-500 text-white text-sm hover:bg-purple-600 inline-flex items-center gap-2"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <div className="i-ph:gear" />
+                      Go to Settings
+                    </motion.a>
+                  </div>
                 </div>
               </Dialog.Content>
             </motion.div>
@@ -365,7 +483,10 @@ export function PushToGitHubDialog({ isOpen, onClose, onPush }: PushToGitHubDial
             transition={{ duration: 0.2 }}
             className="w-[90vw] md:w-[500px]"
           >
-            <Dialog.Content className="bg-white dark:bg-[#0A0A0A] rounded-lg border border-[#E5E5E5] dark:border-[#1A1A1A] shadow-xl">
+            <Dialog.Content
+              className="bg-white dark:bg-bolt-elements-background-depth-1 rounded-lg border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark shadow-xl"
+              aria-describedby="push-dialog-description"
+            >
               <div className="p-6">
                 <div className="flex items-center gap-4 mb-6">
                   <motion.div
@@ -374,130 +495,189 @@ export function PushToGitHubDialog({ isOpen, onClose, onPush }: PushToGitHubDial
                     transition={{ delay: 0.1 }}
                     className="w-10 h-10 rounded-xl bg-bolt-elements-background-depth-3 flex items-center justify-center text-purple-500"
                   >
-                    <div className="i-ph:git-branch w-5 h-5" />
+                    <div className="i-ph:github-logo w-5 h-5" />
                   </motion.div>
                   <div>
-                    <Dialog.Title className="text-lg font-medium text-gray-900 dark:text-white">
+                    <Dialog.Title className="text-lg font-medium text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark">
                       Push to GitHub
                     </Dialog.Title>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                    <p
+                      id="push-dialog-description"
+                      className="text-sm text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark"
+                    >
                       Push your code to a new or existing GitHub repository
                     </p>
                   </div>
-                  <Dialog.Close
-                    className="ml-auto p-2 text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400"
-                    onClick={handleClose}
-                  >
-                    <div className="i-ph:x w-5 h-5" />
+                  <Dialog.Close asChild>
+                    <button
+                      onClick={handleClose}
+                      className="ml-auto p-2 rounded-lg transition-all duration-200 ease-in-out bg-transparent text-bolt-elements-textTertiary hover:text-bolt-elements-textPrimary dark:text-bolt-elements-textTertiary-dark dark:hover:text-bolt-elements-textPrimary-dark hover:bg-bolt-elements-background-depth-2 dark:hover:bg-bolt-elements-background-depth-3 focus:outline-none focus:ring-2 focus:ring-bolt-elements-borderColor dark:focus:ring-bolt-elements-borderColor-dark"
+                    >
+                      <span className="i-ph:x block w-5 h-5" aria-hidden="true" />
+                      <span className="sr-only">Close dialog</span>
+                    </button>
                   </Dialog.Close>
                 </div>
 
-                <div className="flex items-center gap-3 mb-6 p-3 bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 rounded-lg">
-                  <img src={user.avatar_url} alt={user.login} className="w-10 h-10 rounded-full" />
+                <div className="flex items-center gap-3 mb-6 p-4 bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 rounded-lg border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark">
+                  <div className="relative">
+                    <img src={user.avatar_url} alt={user.login} className="w-10 h-10 rounded-full" />
+                    <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-purple-500 flex items-center justify-center text-white">
+                      <div className="i-ph:github-logo w-3 h-3" />
+                    </div>
+                  </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">{user.name || user.login}</p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">@{user.login}</p>
+                    <p className="text-sm font-medium text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark">
+                      {user.name || user.login}
+                    </p>
+                    <p className="text-sm text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark">
+                      @{user.login}
+                    </p>
                   </div>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="space-y-2">
-                    <label htmlFor="repoName" className="text-sm text-gray-600 dark:text-gray-400">
+                    <label
+                      htmlFor="repoName"
+                      className="text-sm text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark"
+                    >
                       Repository Name
                     </label>
-                    <input
-                      id="repoName"
-                      type="text"
-                      value={repoName}
-                      onChange={(e) => setRepoName(e.target.value)}
-                      placeholder="my-awesome-project"
-                      className="w-full px-4 py-2 rounded-lg bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 border border-[#E5E5E5] dark:border-[#1A1A1A] text-gray-900 dark:text-white placeholder-gray-400"
-                      required
-                    />
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-bolt-elements-textTertiary dark:text-bolt-elements-textTertiary-dark">
+                        <span className="i-ph:git-branch w-4 h-4" />
+                      </div>
+                      <input
+                        id="repoName"
+                        type="text"
+                        value={repoName}
+                        onChange={(e) => setRepoName(e.target.value)}
+                        placeholder="my-awesome-project"
+                        className="w-full pl-10 px-4 py-2 rounded-lg bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark placeholder-bolt-elements-textTertiary dark:placeholder-bolt-elements-textTertiary-dark focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        required
+                      />
+                    </div>
                   </div>
 
-                  {recentRepos.length > 0 && (
-                    <div className="space-y-2">
-                      <label className="text-sm text-gray-600 dark:text-gray-400">Recent Repositories</label>
-                      <div className="space-y-2">
-                        {recentRepos.map((repo) => (
-                          <motion.button
-                            key={repo.full_name}
-                            type="button"
-                            onClick={() => setRepoName(repo.name)}
-                            className="w-full p-3 text-left rounded-lg bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 hover:bg-bolt-elements-background-depth-3 dark:hover:bg-bolt-elements-background-depth-4 transition-colors group"
-                            whileHover={{ scale: 1.01 }}
-                            whileTap={{ scale: 0.99 }}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <div className="i-ph:git-branch w-4 h-4 text-purple-500" />
-                                <span className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-purple-500">
-                                  {repo.name}
-                                </span>
-                              </div>
-                              {repo.private && (
-                                <span className="text-xs px-2 py-1 rounded-full bg-purple-500/10 text-purple-500">
-                                  Private
-                                </span>
-                              )}
-                            </div>
-                            {repo.description && (
-                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
-                                {repo.description}
-                              </p>
-                            )}
-                            <div className="mt-2 flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
-                              {repo.language && (
-                                <span className="flex items-center gap-1">
-                                  <div className="i-ph:code w-3 h-3" />
-                                  {repo.language}
-                                </span>
-                              )}
-                              <span className="flex items-center gap-1">
-                                <div className="i-ph:star w-3 h-3" />
-                                {repo.stargazers_count.toLocaleString()}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <div className="i-ph:git-fork w-3 h-3" />
-                                {repo.forks_count.toLocaleString()}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <div className="i-ph:clock w-3 h-3" />
-                                {new Date(repo.updated_at).toLocaleDateString()}
-                              </span>
-                            </div>
-                          </motion.button>
-                        ))}
-                      </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark">
+                        Recent Repositories
+                      </label>
+                      <span className="text-xs text-bolt-elements-textTertiary dark:text-bolt-elements-textTertiary-dark">
+                        {filteredRepos.length} of {recentRepos.length}
+                      </span>
                     </div>
-                  )}
+
+                    <div className="mb-2">
+                      <SearchInput
+                        placeholder="Search repositories..."
+                        value={repoSearchQuery}
+                        onChange={(e) => setRepoSearchQuery(e.target.value)}
+                        onClear={() => setRepoSearchQuery('')}
+                        className="bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark text-sm"
+                      />
+                    </div>
+
+                    {recentRepos.length === 0 && !isFetchingRepos ? (
+                      <EmptyState
+                        icon="i-ph:github-logo"
+                        title="No repositories found"
+                        description="We couldn't find any repositories in your GitHub account."
+                        variant="compact"
+                      />
+                    ) : (
+                      <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
+                        {filteredRepos.length === 0 && repoSearchQuery.trim() !== '' ? (
+                          <EmptyState
+                            icon="i-ph:magnifying-glass"
+                            title="No matching repositories"
+                            description="Try a different search term"
+                            variant="compact"
+                          />
+                        ) : (
+                          filteredRepos.map((repo) => (
+                            <motion.button
+                              key={repo.full_name}
+                              type="button"
+                              onClick={() => setRepoName(repo.name)}
+                              className="w-full p-3 text-left rounded-lg bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 hover:bg-bolt-elements-background-depth-3 dark:hover:bg-bolt-elements-background-depth-4 transition-colors group border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark hover:border-purple-500/30"
+                              whileHover={{ scale: 1.01 }}
+                              whileTap={{ scale: 0.99 }}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className="i-ph:git-branch w-4 h-4 text-purple-500" />
+                                  <span className="text-sm font-medium text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark group-hover:text-purple-500">
+                                    {repo.name}
+                                  </span>
+                                </div>
+                                {repo.private && (
+                                  <Badge variant="primary" size="sm" icon="i-ph:lock w-3 h-3">
+                                    Private
+                                  </Badge>
+                                )}
+                              </div>
+                              {repo.description && (
+                                <p className="mt-1 text-xs text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark line-clamp-2">
+                                  {repo.description}
+                                </p>
+                              )}
+                              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                                {repo.language && (
+                                  <Badge variant="subtle" size="sm" icon="i-ph:code w-3 h-3">
+                                    {repo.language}
+                                  </Badge>
+                                )}
+                                <Badge variant="subtle" size="sm" icon="i-ph:star w-3 h-3">
+                                  {repo.stargazers_count.toLocaleString()}
+                                </Badge>
+                                <Badge variant="subtle" size="sm" icon="i-ph:git-fork w-3 h-3">
+                                  {repo.forks_count.toLocaleString()}
+                                </Badge>
+                                <Badge variant="subtle" size="sm" icon="i-ph:clock w-3 h-3">
+                                  {new Date(repo.updated_at).toLocaleDateString()}
+                                </Badge>
+                              </div>
+                            </motion.button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   {isFetchingRepos && (
-                    <div className="flex items-center justify-center py-4 text-gray-500 dark:text-gray-400">
-                      <div className="i-ph:spinner-gap-bold animate-spin w-4 h-4 mr-2" />
-                      Loading repositories...
+                    <div className="flex items-center justify-center py-4">
+                      <StatusIndicator status="loading" pulse={true} label="Loading repositories..." />
                     </div>
                   )}
-
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="private"
-                      checked={isPrivate}
-                      onChange={(e) => setIsPrivate(e.target.checked)}
-                      className="rounded border-[#E5E5E5] dark:border-[#1A1A1A] text-purple-500 focus:ring-purple-500 dark:bg-[#0A0A0A]"
-                    />
-                    <label htmlFor="private" className="text-sm text-gray-600 dark:text-gray-400">
-                      Make repository private
-                    </label>
+                  <div className="p-3 bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 rounded-lg border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="private"
+                        checked={isPrivate}
+                        onChange={(e) => setIsPrivate(e.target.checked)}
+                        className="rounded border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark text-purple-500 focus:ring-purple-500 dark:bg-bolt-elements-background-depth-3"
+                      />
+                      <label
+                        htmlFor="private"
+                        className="text-sm text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark"
+                      >
+                        Make repository private
+                      </label>
+                    </div>
+                    <p className="text-xs text-bolt-elements-textTertiary dark:text-bolt-elements-textTertiary-dark mt-2 ml-6">
+                      Private repositories are only visible to you and people you share them with
+                    </p>
                   </div>
 
                   <div className="pt-4 flex gap-2">
                     <motion.button
                       type="button"
                       onClick={handleClose}
-                      className="px-4 py-2 rounded-lg bg-[#F5F5F5] dark:bg-[#1A1A1A] text-gray-600 dark:text-gray-400 hover:bg-[#E5E5E5] dark:hover:bg-[#252525] text-sm"
+                      className="px-4 py-2 rounded-lg bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 text-bolt-elements-textSecondary dark:text-bolt-elements-textSecondary-dark hover:bg-bolt-elements-background-depth-3 dark:hover:bg-bolt-elements-background-depth-4 text-sm border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark"
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >
@@ -515,12 +695,12 @@ export function PushToGitHubDialog({ isOpen, onClose, onPush }: PushToGitHubDial
                     >
                       {isLoading ? (
                         <>
-                          <div className="i-ph:spinner-gap-bold animate-spin w-4 h-4" />
+                          <div className="i-ph:spinner-gap animate-spin w-4 h-4" />
                           Pushing...
                         </>
                       ) : (
                         <>
-                          <div className="i-ph:git-branch w-4 h-4" />
+                          <div className="i-ph:github-logo w-4 h-4" />
                           Push to GitHub
                         </>
                       )}

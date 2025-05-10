@@ -167,7 +167,14 @@ export function Search() {
 
   const handleResultClick = (filePath: string, line?: number) => {
     workbenchStore.setSelectedFile(filePath);
-    workbenchStore.setCurrentDocumentScrollPosition({ line, column: 0 });
+
+    /*
+     * Adjust line number to be 0-based if it's defined
+     * The search results use 1-based line numbers, but CodeMirrorEditor expects 0-based
+     */
+    const adjustedLine = typeof line === 'number' ? Math.max(0, line - 1) : undefined;
+
+    workbenchStore.setCurrentDocumentScrollPosition({ line: adjustedLine, column: 0 });
   };
 
   return (
