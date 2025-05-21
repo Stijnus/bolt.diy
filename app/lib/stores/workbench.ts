@@ -79,6 +79,9 @@ export class WorkbenchStore {
   #isInitializing = false;
   #lastSyncTimestamp = 0;
 
+  // State for conflict resolution dialog
+  conflictResolutionState: WritableAtom<{ filePath: string; resolvePromise: (resolution: 'local' | 'remote' | 'cancel') => void; } | null> = atom(null);
+
   isSyncEnabled = computed([this.currentSession, this.syncSettings], (session, settings) => {
     if (!session?.projectName) {
       return settings.defaultSyncEnabled;
@@ -637,29 +640,40 @@ export class WorkbenchStore {
 
               // Only prompt if we have a genuine conflict
               if (!isInitialSync && isKnownFile && hasLocalChanges && hasRemoteChanges) {
-                if (this.syncSettings.get().syncMode === 'ask') {
-                  const userChoice = confirm(
-                    `File "${relativePath}" has changed both locally and in the sync folder.\n\n` +
-                      'Do you want to update it with your local changes?\n\n' +
-                      'Click OK to update, Cancel to keep the sync folder version.',
-                  );
+                const currentSyncMode = this.syncSettings.get().syncMode;
+                if (currentSyncMode === 'ask') {
+                  // Use the new dialog flow
+                  const userChoice = await new Promise<'local' | 'remote' | 'cancel'>((resolve) => {
+                    this.conflictResolutionState.set({ filePath: relativePath, resolvePromise: resolve });
+                  });
 
-                  if (!userChoice) {
-                    shouldWrite = false;
-                    console.log(`User chose to keep sync folder version: ${relativePath}`);
-                  } else {
+                  this.conflictResolutionState.set(null); // Clear state after choice
+
+                  if (userChoice === 'local') {
+                    shouldWrite = true;
                     changedFiles.add(relativePath);
                     console.log(`User chose to update with local changes: ${relativePath}`);
+                  } else if (userChoice === 'remote') {
+                    shouldWrite = false;
+                    console.log(`User chose to keep remote version: ${relativePath}`);
+                  } else { // 'cancel'
+                    shouldWrite = false; // Treat cancel as skip for this file
+                    console.log(`User cancelled, keeping remote version for: ${relativePath}`);
                   }
-                } else if (this.syncSettings.get().syncMode === 'skip') {
+                } else if (currentSyncMode === 'skip') {
                   shouldWrite = false;
-                  console.log(`Skipping changed file: ${relativePath}`);
-                } else {
+                  console.log(`Skipping changed file due to 'skip' mode: ${relativePath}`);
+                } else { // 'overwrite'
+                  shouldWrite = true;
                   changedFiles.add(relativePath);
+                  console.log(`Overwriting file due to 'overwrite' mode: ${relativePath}`);
                 }
               } else {
-                // For initial sync or non-conflicting changes, just update
-                changedFiles.add(relativePath);
+                // For initial sync or non-conflicting changes, or if not 'ask' mode, just update if local content is different
+                if (dirent.content !== existingContent) {
+                  changedFiles.add(relativePath);
+                }
+                // shouldWrite remains true by default if not a conflict or conflict handled by overwrite
               }
             }
 

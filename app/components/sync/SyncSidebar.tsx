@@ -1,10 +1,12 @@
 import { motion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, Fragment } from 'react';
 import { useStore } from '@nanostores/react';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { toast } from 'react-toastify';
 import { classNames } from '~/utils/classNames';
+import { ConflictResolutionDialog } from '~/components/ui/ConflictResolutionDialog';
+import { SyncHistoryList } from './SyncHistoryList';
 
 const sidebarVariants: Variants = {
   open: {
@@ -34,6 +36,8 @@ export function SyncSidebar() {
   const syncStatus = useStore(workbenchStore.syncStatus);
   const syncSettings = useStore(workbenchStore.syncSettings);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
+  const [newPattern, setNewPattern] = useState('');
+  const syncHistory = useStore(workbenchStore.syncHistory);
 
   useEffect(() => {
     const handleMouseMoveWindow = (e: MouseEvent) => {
@@ -110,9 +114,33 @@ export function SyncSidebar() {
     });
   };
 
+  const handleAddPattern = () => {
+    if (newPattern.trim() === '') {
+      toast.error('Pattern cannot be empty');
+      return;
+    }
+    if (syncSettings.excludePatterns.includes(newPattern.trim())) {
+      toast.warn('Pattern already exists');
+      return;
+    }
+    const updatedPatterns = [...syncSettings.excludePatterns, newPattern.trim()];
+    handleSaveSettings({ excludePatterns: updatedPatterns });
+    setNewPattern('');
+    toast.success('Exclude pattern added');
+  };
+
+  const handleRemovePattern = (patternToRemove: string) => {
+    const updatedPatterns = syncSettings.excludePatterns.filter(p => p !== patternToRemove);
+    handleSaveSettings({ excludePatterns: updatedPatterns });
+    toast.success('Exclude pattern removed');
+  };
+
+  const conflictState = useStore(workbenchStore.conflictResolutionState);
+
   return (
-    <motion.div
-      ref={sidebarRef}
+    <>
+      <motion.div
+        ref={sidebarRef}
       className={classNames(
         'fixed right-0 top-0 h-full w-[300px] z-50',
         'bg-white dark:bg-gray-950',
@@ -208,6 +236,64 @@ export function SyncSidebar() {
                   className="w-full bg-gray-50 dark:bg-gray-900 px-3 py-2 rounded-lg text-sm text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-800"
                 />
               </div>
+
+              {/* Sync Mode Selector */}
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <div className="i-ph:git-merge-duotone" />
+                  <span>Sync Mode</span>
+                </label>
+                <select
+                  value={syncSettings.syncMode}
+                  onChange={(e) => handleSaveSettings({ syncMode: e.target.value as any })}
+                  className="w-full bg-gray-50 dark:bg-gray-900 px-3 py-2 rounded-lg text-sm text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-800"
+                >
+                  <option value="ask">Ask</option>
+                  <option value="overwrite">Overwrite</option>
+                  <option value="skip">Skip</option>
+                </select>
+              </div>
+
+              {/* Exclude Patterns Section */}
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <div className="i-ph:eye-slash-duotone" />
+                  <span>Exclude Patterns</span>
+                </label>
+                <div className="space-y-2">
+                  {syncSettings.excludePatterns.map((pattern) => (
+                    <div key={pattern} className="flex items-center justify-between bg-gray-50 dark:bg-gray-900 px-3 py-2 rounded-lg text-sm">
+                      <span className="text-gray-900 dark:text-gray-100 break-all">{pattern}</span>
+                      <button
+                        onClick={() => handleRemovePattern(pattern)}
+                        className="p-1 text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 transition-colors"
+                        aria-label="Remove pattern"
+                      >
+                        <div className="i-ph:trash-duotone h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                  {syncSettings.excludePatterns.length === 0 && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 italic">No exclude patterns defined.</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={newPattern}
+                    onChange={(e) => setNewPattern(e.target.value)}
+                    placeholder="e.g., node_modules/** or *.log"
+                    className="flex-1 bg-gray-50 dark:bg-gray-900 px-3 py-2 rounded-lg text-sm text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-800 focus:ring-purple-500 focus:border-purple-500"
+                  />
+                  <button
+                    onClick={handleAddPattern}
+                    className="p-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors flex items-center justify-center"
+                    aria-label="Add pattern"
+                  >
+                    <div className="i-ph:plus-circle-duotone h-5 w-5" />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -242,6 +328,13 @@ export function SyncSidebar() {
               </div>
             </div>
           )}
+
+          {/* Sync History Section */}
+          {syncStatus.folderName && (
+            <div className="space-y-3 border-t border-gray-100 dark:border-gray-800 pt-4">
+              <SyncHistoryList history={syncHistory} />
+            </div>
+          )}
         </div>
 
         {/* Footer with Sync Button */}
@@ -261,5 +354,22 @@ export function SyncSidebar() {
         </div>
       </div>
     </motion.div>
+
+      {/* Conflict Resolution Dialog */}
+      {conflictState && (
+        <ConflictResolutionDialog
+          isOpen={conflictState !== null}
+          filePath={conflictState.filePath}
+          onResolve={(resolution) => {
+            conflictState.resolvePromise(resolution);
+            // State is cleared in workbench.ts after promise resolves
+          }}
+          onClose={() => {
+            conflictState.resolvePromise('cancel');
+            // State is cleared in workbench.ts after promise resolves
+          }}
+        />
+      )}
+    </>
   );
 }
