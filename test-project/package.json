@@ -1,0 +1,8 @@
+{
+  "name": "test-cf-fail-build",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "echo 'Simulating build failure...' && exit 1"
+  },
+  "devDependencies": {}
+}
