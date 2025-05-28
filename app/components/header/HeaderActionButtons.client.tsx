@@ -3,14 +3,18 @@ import useViewport from '~/lib/hooks';
 import { chatStore } from '~/lib/stores/chat';
 import { netlifyConnection } from '~/lib/stores/netlify';
 import { vercelConnection } from '~/lib/stores/vercel';
+import { cloudflareConnection } from '~/lib/stores/cloudflare'; // Added
 import { workbenchStore } from '~/lib/stores/workbench';
 import { classNames } from '~/utils/classNames';
 import { useEffect, useRef, useState } from 'react';
 import { streamingState } from '~/lib/stores/streaming';
 import { NetlifyDeploymentLink } from '~/components/chat/NetlifyDeploymentLink.client';
 import { VercelDeploymentLink } from '~/components/chat/VercelDeploymentLink.client';
+// CloudflareDeploymentLink will be created in Part 2, importing it preemptively
+import { CloudflareDeploymentLink } from '~/components/chat/CloudflareDeploymentLink.client'; // Added
 import { useVercelDeploy } from '~/components/deploy/VercelDeploy.client';
 import { useNetlifyDeploy } from '~/components/deploy/NetlifyDeploy.client';
+import { useCloudflareDeploy } from '~/components/deploy/CloudflareDeploy.client'; // Added
 
 interface HeaderActionButtonsProps {}
 
@@ -19,11 +23,12 @@ export function HeaderActionButtons({}: HeaderActionButtonsProps) {
   const { showChat } = useStore(chatStore);
   const netlifyConn = useStore(netlifyConnection);
   const vercelConn = useStore(vercelConnection);
+  const cfConn = useStore(cloudflareConnection); // Added
   const [activePreviewIndex] = useState(0);
   const previews = useStore(workbenchStore.previews);
   const activePreview = previews[activePreviewIndex];
   const [isDeploying, setIsDeploying] = useState(false);
-  const [deployingTo, setDeployingTo] = useState<'netlify' | 'vercel' | null>(null);
+  const [deployingTo, setDeployingTo] = useState<'netlify' | 'vercel' | 'cloudflare' | null>(null); // Added cloudflare
   const isSmallViewport = useViewport(1024);
   const canHideChat = showWorkbench || !showChat;
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -31,6 +36,7 @@ export function HeaderActionButtons({}: HeaderActionButtonsProps) {
   const isStreaming = useStore(streamingState);
   const { handleVercelDeploy } = useVercelDeploy();
   const { handleNetlifyDeploy } = useNetlifyDeploy();
+  const { handleCloudflareDeploy } = useCloudflareDeploy(); // Added
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -61,6 +67,18 @@ export function HeaderActionButtons({}: HeaderActionButtonsProps) {
 
     try {
       await handleNetlifyDeploy();
+    } finally {
+      setIsDeploying(false);
+      setDeployingTo(null);
+    }
+  };
+
+  const onCloudflareDeploy = async () => { // Added
+    setIsDeploying(true);
+    setDeployingTo('cloudflare');
+
+    try {
+      await handleCloudflareDeploy();
     } finally {
       setIsDeploying(false);
       setDeployingTo(null);
@@ -101,6 +119,7 @@ export function HeaderActionButtons({}: HeaderActionButtonsProps) {
                 width="24"
                 crossOrigin="anonymous"
                 src="https://cdn.simpleicons.org/netlify"
+                alt="netlify"
               />
               <span className="mx-auto">
                 {!netlifyConn.user ? 'No Netlify Account Connected' : 'Deploy to Netlify'}
@@ -127,21 +146,26 @@ export function HeaderActionButtons({}: HeaderActionButtonsProps) {
               <span className="mx-auto">{!vercelConn.user ? 'No Vercel Account Connected' : 'Deploy to Vercel'}</span>
               {vercelConn.user && <VercelDeploymentLink />}
             </Button>
+            {/* Cloudflare Deploy Button - Added */}
             <Button
-              active={false}
-              disabled
-              className="flex items-center w-full rounded-md px-4 py-2 text-sm text-bolt-elements-textTertiary gap-2"
+              active
+              onClick={() => {
+                onCloudflareDeploy();
+                setIsDropdownOpen(false);
+              }}
+              disabled={isDeploying || !activePreview || !cfConn.token || !cfConn.accountId}
+              className="flex items-center w-full px-4 py-2 text-sm text-bolt-elements-textPrimary hover:bg-bolt-elements-item-backgroundActive gap-2 rounded-md group relative"
             >
-              <span className="sr-only">Coming Soon</span>
               <img
-                className="w-5 h-5"
+                className="w-5 h-5" // Simpleicons uses currentColor by default, or specify color in URL
                 height="24"
                 width="24"
                 crossOrigin="anonymous"
-                src="https://cdn.simpleicons.org/cloudflare"
+                src="https://cdn.simpleicons.org/cloudflare/F38020" // Cloudflare Orange
                 alt="cloudflare"
               />
-              <span className="mx-auto">Deploy to Cloudflare (Coming Soon)</span>
+              <span className="mx-auto">{(!cfConn.token || !cfConn.accountId) ? 'No Cloudflare Account Connected' : 'Deploy to Cloudflare'}</span>
+              {(cfConn.token && cfConn.accountId) && <CloudflareDeploymentLink />}
             </Button>
           </div>
         )}
@@ -199,6 +223,7 @@ function Button({ active = false, disabled = false, children, onClick, className
         className,
       )}
       onClick={onClick}
+      disabled={disabled} // Ensure disabled prop is passed to the button element
     >
       {children}
     </button>
