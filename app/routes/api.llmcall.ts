@@ -3,7 +3,8 @@ import { streamText } from '~/lib/.server/llm/stream-text';
 import type { IProviderSetting, ProviderInfo } from '~/types/model';
 import { generateText } from 'ai';
 import { PROVIDER_LIST } from '~/utils/constants';
-import { MAX_TOKENS, PROVIDER_COMPLETION_LIMITS, isReasoningModel } from '~/lib/.server/llm/constants';
+import { MAX_TOKENS_FALLBACK, PROVIDER_COMPLETION_LIMITS, isReasoningModel } from '~/lib/.server/llm/constants';
+import { ModelCapabilityService } from '~/lib/.server/llm/model-capability-service';
 import { LLMManager } from '~/lib/modules/llm/manager';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/cookies';
@@ -24,44 +25,79 @@ async function getModelList(options: {
 
 const logger = createScopedLogger('api.llmcall');
 
-function getCompletionTokenLimit(modelDetails: ModelInfo): number {
-  // 1. If model specifies completion tokens, use that
-  if (modelDetails.maxCompletionTokens && modelDetails.maxCompletionTokens > 0) {
-    return modelDetails.maxCompletionTokens;
+async function getCompletionTokenLimit(
+  modelDetails: ModelInfo,
+  options: {
+    apiKeys?: Record<string, string>;
+    providerSettings?: Record<string, IProviderSetting>;
+    serverEnv?: Record<string, string>;
+  },
+): Promise<number> {
+  try {
+    // Use ModelCapabilityService for dynamic, accurate limits
+    const capabilityService = ModelCapabilityService.getInstance();
+    const limits = await capabilityService.getSafeTokenLimits(modelDetails, options);
+
+    return limits.maxCompletionTokens;
+  } catch (error) {
+    logger.warn(`Failed to get dynamic token limits for ${modelDetails.name}, using fallback:`, error);
+
+    // Fallback to legacy logic with conservative limits
+    if (modelDetails.maxCompletionTokens && modelDetails.maxCompletionTokens > 0) {
+      return modelDetails.maxCompletionTokens;
+    }
+
+    const providerDefault = PROVIDER_COMPLETION_LIMITS[modelDetails.provider];
+
+    if (providerDefault) {
+      return providerDefault;
+    }
+
+    return Math.min(MAX_TOKENS_FALLBACK, 8192); // Very conservative fallback
   }
-
-  // 2. Use provider-specific default
-  const providerDefault = PROVIDER_COMPLETION_LIMITS[modelDetails.provider];
-
-  if (providerDefault) {
-    return providerDefault;
-  }
-
-  // 3. Final fallback to MAX_TOKENS, but cap at reasonable limit for safety
-  return Math.min(MAX_TOKENS, 16384);
 }
 
-function validateTokenLimits(modelDetails: ModelInfo, requestedTokens: number): { valid: boolean; error?: string } {
-  const modelMaxTokens = modelDetails.maxTokenAllowed || 128000;
-  const maxCompletionTokens = getCompletionTokenLimit(modelDetails);
+async function validateTokenLimits(
+  modelDetails: ModelInfo,
+  requestedTokens: number,
+  options: {
+    apiKeys?: Record<string, string>;
+    providerSettings?: Record<string, IProviderSetting>;
+    serverEnv?: Record<string, string>;
+  },
+): Promise<{ valid: boolean; error?: string }> {
+  try {
+    // Use ModelCapabilityService for dynamic validation
+    const capabilityService = ModelCapabilityService.getInstance();
+    const validation = await capabilityService.validateTokenRequest(modelDetails, requestedTokens, options);
 
-  // Check against model's context window
-  if (requestedTokens > modelMaxTokens) {
     return {
-      valid: false,
-      error: `Requested tokens (${requestedTokens}) exceed model's context window (${modelMaxTokens}). Please reduce your request size.`,
+      valid: validation.valid,
+      error: validation.error,
     };
-  }
+  } catch (error) {
+    logger.warn(`Failed to validate token limits for ${modelDetails.name}, using fallback validation:`, error);
 
-  // Check against completion token limits
-  if (requestedTokens > maxCompletionTokens) {
-    return {
-      valid: false,
-      error: `Requested tokens (${requestedTokens}) exceed model's completion limit (${maxCompletionTokens}). Consider using a model with higher token limits.`,
-    };
-  }
+    // Fallback validation
+    const modelMaxTokens = modelDetails.maxTokenAllowed || 128000;
+    const maxCompletionTokens = await getCompletionTokenLimit(modelDetails, options);
 
-  return { valid: true };
+    if (requestedTokens > modelMaxTokens) {
+      return {
+        valid: false,
+        error: `Requested tokens (${requestedTokens}) exceed model's context window (${modelMaxTokens}). Please reduce your request size.`,
+      };
+    }
+
+    if (requestedTokens > maxCompletionTokens) {
+      return {
+        valid: false,
+        error: `Requested tokens (${requestedTokens}) exceed model's completion limit (${maxCompletionTokens}). Consider using a model with higher token limits.`,
+      };
+    }
+
+    return { valid: true };
+  }
 }
 
 async function llmCallAction({ context, request }: ActionFunctionArgs) {
@@ -158,10 +194,20 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
         throw new Error('Model not found');
       }
 
-      const dynamicMaxTokens = modelDetails ? getCompletionTokenLimit(modelDetails) : Math.min(MAX_TOKENS, 16384);
+      const dynamicMaxTokens = modelDetails
+        ? await getCompletionTokenLimit(modelDetails, {
+            apiKeys,
+            providerSettings,
+            serverEnv: context.cloudflare?.env as any,
+          })
+        : Math.min(MAX_TOKENS_FALLBACK, 8192);
 
       // Validate token limits before making API request
-      const validation = validateTokenLimits(modelDetails, dynamicMaxTokens);
+      const validation = await validateTokenLimits(modelDetails, dynamicMaxTokens, {
+        apiKeys,
+        providerSettings,
+        serverEnv: context.cloudflare?.env as any,
+      });
 
       if (!validation.valid) {
         throw new Response(validation.error, {

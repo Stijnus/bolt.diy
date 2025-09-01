@@ -71,11 +71,42 @@ export default class OpenRouterProvider extends BaseProvider {
           const maxAllowed = 1000000; // 1M tokens max for safety
           const finalContext = Math.min(contextWindow, maxAllowed);
 
+          // Calculate completion tokens based on model and context window
+          let maxCompletionTokens = 4096; // Conservative default
+
+          // Model-specific completion token limits for OpenRouter
+          if (m.id?.includes('claude-3-haiku')) {
+            maxCompletionTokens = 4096;
+          } else if (m.id?.includes('claude-3-5-haiku')) {
+            maxCompletionTokens = 8192;
+          } else if (m.id?.includes('claude-3-5-sonnet')) {
+            maxCompletionTokens = 8192;
+          } else if (m.id?.includes('claude')) {
+            maxCompletionTokens = Math.min(32000, finalContext * 0.25);
+          } else if (m.id?.includes('gpt-4o')) {
+            maxCompletionTokens = 16384;
+          } else if (m.id?.includes('gpt-4')) {
+            maxCompletionTokens = 8192;
+          } else if (m.id?.includes('gpt-3.5')) {
+            maxCompletionTokens = 4096;
+          } else if (m.id?.includes('o1-mini')) {
+            maxCompletionTokens = 65536;
+          } else if (m.id?.includes('o1')) {
+            maxCompletionTokens = 32768;
+          } else if (m.id?.includes('llama') || m.id?.includes('mixtral') || m.id?.includes('qwen')) {
+            // For open source models, use 25% of context window, capped at 32k
+            maxCompletionTokens = Math.min(32768, Math.floor(finalContext * 0.25));
+          } else {
+            // Generic fallback: 25% of context window, capped at 8K for safety
+            maxCompletionTokens = Math.min(8192, Math.floor(finalContext * 0.25));
+          }
+
           return {
             name: m.id,
             label: `${m.name} - in:$${(m.pricing.prompt * 1_000_000).toFixed(2)} out:$${(m.pricing.completion * 1_000_000).toFixed(2)} - context ${finalContext >= 1000000 ? Math.floor(finalContext / 1000000) + 'M' : Math.floor(finalContext / 1000) + 'k'}`,
             provider: this.name,
             maxTokenAllowed: finalContext,
+            maxCompletionTokens,
           };
         });
     } catch (error) {

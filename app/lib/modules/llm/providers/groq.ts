@@ -64,13 +64,36 @@ export default class GroqProvider extends BaseProvider {
       (model: any) => model.object === 'model' && model.active && model.context_window > 8000,
     );
 
-    return data.map((m: any) => ({
-      name: m.id,
-      label: `${m.id} - context ${m.context_window ? Math.floor(m.context_window / 1000) + 'k' : 'N/A'} [ by ${m.owned_by}]`,
-      provider: this.name,
-      maxTokenAllowed: Math.min(m.context_window || 8192, 16384),
-      maxCompletionTokens: 8192,
-    }));
+    return data.map((m: any) => {
+      const contextWindow = m.context_window || 8192;
+      const cappedContext = Math.min(contextWindow, 16384);
+
+      // Model-specific completion token limits for Groq
+      let maxCompletionTokens = 4096; // Conservative default
+
+      if (m.id?.includes('llama-3.1')) {
+        maxCompletionTokens = 8192; // Llama 3.1 supports 8K output
+      } else if (m.id?.includes('llama-3.2')) {
+        maxCompletionTokens = 8192; // Llama 3.2 supports 8K output
+      } else if (m.id?.includes('llama')) {
+        maxCompletionTokens = Math.min(4096, Math.floor(cappedContext * 0.25)); // Older Llama models
+      } else if (m.id?.includes('mixtral')) {
+        maxCompletionTokens = 8192; // Mixtral supports 8K output
+      } else if (m.id?.includes('gemma')) {
+        maxCompletionTokens = Math.min(8192, Math.floor(cappedContext * 0.25)); // Gemma models
+      } else {
+        // Generic fallback: 25% of context window, capped at 4K for safety
+        maxCompletionTokens = Math.min(4096, Math.floor(cappedContext * 0.25));
+      }
+
+      return {
+        name: m.id,
+        label: `${m.id} - context ${contextWindow ? Math.floor(contextWindow / 1000) + 'k' : 'N/A'} [ by ${m.owned_by}]`,
+        provider: this.name,
+        maxTokenAllowed: cappedContext,
+        maxCompletionTokens,
+      };
+    });
   }
 
   getModelInstance(options: {

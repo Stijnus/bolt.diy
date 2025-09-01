@@ -1,5 +1,6 @@
 import { convertToCoreMessages, streamText as _streamText, type Message } from 'ai';
-import { MAX_TOKENS, PROVIDER_COMPLETION_LIMITS, isReasoningModel, type FileMap } from './constants';
+import { MAX_TOKENS_FALLBACK, PROVIDER_COMPLETION_LIMITS, isReasoningModel, type FileMap } from './constants';
+import { ModelCapabilityService } from './model-capability-service';
 import { getSystemPrompt } from '~/lib/common/prompts/prompts';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODIFICATIONS_TAG_NAME, PROVIDER_LIST, WORK_DIR } from '~/utils/constants';
 import type { IProviderSetting } from '~/types/model';
@@ -26,21 +27,36 @@ export interface StreamingOptions extends Omit<Parameters<typeof _streamText>[0]
 
 const logger = createScopedLogger('stream-text');
 
-function getCompletionTokenLimit(modelDetails: any): number {
-  // 1. If model specifies completion tokens, use that
-  if (modelDetails.maxCompletionTokens && modelDetails.maxCompletionTokens > 0) {
-    return modelDetails.maxCompletionTokens;
+async function getCompletionTokenLimit(
+  modelDetails: any,
+  options: {
+    apiKeys?: Record<string, string>;
+    providerSettings?: Record<string, IProviderSetting>;
+    serverEnv?: Record<string, string>;
+  },
+): Promise<number> {
+  try {
+    // Use ModelCapabilityService for dynamic, accurate limits
+    const capabilityService = ModelCapabilityService.getInstance();
+    const limits = await capabilityService.getSafeTokenLimits(modelDetails, options);
+
+    return limits.maxCompletionTokens;
+  } catch (error) {
+    logger.warn(`Failed to get dynamic token limits for ${modelDetails.name}, using fallback:`, error);
+
+    // Fallback to legacy logic with conservative limits
+    if (modelDetails.maxCompletionTokens && modelDetails.maxCompletionTokens > 0) {
+      return modelDetails.maxCompletionTokens;
+    }
+
+    const providerDefault = PROVIDER_COMPLETION_LIMITS[modelDetails.provider];
+
+    if (providerDefault) {
+      return providerDefault;
+    }
+
+    return Math.min(MAX_TOKENS_FALLBACK, 8192); // Very conservative fallback
   }
-
-  // 2. Use provider-specific default
-  const providerDefault = PROVIDER_COMPLETION_LIMITS[modelDetails.provider];
-
-  if (providerDefault) {
-    return providerDefault;
-  }
-
-  // 3. Final fallback to MAX_TOKENS, but cap at reasonable limit for safety
-  return Math.min(MAX_TOKENS, 16384);
 }
 
 function sanitizeText(text: string): string {
@@ -140,7 +156,9 @@ export async function streamText(props: {
     }
   }
 
-  const dynamicMaxTokens = modelDetails ? getCompletionTokenLimit(modelDetails) : Math.min(MAX_TOKENS, 16384);
+  const dynamicMaxTokens = modelDetails
+    ? await getCompletionTokenLimit(modelDetails, { apiKeys, providerSettings, serverEnv: serverEnv as any })
+    : Math.min(MAX_TOKENS_FALLBACK, 8192);
 
   // Use model-specific limits directly - no artificial cap needed
   const safeMaxTokens = dynamicMaxTokens;

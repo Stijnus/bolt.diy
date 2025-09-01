@@ -1,6 +1,6 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { createDataStream, generateId } from 'ai';
-import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS, type FileMap } from '~/lib/.server/llm/constants';
+import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS_FALLBACK, type FileMap } from '~/lib/.server/llm/constants';
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
 import SwitchableStream from '~/lib/.server/llm/switchable-stream';
@@ -255,7 +255,9 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
             const switchesLeft = MAX_RESPONSE_SEGMENTS - stream.switches;
 
-            logger.info(`Reached max token limit (${MAX_TOKENS}): Continuing message (${switchesLeft} switches left)`);
+            logger.info(
+              `Reached max token limit (${MAX_TOKENS_FALLBACK}): Continuing message (${switchesLeft} switches left)`,
+            );
 
             const lastUserMessage = processedMessages.filter((x) => x.role == 'user').slice(-1)[0];
             const { model, provider } = extractPropertiesFromMessage(lastUserMessage);

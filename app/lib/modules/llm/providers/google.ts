@@ -101,11 +101,24 @@ export default class GoogleProvider extends BaseProvider {
       const maxAllowed = 2000000; // 2M tokens max
       const finalContext = Math.min(contextWindow, maxAllowed);
 
-      // Get completion token limit from Google API
+      // Get completion token limit from Google API with model-specific logic
       let completionTokens = 8192; // default fallback (Gemini 1.5 standard limit)
 
       if (m.outputTokenLimit && m.outputTokenLimit > 0) {
-        completionTokens = Math.min(m.outputTokenLimit, 128000); // Use API value, cap at reasonable limit
+        // Use API value without artificial 128k cap - Google knows their own limits
+        completionTokens = m.outputTokenLimit;
+      } else {
+        // Model-specific fallbacks when API doesn't provide outputTokenLimit
+        if (modelName.includes('gemini-1.5-pro') || modelName.includes('gemini-2.0-flash')) {
+          completionTokens = 8192; // Standard Gemini output limit
+        } else if (modelName.includes('gemini-1.5-flash')) {
+          completionTokens = 8192; // Flash model output limit
+        } else if (modelName.includes('gemini-pro')) {
+          completionTokens = 8192; // Pro model output limit
+        } else {
+          // Conservative fallback for unknown Gemini models
+          completionTokens = 8192;
+        }
       }
 
       return {

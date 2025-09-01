@@ -64,13 +64,33 @@ export default class TogetherProvider extends BaseProvider {
     const res = (await response.json()) as any;
     const data = (res || []).filter((model: any) => model.type === 'chat');
 
-    return data.map((m: any) => ({
-      name: m.id,
-      label: `${m.display_name} - in:$${m.pricing.input.toFixed(2)} out:$${m.pricing.output.toFixed(2)} - context ${Math.floor(m.context_length / 1000)}k`,
-      provider: this.name,
-      maxTokenAllowed: 8000,
-      maxCompletionTokens: 8192,
-    }));
+    return data.map((m: any) => {
+      // Use actual context length from Together API
+      const contextWindow = m.context_length || 8000;
+
+      // Determine completion tokens based on model type
+      let maxCompletionTokens = 4096; // Conservative default
+
+      // Model-specific completion token limits for Together.ai
+      if (m.id?.includes('llama-3.1') || m.id?.includes('llama-3.2')) {
+        maxCompletionTokens = Math.min(8192, contextWindow * 0.25); // 25% of context for Llama models
+      } else if (m.id?.includes('mixtral') || m.id?.includes('mistral')) {
+        maxCompletionTokens = Math.min(8192, contextWindow * 0.25); // 25% of context for Mistral models
+      } else if (m.id?.includes('qwen') || m.id?.includes('deepseek')) {
+        maxCompletionTokens = Math.min(32768, contextWindow * 0.25); // Higher limits for newer models
+      } else {
+        // Generic fallback: use 25% of context window, capped at 8K for safety
+        maxCompletionTokens = Math.min(8192, Math.floor(contextWindow * 0.25));
+      }
+
+      return {
+        name: m.id,
+        label: `${m.display_name} - in:$${m.pricing.input.toFixed(2)} out:$${m.pricing.output.toFixed(2)} - context ${Math.floor(contextWindow / 1000)}k`,
+        provider: this.name,
+        maxTokenAllowed: contextWindow,
+        maxCompletionTokens,
+      };
+    });
   }
 
   getModelInstance(options: {
