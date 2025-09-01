@@ -1,7 +1,7 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { createDataStream, generateId } from 'ai';
 import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS_FALLBACK, type FileMap } from '~/lib/.server/llm/constants';
-import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
+import { CONTINUE_PROMPT } from '~/lib/common/prompts/coding-prompt';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
 import SwitchableStream from '~/lib/.server/llm/switchable-stream';
 import type { IProviderSetting } from '~/types/model';
@@ -110,6 +110,9 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
       logger.info('Injected model/provider tags:', { model, provider, tags: tags.replace(/\n/g, '\\n') });
     }
   }
+
+  // Debug logging for received chatMode
+  logger.info('API received chatMode:', chatMode);
 
   const cookieHeader = request.headers.get('Cookie');
   const apiKeys = JSON.parse(parseCookies(cookieHeader || '').apiKeys || '{}');

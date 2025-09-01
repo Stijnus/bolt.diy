@@ -19,6 +19,8 @@ export function usePromptEnhancer() {
     model: string,
     provider: ProviderInfo,
     apiKeys?: Record<string, string>,
+    promptTemplate?: string,
+    chatMode?: 'build' | 'discuss',
   ) => {
     setEnhancingPrompt(true);
     setPromptEnhanced(false);
@@ -27,6 +29,8 @@ export function usePromptEnhancer() {
       message: input,
       model,
       provider,
+      promptTemplate,
+      chatMode,
     };
 
     if (apiKeys) {

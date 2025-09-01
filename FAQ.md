@@ -102,4 +102,32 @@ You will need to make sure you have the latest version of Visual Studio C++ inst
 
 ---
 
+<details>
+<summary><strong>What about free models and OpenRouter limitations?</strong></summary>
+
+Free models (especially on OpenRouter) can be a great starting point but have some limitations:
+
+**Common Issues:**
+- Rate limiting and usage restrictions
+- Slower response times during peak hours
+- Less consistent response quality
+- Higher chance of service interruptions
+
+**Best Practices:**
+- Use free models for simple tasks like code review or basic questions
+- Switch to paid models (Claude 3.5 Sonnet, GPT-4o) for complex development
+- The app shows visual warnings when using free models
+- Check our [Free Models Guide](../docs/free-models-guide.md) for detailed recommendations
+
+**Recommended Paid Alternatives:**
+- Claude 3.5 Sonnet (best overall performance)
+- GPT-4o (excellent for code generation)
+- DeepSeek Coder V2 (cost-effective, high quality)
+- Gemini 2.0 Flash (fast and reliable)
+
+The app includes smart recommendations and visual indicators to help you choose the right model for your needs.
+</details>
+
+---
+
 Got more questions? Feel free to reach out or open an issue in our GitHub repo!

@@ -3,7 +3,7 @@ import { WORK_DIR } from '~/utils/constants';
 import { allowedHTMLElements } from '~/utils/markdown';
 import { stripIndents } from '~/utils/stripIndent';
 
-export const getFineTunedPrompt = (
+export const getCodingPrompt = (
   cwd: string = WORK_DIR,
   supabase?: {
     isConnected: boolean;
@@ -35,6 +35,36 @@ The year is 2025.
     - Cannot use Supabase CLI
     - Available commands: cat, chmod, cp, echo, hostname, kill, ln, ls, mkdir, mv, ps, pwd, rm, rmdir, xxd, alias, cd, clear, curl, env, false, getconf, head, sort, tail, touch, true, uptime, which, code, jq, loadenv, node, python, python3, wasm, xdg-open, command, exit, export, source
 </system_constraints>
+
+<advanced_ai_capabilities>
+  IMPORTANT: Bolt features cutting-edge AI model management with automatic optimization:
+
+  Token Management Excellence:
+    - ModelCapabilityService: Advanced 4-tier fallback system for accurate token limits
+    - Dynamic Model Detection: Real-time capability assessment with provider API integration
+    - Intelligent Model Selection: Automatic optimization based on task requirements
+    
+  Per-Model Capabilities:
+    - Claude Models: 200K context, 8K-32K output (Haiku: 4K/8K, Sonnet: 8K, Sonnet 4: 32K)
+    - OpenAI Models: 128K context, varied output (GPT-4o: 16K, o1-mini: 65K, o1-preview: 32K)
+    - Gemini Models: Up to 2M context, 8K output (Pro: 2M, Flash: 1M)
+    - Reasoning Models: o1, o3, gpt-5 patterns with special handling and higher output limits
+
+  Automatic Optimizations:
+    - 10% safety margins applied automatically
+    - Reasoning model detection (no tools/system prompts, use maxCompletionTokens)
+    - Provider-specific fallbacks when APIs unavailable
+    - Conservative defaults (8K max) for unknown models
+    - 1-hour intelligent caching to reduce API calls
+
+  What This Enables:
+    - Larger, more complex projects without token management concerns
+    - Optimal model utilization based on actual capabilities
+    - Automatic handling of model-specific parameters and limitations
+    - Confident use of full context windows for comprehensive analysis
+
+  Users benefit from this advanced system automatically - no manual token optimization needed.
+</advanced_ai_capabilities>
 
 <technology_preferences>
   - Use Vite for web servers

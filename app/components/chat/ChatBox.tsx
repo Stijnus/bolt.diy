@@ -12,6 +12,8 @@ import { IconButton } from '~/components/ui/IconButton';
 import { toast } from 'react-toastify';
 import { SpeechRecognitionButton } from '~/components/chat/SpeechRecognition';
 import { SupabaseConnection } from './SupabaseConnection';
+import { ChatModeToggle } from './ChatModeToggle';
+import { SmartModeDetector } from './SmartModeDetector';
 import { ExpoQrModal } from '~/components/workbench/ExpoQrModal';
 import styles from './BaseChat.module.scss';
 import type { ProviderInfo } from '~/types/model';
@@ -169,6 +171,17 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
       <div
         className={classNames('relative shadow-xs border border-bolt-elements-borderColor backdrop-blur rounded-lg')}
       >
+        {/* Smart Mode Suggestion */}
+        {props.chatStarted && props.input && props.input.length > 20 && (
+          <div className="p-4 pb-0">
+            <SmartModeDetector
+              input={props.input}
+              currentMode={props.chatMode || 'build'}
+              onModeSwitch={(mode) => props.setChatMode?.(mode)}
+            />
+          </div>
+        )}
+
         <textarea
           ref={props.textareaRef}
           className={classNames(
@@ -258,8 +271,19 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             />
           )}
         </ClientOnly>
+        {/* Mode Toggle - Separate row for better visibility */}
+        {props.chatStarted && (
+          <div className="flex justify-center items-center px-4 pt-3 pb-2">
+            <ChatModeToggle
+              chatMode={props.chatMode || 'build'}
+              onModeChange={(mode) => props.setChatMode?.(mode)}
+              disabled={false}
+            />
+          </div>
+        )}
+
         <div className="flex justify-between items-center text-sm p-4 pt-2">
-          <div className="flex gap-1 items-center">
+          <div className="flex gap-2 items-center">
             <ColorSchemeDialog designScheme={props.designScheme} setDesignScheme={props.setDesignScheme} />
             <McpTools />
             <IconButton title="Upload file" className="transition-all" onClick={() => props.handleFileUpload()}>
@@ -287,23 +311,6 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
               onStop={props.stopListening}
               disabled={props.isStreaming}
             />
-            {props.chatStarted && (
-              <IconButton
-                title="Discuss"
-                className={classNames(
-                  'transition-all flex items-center gap-1 px-1.5',
-                  props.chatMode === 'discuss'
-                    ? '!bg-bolt-elements-item-backgroundAccent !text-bolt-elements-item-contentAccent'
-                    : 'bg-bolt-elements-item-backgroundDefault text-bolt-elements-item-contentDefault',
-                )}
-                onClick={() => {
-                  props.setChatMode?.(props.chatMode === 'discuss' ? 'build' : 'discuss');
-                }}
-              >
-                <div className={`i-ph:chats text-xl`} />
-                {props.chatMode === 'discuss' ? <span>Discuss</span> : <span />}
-              </IconButton>
-            )}
             <IconButton
               title="Model Settings"
               className={classNames('transition-all flex items-center gap-1', {

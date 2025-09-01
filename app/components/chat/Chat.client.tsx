@@ -150,6 +150,11 @@ export const ChatImpl = memo(
     const [selectedElement, setSelectedElement] = useState<ElementInfo | null>(null);
     const mcpSettings = useMCPStore((state) => state.settings);
 
+    // Debug logging for chatMode changes
+    useEffect(() => {
+      logger.info('ChatMode changed:', chatMode);
+    }, [chatMode]);
+
     const {
       messages,
       isLoading,
@@ -674,6 +679,8 @@ export const ChatImpl = memo(
             model,
             provider,
             apiKeys,
+            promptId,
+            chatMode,
           );
         }}
         uploadedFiles={uploadedFiles}

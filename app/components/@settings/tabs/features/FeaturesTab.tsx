@@ -6,6 +6,7 @@ import { useSettings } from '~/lib/hooks/useSettings';
 import { classNames } from '~/utils/classNames';
 import { toast } from 'react-toastify';
 import { PromptLibrary } from '~/lib/common/prompt-library';
+import { PromptInfoCard } from '~/components/ui/PromptInfoCard';
 
 interface FeatureToggle {
   id: string;
@@ -135,7 +136,7 @@ export default function FeaturesTab() {
     }
 
     if (promptId === undefined) {
-      setPromptId('default'); // Default: 'default'
+      setPromptId('coding'); // Default: 'coding' (was 'default')
     }
 
     if (eventLogs === undefined) {
@@ -235,59 +236,44 @@ export default function FeaturesTab() {
         />
       )}
 
+      {/* Prompt Library Section */}
       <motion.div
         layout
-        className={classNames(
-          'bg-bolt-elements-background-depth-2',
-          'hover:bg-bolt-elements-background-depth-3',
-          'transition-all duration-200',
-          'rounded-lg p-4',
-          'group',
-        )}
+        className="flex flex-col gap-6"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
       >
-        <div className="flex items-center gap-4">
-          <div
-            className={classNames(
-              'p-2 rounded-lg text-xl',
-              'bg-bolt-elements-background-depth-3 group-hover:bg-bolt-elements-background-depth-4',
-              'transition-colors duration-200',
-              'text-purple-500',
-            )}
-          >
-            <div className="i-ph:book" />
-          </div>
-          <div className="flex-1">
-            <h4 className="text-sm font-medium text-bolt-elements-textPrimary group-hover:text-purple-500 transition-colors">
-              Prompt Library
-            </h4>
-            <p className="text-xs text-bolt-elements-textSecondary mt-0.5">
-              Choose a prompt from the library to use as the system prompt
+        <div className="flex items-center gap-3">
+          <div className="i-ph:book text-xl text-purple-500" />
+          <div>
+            <h3 className="text-lg font-medium text-bolt-elements-textPrimary">Prompt Templates</h3>
+            <p className="text-sm text-bolt-elements-textSecondary">
+              Choose the AI prompt that best fits your workflow and project requirements
             </p>
           </div>
-          <select
-            value={promptId}
-            onChange={(e) => {
-              setPromptId(e.target.value);
-              toast.success('Prompt template updated');
-            }}
-            className={classNames(
-              'p-2 rounded-lg text-sm min-w-[200px]',
-              'bg-bolt-elements-background-depth-3 border border-bolt-elements-borderColor',
-              'text-bolt-elements-textPrimary',
-              'focus:outline-none focus:ring-2 focus:ring-purple-500/30',
-              'group-hover:border-purple-500/30',
-              'transition-all duration-200',
-            )}
-          >
-            {PromptLibrary.getList().map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.label}
-              </option>
-            ))}
-          </select>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 auto-rows-fr">
+          {PromptLibrary.getInfoList().map((prompt, index) => (
+            <motion.div
+              key={prompt.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1 }}
+              className="h-full"
+            >
+              <PromptInfoCard
+                prompt={prompt}
+                selected={promptId === prompt.id}
+                onSelect={(id) => {
+                  setPromptId(id);
+                  toast.success(`Switched to ${prompt.label} template`);
+                }}
+                className="h-full"
+              />
+            </motion.div>
+          ))}
         </div>
       </motion.div>
     </div>

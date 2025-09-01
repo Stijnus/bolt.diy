@@ -573,6 +573,7 @@ const getSharedHighlighter = async () => {
       'go',
       'ruby',
       'rust',
+      'swift',
       'plaintext',
     ],
   });

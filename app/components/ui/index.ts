@@ -36,3 +36,7 @@ export * from './TabsWithSlider';
 // Tooltip components
 export { default as WithTooltip } from './Tooltip';
 export { Tooltip } from './Tooltip';
+
+// Prompt components
+export * from './PromptInfoCard';
+export * from './PromptSelector';

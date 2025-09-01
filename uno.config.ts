@@ -239,9 +239,7 @@ export default defineConfig({
     }),
     presetIcons({
       warn: true,
-      collections: {
-        ...customIconCollection,
-      },
+      collections: customIconCollection,
       unit: 'em',
     }),
   ],

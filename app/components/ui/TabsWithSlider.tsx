@@ -83,15 +83,25 @@ export function TabsWithSlider({
           className={classNames(
             'px-4 py-2 h-10 rounded-lg transition-all duration-200 flex items-center gap-2 min-w-[120px] justify-center relative overflow-hidden',
             tab.id === activeTab
-              ? classNames('text-white shadow-sm shadow-purple-500/20', activeTabClassName)
+              ? classNames(
+                  'bg-bolt-elements-item-backgroundAccent text-bolt-elements-item-contentAccent shadow-sm',
+                  activeTabClassName,
+                )
               : classNames(
-                  'bg-bolt-elements-background-depth-2 dark:bg-bolt-elements-background-depth-3 text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary-dark hover:bg-bolt-elements-background-depth-3 dark:hover:bg-bolt-elements-background-depth-4 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark',
+                  'bg-bolt-elements-background-depth-2 text-bolt-elements-textSecondary hover:bg-bolt-elements-background-depth-3 hover:text-bolt-elements-textPrimary',
                   tabClassName,
                 ),
           )}
         >
           <span className={classNames('flex items-center gap-2', tab.id === activeTab ? 'font-medium' : '')}>
-            {tab.icon && <span className={tab.icon} />}
+            {tab.icon && (
+              <span
+                className={classNames(
+                  tab.icon,
+                  tab.id === activeTab ? 'text-inherit' : 'text-bolt-elements-textSecondary',
+                )}
+              />
+            )}
             {tab.label}
           </span>
         </button>
@@ -99,7 +109,10 @@ export function TabsWithSlider({
 
       {/* Animated slider */}
       <motion.div
-        className={classNames('absolute bottom-0 left-0 h-10 rounded-lg bg-purple-500 -z-10', sliderClassName)}
+        className={classNames(
+          'absolute bottom-0 left-0 h-10 rounded-lg bg-bolt-elements-item-backgroundAccent -z-10',
+          sliderClassName,
+        )}
         initial={false}
         animate={{
           width: sliderDimensions.width,
