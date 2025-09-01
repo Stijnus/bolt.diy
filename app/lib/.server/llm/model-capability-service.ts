@@ -119,7 +119,20 @@ function getOpenAIModelLimits(modelId: string): {
   maxOutputTokens: number;
   contextWindow: number;
 } {
-  // GPT-4o models
+  // o1 models (reasoning) - check first to avoid conflicts
+  if (modelId.includes('o1-mini')) {
+    return { maxInputTokens: 128000, maxOutputTokens: 65536, contextWindow: 128000 };
+  }
+
+  if (modelId.includes('o1-preview')) {
+    return { maxInputTokens: 128000, maxOutputTokens: 32768, contextWindow: 128000 };
+  }
+
+  // GPT-4o models - check mini first to avoid conflicts
+  if (modelId.includes('gpt-4o-mini')) {
+    return { maxInputTokens: 128000, maxOutputTokens: 16384, contextWindow: 128000 };
+  }
+
   if (modelId.includes('gpt-4o')) {
     return { maxInputTokens: 128000, maxOutputTokens: 16384, contextWindow: 128000 };
   }
@@ -127,15 +140,6 @@ function getOpenAIModelLimits(modelId: string): {
   // GPT-4 Turbo
   if (modelId.includes('gpt-4-turbo')) {
     return { maxInputTokens: 128000, maxOutputTokens: 4096, contextWindow: 128000 };
-  }
-
-  // o1 models (reasoning)
-  if (modelId.includes('o1-mini')) {
-    return { maxInputTokens: 128000, maxOutputTokens: 65536, contextWindow: 128000 };
-  }
-
-  if (modelId.includes('o1-preview')) {
-    return { maxInputTokens: 128000, maxOutputTokens: 32768, contextWindow: 128000 };
   }
 
   // GPT-3.5 Turbo
@@ -337,7 +341,7 @@ class ModelCapabilityService {
       }
 
       const data = (await response.json()) as any;
-      const capabilities = detector.parseCapabilities(model.provider === 'OpenAI' ? data.data : data.data);
+      const capabilities = detector.parseCapabilities(model.provider === 'OpenAI' ? data.data : data);
 
       return capabilities.find((cap) => cap.name === model.name) || null;
     } catch (error) {
@@ -401,6 +405,10 @@ class ModelCapabilityService {
 
         if (model.name.includes('o1-preview')) {
           return 32768;
+        }
+
+        if (model.name.includes('gpt-4o-mini')) {
+          return 16384;
         }
 
         if (model.name.includes('gpt-4o')) {
