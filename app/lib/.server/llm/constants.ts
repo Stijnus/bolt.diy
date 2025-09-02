@@ -16,7 +16,7 @@ export const PROVIDER_COMPLETION_LIMITS: Record<string, number> = {
   Cohere: 4000,
   DeepSeek: 8192,
   Groq: 8192,
-  HuggingFace: 4096,
+  HuggingFace: 8192,
   Mistral: 8192,
   Ollama: 8192,
   OpenRouter: 8192,
