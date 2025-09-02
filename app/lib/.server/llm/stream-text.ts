@@ -291,6 +291,66 @@ export async function streamText(props: {
     ),
   );
 
+  // Debug logging for system prompt selection
+  const selectedPromptType = chatMode === 'build' ? 'systemPrompt (BUILD MODE)' : 'discussPrompt (DISCUSS MODE)';
+  logger.info(`ChatMode: "${chatMode}", Selected prompt: ${selectedPromptType}`);
+
+  // Special handling for Kimi models - use simple system prompt
+  const isKimiModel =
+    modelDetails.name.toLowerCase().includes('kimi') ||
+    (provider.name === 'Moonshot' && modelDetails.name.toLowerCase().includes('kimi'));
+
+  let finalSystemPrompt;
+
+  if (isKimiModel) {
+    // Create Kimi-compatible coding prompt with essential file writing capabilities
+    finalSystemPrompt = `You are Kimi, an AI assistant created by Moonshot AI, helping users with coding and development tasks.
+
+<system_constraints>
+  You operate in WebContainer, an in-browser Node.js runtime:
+  - Current working directory: ${WORK_DIR}
+  - You can create, read, and modify files
+  - You can run shell commands
+</system_constraints>
+
+<artifacts>
+  IMPORTANT: To create or modify files, you MUST use boltArtifact and boltAction format:
+  
+  Structure: <boltArtifact id="unique-id" title="Description"><boltAction type="action-type">content</boltAction></boltArtifact>
+  
+  Action Types:
+  - file: Creating/updating files (add filePath attribute)
+  - shell: Running commands  
+  - start: Starting project (use ONLY for project startup, LAST action)
+
+  Example for creating a file:
+  <boltArtifact id="create-component" title="Create React Component">
+  <boltAction type="file" filePath="src/Component.jsx">
+  import React from 'react';
+
+  function Component() {
+    return <div>Hello World</div>;
+  }
+
+  export default Component;
+  </boltAction>
+  </boltArtifact>
+  
+  Example for running commands:
+  <boltArtifact id="install-deps" title="Install Dependencies">
+  <boltAction type="shell">
+  npm install react
+  </boltAction>
+  </boltArtifact>
+</artifacts>
+
+CRITICAL: Always use boltAction for file operations and commands. Never just provide code without the proper boltAction wrapper.`;
+
+    logger.info(`Using Kimi-compatible coding prompt for model: ${modelDetails.name}`);
+  } else {
+    finalSystemPrompt = chatMode === 'build' ? systemPrompt : discussPrompt();
+  }
+
   const streamParams = {
     model: provider.getModelInstance({
       model: modelDetails.name,
@@ -298,7 +358,7 @@ export async function streamText(props: {
       apiKeys,
       providerSettings,
     }),
-    system: chatMode === 'build' ? systemPrompt : discussPrompt(),
+    system: finalSystemPrompt,
     ...tokenParams,
     messages: convertToCoreMessages(processedMessages as any),
     ...filteredOptions,

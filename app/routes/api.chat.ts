@@ -48,24 +48,68 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     },
   });
 
-  const { messages, files, promptId, contextOptimization, supabase, chatMode, designScheme, maxLLMSteps } =
-    await request.json<{
-      messages: Messages;
-      files: any;
-      promptId?: string;
-      contextOptimization: boolean;
-      chatMode: 'discuss' | 'build';
-      designScheme?: DesignScheme;
-      supabase?: {
-        isConnected: boolean;
-        hasSelectedProject: boolean;
-        credentials?: {
-          anonKey?: string;
-          supabaseUrl?: string;
-        };
+  const {
+    messages,
+    files,
+    promptId,
+    contextOptimization,
+    supabase,
+    chatMode,
+    designScheme,
+    maxLLMSteps,
+    model,
+    provider,
+  } = await request.json<{
+    messages: Messages;
+    files: any;
+    promptId?: string;
+    contextOptimization: boolean;
+    chatMode: 'discuss' | 'build';
+    designScheme?: DesignScheme;
+    supabase?: {
+      isConnected: boolean;
+      hasSelectedProject: boolean;
+      credentials?: {
+        anonKey?: string;
+        supabaseUrl?: string;
       };
-      maxLLMSteps: number;
-    }>();
+    };
+    maxLLMSteps: number;
+    model?: string;
+    provider?: string;
+  }>();
+
+  // Debug logging for received chatMode
+  logger.info('API received chatMode:', chatMode);
+
+  // Inject model and provider into the first user message if provided
+  if ((model || provider) && messages.length > 0 && messages[0].role === 'user') {
+    let tags = '';
+
+    if (model) {
+      tags += `[Model: ${model}]\n\n`;
+    }
+
+    if (provider) {
+      tags += `[Provider: ${provider}]\n\n`;
+    }
+
+    if (tags) {
+      if (typeof messages[0].content === 'string') {
+        messages[0].content = `${tags}${messages[0].content}`;
+      } else if (Array.isArray(messages[0].content)) {
+        // Find the first text part and prepend the tags
+        const content = messages[0].content as any[];
+        const textPart = content.find((part: any) => part.type === 'text');
+
+        if (textPart) {
+          textPart.text = `${tags}${textPart.text}`;
+        }
+      }
+
+      logger.info('Injected model/provider tags:', { model, provider, tags: tags.replace(/\n/g, '\\n') });
+    }
+  }
 
   const cookieHeader = request.headers.get('Cookie');
   const apiKeys = JSON.parse(parseCookies(cookieHeader || '').apiKeys || '{}');
@@ -350,7 +394,16 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
       },
       onError: (error: any) => {
         // Provide more specific error messages for common issues
-        const errorMessage = error.message || 'Unknown error';
+        console.error('Chat streaming error details:', {
+          error,
+          message: error?.message,
+          stack: error?.stack,
+          name: error?.name,
+          cause: error?.cause,
+          toString: error?.toString?.(),
+        });
+
+        const errorMessage = error.message || error?.toString?.() || 'Unknown error';
 
         if (errorMessage.includes('model') && errorMessage.includes('not found')) {
           return 'Custom error: Invalid model selected. Please check that the model name is correct and available.';
