@@ -13,6 +13,7 @@ import { createSummary } from '~/lib/.server/llm/create-summary';
 import { extractPropertiesFromMessage } from '~/lib/.server/llm/utils';
 import type { DesignScheme } from '~/types/design-scheme';
 import { MCPService } from '~/lib/services/mcpService';
+import { StreamRecoveryManager } from '~/lib/.server/llm/stream-recovery';
 
 export async function action(args: ActionFunctionArgs) {
   return chatAction(args);
@@ -39,6 +40,14 @@ function parseCookies(cookieHeader: string): Record<string, string> {
 }
 
 async function chatAction({ context, request }: ActionFunctionArgs) {
+  const streamRecovery = new StreamRecoveryManager({
+    timeout: 45000,
+    maxRetries: 2,
+    onTimeout: () => {
+      logger.warn('Stream timeout - attempting recovery');
+    },
+  });
+
   const { messages, files, promptId, contextOptimization, supabase, chatMode, designScheme, maxLLMSteps } =
     await request.json<{
       messages: Messages;
@@ -83,6 +92,8 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
     const dataStream = createDataStream({
       async execute(dataStream) {
+        streamRecovery.startMonitoring();
+
         const filePaths = getFilePaths(files || {});
         let filteredFiles: FileMap | undefined = undefined;
         let summary: string | undefined = undefined;
@@ -314,9 +325,12 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
         (async () => {
           for await (const part of result.fullStream) {
+            streamRecovery.updateActivity();
+
             if (part.type === 'error') {
               const error: any = part.error;
               logger.error('Streaming error:', error);
+              streamRecovery.stop();
 
               // Enhanced error handling for common streaming issues
               if (error.message?.includes('Invalid JSON response')) {
@@ -328,6 +342,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               return;
             }
           }
+          streamRecovery.stop();
         })();
         result.mergeIntoDataStream(dataStream);
       },
