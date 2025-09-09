@@ -14,9 +14,36 @@ export default class GoogleProvider extends BaseProvider {
 
   staticModels: ModelInfo[] = [
     /*
-     * Essential fallback models - only the most reliable/stable ones
-     * Gemini 1.5 Pro: 2M context, 8K output limit (verified from API docs)
+     * Latest Gemini models with optimized context and output limits (2025)
+     * Gemini 2.0 Flash: 1M context, 8K output, latest fast model
      */
+    {
+      name: 'gemini-2.0-flash-exp',
+      label: 'Gemini 2.0 Flash (Experimental)',
+      provider: 'Google',
+      maxTokenAllowed: 1000000,
+      maxCompletionTokens: 8192,
+    },
+
+    // Gemini 1.5 Pro: 2M context, 8K output limit, premium model
+    {
+      name: 'gemini-1.5-pro-002',
+      label: 'Gemini 1.5 Pro (Latest)',
+      provider: 'Google',
+      maxTokenAllowed: 2000000,
+      maxCompletionTokens: 8192,
+    },
+
+    // Gemini 1.5 Flash: 1M context, 8K output limit, fast and cost-effective
+    {
+      name: 'gemini-1.5-flash-002',
+      label: 'Gemini 1.5 Flash (Latest)',
+      provider: 'Google',
+      maxTokenAllowed: 1000000,
+      maxCompletionTokens: 8192,
+    },
+
+    // Gemini 1.5 Pro (fallback)
     {
       name: 'gemini-1.5-pro',
       label: 'Gemini 1.5 Pro',
@@ -25,7 +52,7 @@ export default class GoogleProvider extends BaseProvider {
       maxCompletionTokens: 8192,
     },
 
-    // Gemini 1.5 Flash: 1M context, 8K output limit, fast and cost-effective
+    // Gemini 1.5 Flash (fallback)
     {
       name: 'gemini-1.5-flash',
       label: 'Gemini 1.5 Flash',
@@ -68,12 +95,15 @@ export default class GoogleProvider extends BaseProvider {
       throw new Error('Invalid response format from Google API');
     }
 
-    // Filter out models with very low token limits and experimental/unstable models
+    // Filter out models with very low token limits, include stable and experimental models
     const data = res.models.filter((model: any) => {
-      const hasGoodTokenLimit = (model.outputTokenLimit || 0) > 8000;
-      const isStable = !model.name.includes('exp') || model.name.includes('flash-exp');
+      const hasGoodTokenLimit = (model.outputTokenLimit || 0) >= 8000;
+      const isRelevantModel =
+        model.name.includes('gemini-') &&
+        (model.name.includes('flash') || model.name.includes('pro') || model.name.includes('2.0'));
+      const isNotTooExperimental = !model.name.includes('bison') && !model.name.includes('ultra');
 
-      return hasGoodTokenLimit && isStable;
+      return hasGoodTokenLimit && isRelevantModel && isNotTooExperimental;
     });
 
     return data.map((m: any) => {
@@ -89,8 +119,8 @@ export default class GoogleProvider extends BaseProvider {
         contextWindow = 2000000; // Gemini 1.5 Pro has 2M context
       } else if (modelName.includes('gemini-1.5-flash')) {
         contextWindow = 1000000; // Gemini 1.5 Flash has 1M context
-      } else if (modelName.includes('gemini-2.0-flash')) {
-        contextWindow = 1000000; // Gemini 2.0 Flash has 1M context
+      } else if (modelName.includes('gemini-2.0')) {
+        contextWindow = 1000000; // Gemini 2.0 models have 1M context
       } else if (modelName.includes('gemini-pro')) {
         contextWindow = 32000; // Gemini Pro has 32k context
       } else if (modelName.includes('gemini-flash')) {

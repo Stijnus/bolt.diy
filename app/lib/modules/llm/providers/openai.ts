@@ -14,10 +14,10 @@ export default class OpenAIProvider extends BaseProvider {
 
   staticModels: ModelInfo[] = [
     /*
-     * Essential fallback models - only the most stable/reliable ones
-     * GPT-4o: 128k context, 4k standard output (64k with long output mode)
+     * Latest GPT-4o models with enhanced capabilities (2025)
+     * GPT-4o: 128k context, 16k output, production-ready
      */
-    { name: 'gpt-4o', label: 'GPT-4o', provider: 'OpenAI', maxTokenAllowed: 128000, maxCompletionTokens: 4096 },
+    { name: 'gpt-4o', label: 'GPT-4o', provider: 'OpenAI', maxTokenAllowed: 128000, maxCompletionTokens: 16384 },
 
     // GPT-4o Mini: 128k context, cost-effective alternative
     {
@@ -25,7 +25,7 @@ export default class OpenAIProvider extends BaseProvider {
       label: 'GPT-4o Mini',
       provider: 'OpenAI',
       maxTokenAllowed: 128000,
-      maxCompletionTokens: 4096,
+      maxCompletionTokens: 16384,
     },
 
     // GPT-3.5-turbo: 16k context, fast and cost-effective
@@ -33,21 +33,36 @@ export default class OpenAIProvider extends BaseProvider {
       name: 'gpt-3.5-turbo',
       label: 'GPT-3.5 Turbo',
       provider: 'OpenAI',
-      maxTokenAllowed: 16000,
+      maxTokenAllowed: 16385,
       maxCompletionTokens: 4096,
     },
 
     // o1-preview: 128k context, 32k output limit (reasoning model)
     {
       name: 'o1-preview',
-      label: 'o1-preview',
+      label: 'o1-preview (Reasoning)',
       provider: 'OpenAI',
       maxTokenAllowed: 128000,
-      maxCompletionTokens: 32000,
+      maxCompletionTokens: 32768,
     },
 
     // o1-mini: 128k context, 65k output limit (reasoning model)
-    { name: 'o1-mini', label: 'o1-mini', provider: 'OpenAI', maxTokenAllowed: 128000, maxCompletionTokens: 65000 },
+    {
+      name: 'o1-mini',
+      label: 'o1-mini (Reasoning)',
+      provider: 'OpenAI',
+      maxTokenAllowed: 128000,
+      maxCompletionTokens: 65536,
+    },
+
+    // o1-pro: 128k context, enhanced reasoning capabilities
+    {
+      name: 'o1-pro',
+      label: 'o1-pro (Reasoning)',
+      provider: 'OpenAI',
+      maxTokenAllowed: 128000,
+      maxCompletionTokens: 32768,
+    },
   ];
 
   async getDynamicModels(
@@ -111,8 +126,12 @@ export default class OpenAIProvider extends BaseProvider {
         maxCompletionTokens = 32000; // Other o1 models: 32K limit
       } else if (m.id?.includes('o3') || m.id?.includes('o4')) {
         maxCompletionTokens = 100000; // o3/o4 models: 100K output limit
+      } else if (m.id?.includes('gpt-5')) {
+        maxCompletionTokens = 32000; // GPT-5: 32K output limit
+      } else if (m.id?.includes('gpt-4o-2025') || m.id?.includes('gpt-4o-latest')) {
+        maxCompletionTokens = 32000; // Enhanced GPT-4o: 32K output
       } else if (m.id?.includes('gpt-4o')) {
-        maxCompletionTokens = 4096; // GPT-4o standard: 4K (64K with long output mode)
+        maxCompletionTokens = 16384; // GPT-4o standard: 16K output (enhanced from 4K)
       } else if (m.id?.includes('gpt-4')) {
         maxCompletionTokens = 8192; // Standard GPT-4: 8K output limit
       } else if (m.id?.includes('gpt-3.5-turbo')) {

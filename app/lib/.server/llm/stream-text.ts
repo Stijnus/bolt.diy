@@ -40,16 +40,19 @@ async function getCompletionTokenLimit(
     const capabilityService = ModelCapabilityService.getInstance();
     const limits = await capabilityService.getSafeTokenLimits(modelDetails, options);
 
+    logger.info(`Retrieved dynamic token limits for ${modelDetails.name}: ${limits.maxCompletionTokens}`);
+
     return limits.maxCompletionTokens;
   } catch (error) {
     logger.warn(`Failed to get dynamic token limits for ${modelDetails.name}, using fallback:`, error);
 
-    // Fallback to legacy logic with conservative limits
+    // Enhanced fallback logic with model-specific optimizations
     if (modelDetails.maxCompletionTokens && modelDetails.maxCompletionTokens > 0) {
-      return modelDetails.maxCompletionTokens;
+      return Math.floor(modelDetails.maxCompletionTokens * 0.9); // 10% safety buffer
     }
 
-    const providerDefault = PROVIDER_COMPLETION_LIMITS[modelDetails.provider];
+    // Provider-specific intelligent fallbacks
+    const providerDefault = getEnhancedProviderDefault(modelDetails.provider, modelDetails.name);
 
     if (providerDefault) {
       return providerDefault;
@@ -57,6 +60,44 @@ async function getCompletionTokenLimit(
 
     return Math.min(MAX_TOKENS_FALLBACK, 8192); // Very conservative fallback
   }
+}
+
+// Enhanced provider-specific defaults with model intelligence
+function getEnhancedProviderDefault(provider: string, modelName: string): number | null {
+  const baseLimits = PROVIDER_COMPLETION_LIMITS[provider];
+
+  if (!baseLimits) {
+    return null;
+  }
+
+  // Apply model-specific multipliers based on known capabilities
+  if (provider === 'OpenAI') {
+    if (modelName.includes('o1') || modelName.includes('o3')) {
+      return Math.min(32000, baseLimits * 8); // Reasoning models have higher limits
+    }
+
+    if (modelName.includes('gpt-4o')) {
+      return Math.min(16384, baseLimits * 4); // GPT-4o has higher limits
+    }
+  }
+
+  if (provider === 'Anthropic') {
+    if (modelName.includes('claude-4') || modelName.includes('opus-4')) {
+      return Math.min(32000, baseLimits * 8); // Claude 4 series higher limits
+    }
+
+    if (modelName.includes('claude-3.5')) {
+      return Math.min(8192, baseLimits * 2); // Claude 3.5 enhanced limits
+    }
+  }
+
+  if (provider === 'Google') {
+    if (modelName.includes('gemini-2.0')) {
+      return Math.min(8192, baseLimits * 1); // Gemini 2.0 standard limits
+    }
+  }
+
+  return baseLimits;
 }
 
 function sanitizeText(text: string): string {

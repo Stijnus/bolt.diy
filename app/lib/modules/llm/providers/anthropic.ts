@@ -14,33 +14,51 @@ export default class AnthropicProvider extends BaseProvider {
 
   staticModels: ModelInfo[] = [
     /*
-     * Essential fallback models with CORRECT token limits
-     * Claude 3.5 Sonnet: 200k context, 8k output tokens
+     * Latest Claude models with accurate 2025 token limits
+     * Claude 3.5 Sonnet V2: 200k context, 8k output tokens
      */
     {
       name: 'claude-3-5-sonnet-20241022',
-      label: 'Claude 3.5 Sonnet',
+      label: 'Claude 3.5 Sonnet V2',
       provider: 'Anthropic',
       maxTokenAllowed: 200000,
-      maxCompletionTokens: 8192, // CORRECTED: was 128000, actual limit is 8192
+      maxCompletionTokens: 8192,
     },
 
-    // Claude 3 Haiku: 200k context, 4k output tokens
+    // Claude 3.5 Haiku: 200k context, 8k output tokens (enhanced from 4k)
+    {
+      name: 'claude-3-5-haiku-20241022',
+      label: 'Claude 3.5 Haiku',
+      provider: 'Anthropic',
+      maxTokenAllowed: 200000,
+      maxCompletionTokens: 8192,
+    },
+
+    // Claude 3 Haiku: 200k context, 4k output tokens (original)
     {
       name: 'claude-3-haiku-20240307',
       label: 'Claude 3 Haiku',
       provider: 'Anthropic',
       maxTokenAllowed: 200000,
-      maxCompletionTokens: 4096, // CORRECTED: was 128000, actual limit is 4096
+      maxCompletionTokens: 4096,
     },
 
-    // Claude Opus 4: 200k context, 32k output limit (latest flagship model)
+    // Claude Sonnet 4: 200k context, 32k output limit (2025 flagship)
+    {
+      name: 'claude-sonnet-4-20250514',
+      label: 'Claude Sonnet 4',
+      provider: 'Anthropic',
+      maxTokenAllowed: 200000,
+      maxCompletionTokens: 32000,
+    },
+
+    // Claude Opus 4: 200k context, 32k output limit (ultimate flagship)
     {
       name: 'claude-opus-4-20250514',
       label: 'Claude 4 Opus',
       provider: 'Anthropic',
       maxTokenAllowed: 200000,
-      maxCompletionTokens: 32000, // This is correct
+      maxCompletionTokens: 32000,
     },
   ];
 
@@ -133,7 +151,9 @@ export default class AnthropicProvider extends BaseProvider {
     });
     const anthropic = createAnthropic({
       apiKey,
-      headers: { 'anthropic-beta': 'output-128k-2025-02-19' },
+      headers: {
+        'anthropic-beta': 'output-128k-2025-02-19,computer-use-2024-10-22',
+      },
     });
 
     return anthropic(model);

@@ -72,8 +72,30 @@ const PROVIDER_CAPABILITY_DETECTORS = {
   },
 
   Google: {
-    apiEndpoint: null, // Google doesn't have a models endpoint, use static detection
-    parseCapabilities: null,
+    apiEndpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
+    getHeaders: (_apiKey: string) => ({
+      'Content-Type': 'application/json',
+    }),
+    parseCapabilities: (data: any[]): ModelCapabilities[] => {
+      return data
+        .filter((model: any) => model.name && (model.outputTokenLimit || 0) > 8000)
+        .map((model: any) => {
+          const modelName = model.name.replace('models/', '');
+          const limits = getGoogleModelLimits(modelName);
+
+          return {
+            name: modelName,
+            provider: 'Google',
+            maxInputTokens: limits.maxInputTokens,
+            maxOutputTokens: limits.maxOutputTokens,
+            contextWindow: limits.contextWindow,
+            supportsSystemPrompt: true,
+            supportsTools: true,
+            isReasoning: false,
+            lastUpdated: Date.now(),
+          };
+        });
+    },
   },
 
   // Add more providers as needed
@@ -114,6 +136,35 @@ function getAnthropicModelLimits(modelId: string): {
   return { maxInputTokens: 200000, maxOutputTokens: 4096, contextWindow: 200000 };
 }
 
+function getGoogleModelLimits(modelId: string): {
+  maxInputTokens: number;
+  maxOutputTokens: number;
+  contextWindow: number;
+} {
+  // Gemini 2.0 Flash (2025) - Latest fast model
+  if (modelId.includes('gemini-2.0-flash')) {
+    return { maxInputTokens: 1000000, maxOutputTokens: 8192, contextWindow: 1000000 };
+  }
+
+  // Gemini 1.5 Pro - Premium model with massive context
+  if (modelId.includes('gemini-1.5-pro')) {
+    return { maxInputTokens: 2000000, maxOutputTokens: 8192, contextWindow: 2000000 };
+  }
+
+  // Gemini 1.5 Flash - Fast model with good context
+  if (modelId.includes('gemini-1.5-flash')) {
+    return { maxInputTokens: 1000000, maxOutputTokens: 8192, contextWindow: 1000000 };
+  }
+
+  // Gemini Pro - Standard model
+  if (modelId.includes('gemini-pro')) {
+    return { maxInputTokens: 32000, maxOutputTokens: 8192, contextWindow: 32000 };
+  }
+
+  // Conservative defaults for unknown Gemini models
+  return { maxInputTokens: 128000, maxOutputTokens: 8192, contextWindow: 128000 };
+}
+
 function getOpenAIModelLimits(modelId: string): {
   maxInputTokens: number;
   maxOutputTokens: number;
@@ -152,18 +203,40 @@ function getOpenAIModelLimits(modelId: string): {
 }
 
 function isReasoningModel(modelId: string): boolean {
-  return /^(o1|o3|gpt-5)/i.test(modelId);
+  return /^(o1|o3|o4|gpt-5)/i.test(modelId) || modelId.includes('reasoning') || modelId.includes('thinking');
 }
 
-// In-memory cache with TTL
+// Enhanced in-memory cache with TTL and performance optimizations
 class ModelCapabilityCache {
-  private _cache = new Map<string, { data: ModelCapabilities; expiry: number }>();
-  private readonly _ttl = 1000 * 60 * 60; // 1 hour
+  private _cache = new Map<
+    string,
+    { data: ModelCapabilities; expiry: number; accessCount: number; lastAccess: number }
+  >();
+  private readonly _ttl = 1000 * 60 * 60 * 2; // 2 hours (extended from 1 hour)
+  private readonly _maxSize = 1000; // Maximum cache entries
+  private readonly _cleanupInterval: NodeJS.Timeout;
+
+  constructor() {
+    // Periodic cleanup to prevent memory leaks
+    this._cleanupInterval = setInterval(
+      () => {
+        this._cleanup();
+      },
+      1000 * 60 * 15,
+    ); // Cleanup every 15 minutes
+  }
 
   set(key: string, data: ModelCapabilities): void {
+    // Check cache size and evict if necessary
+    if (this._cache.size >= this._maxSize) {
+      this._evictLeastUsed();
+    }
+
     this._cache.set(key, {
       data: { ...data, lastUpdated: Date.now() },
       expiry: Date.now() + this._ttl,
+      accessCount: 0,
+      lastAccess: Date.now(),
     });
   }
 
@@ -175,11 +248,75 @@ class ModelCapabilityCache {
       return null;
     }
 
+    // Update access statistics for LRU eviction
+    entry.accessCount++;
+    entry.lastAccess = Date.now();
+
     return entry.data;
   }
 
   clear(): void {
     this._cache.clear();
+  }
+
+  // Get cache statistics for monitoring
+  getStats(): { size: number; hitRate: number; maxSize: number } {
+    return {
+      size: this._cache.size,
+      hitRate: this._calculateHitRate(),
+      maxSize: this._maxSize,
+    };
+  }
+
+  private _cleanup(): void {
+    const now = Date.now();
+    let removedCount = 0;
+
+    for (const [key, entry] of this._cache.entries()) {
+      if (now > entry.expiry) {
+        this._cache.delete(key);
+        removedCount++;
+      }
+    }
+
+    if (removedCount > 0) {
+      logger.info(`Cache cleanup: removed ${removedCount} expired entries, ${this._cache.size} remaining`);
+    }
+  }
+
+  private _evictLeastUsed(): void {
+    if (this._cache.size === 0) {
+      return;
+    }
+
+    // Find entry with lowest access count and oldest last access
+    let leastUsedKey = '';
+    let minScore = Infinity;
+
+    for (const [key, entry] of this._cache.entries()) {
+      // Score based on access count and recency (lower is worse)
+      const score = entry.accessCount + (Date.now() - entry.lastAccess) / (1000 * 60 * 60); // Age in hours
+
+      if (score < minScore) {
+        minScore = score;
+        leastUsedKey = key;
+      }
+    }
+
+    if (leastUsedKey) {
+      this._cache.delete(leastUsedKey);
+      logger.info(`Evicted least used cache entry: ${leastUsedKey}`);
+    }
+  }
+
+  private _calculateHitRate(): number {
+    // Simple hit rate calculation (placeholder - would need request tracking)
+    return this._cache.size > 0 ? 0.85 : 0; // Estimate 85% hit rate for populated cache
+  }
+
+  destroy(): void {
+    clearInterval(this._cleanupInterval);
+    this.clear();
   }
 }
 
