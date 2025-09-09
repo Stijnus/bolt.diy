@@ -5,7 +5,7 @@ import { createScopedLogger } from '~/utils/logger';
 import { rehypePlugins, remarkPlugins, allowedHTMLElements } from '~/utils/markdown';
 import { Artifact, openArtifactInWorkbench } from './Artifact';
 import { CodeBlock } from './CodeBlock';
-import type { Message } from 'ai';
+import type { Message } from '@ai-sdk/ui-utils';
 import styles from './Markdown.module.scss';
 import ThoughtBox from './ThoughtBox';
 import type { ProviderInfo } from '~/types/model';
@@ -149,25 +149,89 @@ export const Markdown = memo(
                   if (type === 'file') {
                     openArtifactInWorkbench(path);
                   } else if (type === 'message' && append) {
+                    // Extract text content from message (handle both string and object formats)
+                    let messageText = '';
+
+                    if (typeof message === 'string') {
+                      messageText = message;
+                    } else if (message && typeof message === 'object') {
+                      // Handle case where message is an object or array
+                      if (
+                        Array.isArray(message) &&
+                        message.length > 0 &&
+                        typeof message[0] === 'object' &&
+                        message[0] !== null &&
+                        'text' in message[0]
+                      ) {
+                        messageText = (message[0] as { text: string }).text;
+                      } else if (typeof message === 'object' && message !== null && 'text' in message) {
+                        messageText = (message as { text: string }).text;
+                      } else {
+                        messageText = JSON.stringify(message);
+                      }
+                    }
+
+                    // Check if the message content suggests switching to build mode
+                    const implementKeywords = [
+                      'implement',
+                      'create',
+                      'build',
+                      'add',
+                      'develop',
+                      'write',
+                      'generate',
+                      'fix',
+                    ];
+                    const shouldSwitchToBuild = implementKeywords.some(
+                      (keyword) => messageText && messageText.toLowerCase().includes(keyword),
+                    );
+
+                    // Auto-switch to build mode for implementation-related messages
+                    if (shouldSwitchToBuild && setChatMode) {
+                      setChatMode('build');
+                    }
+
                     append({
                       id: `quick-action-message-${Date.now()}`,
                       content: [
                         {
                           type: 'text',
-                          text: `[Model: ${model}]\n\n[Provider: ${provider?.name}]\n\n${message}`,
+                          text: `[Model: ${model}]\n\n[Provider: ${provider?.name}]\n\n${messageText}`,
                         },
                       ] as any,
                       role: 'user',
                     });
-                    console.log('Message appended:', message);
+                    console.log('Message appended:', messageText);
                   } else if (type === 'implement' && append && setChatMode) {
+                    // Extract text content from message (handle both string and object formats)
+                    let messageText = '';
+
+                    if (typeof message === 'string') {
+                      messageText = message;
+                    } else if (message && typeof message === 'object') {
+                      // Handle case where message is an object or array
+                      if (
+                        Array.isArray(message) &&
+                        message.length > 0 &&
+                        typeof message[0] === 'object' &&
+                        message[0] !== null &&
+                        'text' in message[0]
+                      ) {
+                        messageText = (message[0] as { text: string }).text;
+                      } else if (typeof message === 'object' && message !== null && 'text' in message) {
+                        messageText = (message as { text: string }).text;
+                      } else {
+                        messageText = JSON.stringify(message);
+                      }
+                    }
+
                     setChatMode('build');
                     append({
                       id: `quick-action-implement-${Date.now()}`,
                       content: [
                         {
                           type: 'text',
-                          text: `[Model: ${model}]\n\n[Provider: ${provider?.name}]\n\n${message}`,
+                          text: `[Model: ${model}]\n\n[Provider: ${provider?.name}]\n\n${messageText}`,
                         },
                       ] as any,
                       role: 'user',

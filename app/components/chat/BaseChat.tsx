@@ -356,6 +356,15 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                 <p className="text-md lg:text-xl mb-8 text-bolt-elements-textSecondary animate-fade-in animation-delay-200">
                   Bring ideas to life in seconds or get help on existing projects.
                 </p>
+                {chatMode === 'discuss' && (
+                  <div className="flex items-center justify-center gap-2 mb-4 animate-fade-in animation-delay-300">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 text-green-400 rounded-full border border-green-500/20">
+                      <span className="i-ph:chat-circle-dots text-lg" />
+                      <span className="text-sm font-medium">Discussion Mode</span>
+                      <span className="i-ph:magnifying-glass text-sm" />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <StickToBottom

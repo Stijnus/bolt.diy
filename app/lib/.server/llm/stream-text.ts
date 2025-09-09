@@ -100,7 +100,16 @@ function getEnhancedProviderDefault(provider: string, modelName: string): number
   return baseLimits;
 }
 
-function sanitizeText(text: string): string {
+function sanitizeText(text: string | any): string {
+  // Handle non-string inputs gracefully
+  if (typeof text !== 'string') {
+    if (text && typeof text === 'object' && text.toString) {
+      text = text.toString();
+    } else {
+      return '';
+    }
+  }
+
   let sanitized = text.replace(/<div class=\\"__boltThought__\\">.*?<\/div>/s, '');
   sanitized = sanitized.replace(/<think>.*?<\/think>/s, '');
   sanitized = sanitized.replace(/<boltAction type="file" filePath="package-lock\.json">[\s\S]*?<\/boltAction>/g, '');
@@ -139,6 +148,11 @@ export async function streamText(props: {
   } = props;
   let currentModel = DEFAULT_MODEL;
   let currentProvider = DEFAULT_PROVIDER.name;
+
+  // Store original model/provider for UI display
+  let originalModel = DEFAULT_MODEL;
+  let originalProvider = DEFAULT_PROVIDER.name;
+
   let processedMessages = messages.map((message) => {
     const newMessage = { ...message };
 
@@ -146,20 +160,36 @@ export async function streamText(props: {
       const { model, provider, content } = extractPropertiesFromMessage(message);
       currentModel = model;
       currentProvider = provider;
+      originalModel = model; // Store original for reference
+      originalProvider = provider;
       newMessage.content = sanitizeText(content);
     } else if (message.role == 'assistant') {
-      newMessage.content = sanitizeText(message.content);
+      if (typeof message.content === 'string') {
+        newMessage.content = sanitizeText(message.content);
+      } else {
+        // Handle non-string content (e.g., array of parts)
+        newMessage.content = message.content;
+      }
     }
 
     // Sanitize all text parts in parts array, if present
     if (Array.isArray(message.parts)) {
       newMessage.parts = message.parts.map((part) =>
-        part.type === 'text' ? { ...part, text: sanitizeText(part.text) } : part,
+        part.type === 'text' && typeof part.text === 'string' ? { ...part, text: sanitizeText(part.text) } : part,
       );
     }
 
     return newMessage;
   });
+
+  // Override model for discussion mode - use Gemini 2.5 Flash in background
+  if (chatMode === 'discuss') {
+    logger.info(
+      `Discussion mode active - switching from ${originalModel} (${originalProvider}) to gemini-2.0-flash-exp (Google)`,
+    );
+    currentModel = 'gemini-2.0-flash-exp';
+    currentProvider = 'Google';
+  }
 
   const provider = PROVIDER_LIST.find((p) => p.name === currentProvider) || DEFAULT_PROVIDER;
   const staticModels = LLMManager.getInstance().getStaticModelListFromProvider(provider);

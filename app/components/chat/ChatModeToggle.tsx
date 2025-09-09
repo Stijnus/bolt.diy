@@ -22,8 +22,8 @@ export const ChatModeToggle = memo(({ chatMode, onModeChange, disabled = false, 
     {
       id: 'discuss',
       label: 'Discuss',
-      icon: 'i-ph:chat-circle',
-      description: 'Plan projects, ask questions, and get guidance without code generation',
+      icon: 'i-ph:chat-circle-dots',
+      description: 'Plan projects, ask questions, and get guidance with search grounding',
       shortcut: 'D',
     },
   ];
@@ -63,8 +63,19 @@ export const ChatModeToggle = memo(({ chatMode, onModeChange, disabled = false, 
           transition={{ duration: 0.2 }}
           className="ml-3 hidden md:flex items-center gap-2 text-xs text-bolt-elements-textSecondary"
         >
-          <div className="w-1 h-1 bg-purple-500 rounded-full" />
+          <div
+            className={classNames(
+              'w-1 h-1 rounded-full',
+              activeMode.id === 'discuss' ? 'bg-green-500 animate-pulse' : 'bg-purple-500',
+            )}
+          />
           <span className="truncate max-w-[200px]">{activeMode.description}</span>
+          {activeMode.id === 'discuss' && (
+            <div className="flex items-center gap-1 ml-1 px-1.5 py-0.5 bg-green-500/10 text-green-400 text-xs rounded-full border border-green-500/20">
+              <span className="i-ph:magnifying-glass text-xs" />
+              <span>Search</span>
+            </div>
+          )}
         </motion.div>
       )}
     </div>

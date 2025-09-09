@@ -12,8 +12,8 @@ import { IconButton } from '~/components/ui/IconButton';
 import { toast } from 'react-toastify';
 import { SpeechRecognitionButton } from '~/components/chat/SpeechRecognition';
 import { SupabaseConnection } from './SupabaseConnection';
-import { ChatModeToggle } from './ChatModeToggle';
 import { SmartModeDetector } from './SmartModeDetector';
+import { DiscussionModeIcon } from './DiscussionModeIcon';
 import { ExpoQrModal } from '~/components/workbench/ExpoQrModal';
 import styles from './BaseChat.module.scss';
 import type { ProviderInfo } from '~/types/model';
@@ -271,19 +271,14 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             />
           )}
         </ClientOnly>
-        {/* Mode Toggle - Separate row for better visibility */}
-        {props.chatStarted && (
-          <div className="flex justify-center items-center px-4 pt-3 pb-2">
-            <ChatModeToggle
-              chatMode={props.chatMode || 'build'}
-              onModeChange={(mode) => props.setChatMode?.(mode)}
-              disabled={false}
-            />
-          </div>
-        )}
 
         <div className="flex justify-between items-center text-sm p-4 pt-2">
           <div className="flex gap-2 items-center">
+            <DiscussionModeIcon
+              chatMode={props.chatMode || 'build'}
+              onModeChange={(mode) => props.setChatMode?.(mode)}
+              disabled={!props.providerList || props.providerList.length === 0}
+            />
             <ColorSchemeDialog designScheme={props.designScheme} setDesignScheme={props.setDesignScheme} />
             <McpTools />
             <IconButton title="Upload file" className="transition-all" onClick={() => props.handleFileUpload()}>
