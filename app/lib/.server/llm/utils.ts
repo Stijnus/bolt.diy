@@ -1,17 +1,18 @@
-import { type Message } from 'ai';
-import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODEL_REGEX, PROVIDER_REGEX } from '~/utils/constants';
-import { IGNORE_PATTERNS, type FileMap } from './constants';
+import { type UIMessage } from 'ai';
 import ignore from 'ignore';
+import { IGNORE_PATTERNS, type FileMap } from './constants';
 import type { ContextAnnotation } from '~/types/context';
+import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODEL_REGEX, PROVIDER_REGEX } from '~/utils/constants';
 
-export function extractPropertiesFromMessage(message: Omit<Message, 'id'>): {
+export function extractPropertiesFromMessage(message: UIMessage): {
   model: string;
   provider: string;
   content: string;
 } {
-  const textContent = Array.isArray(message.content)
-    ? message.content.find((item) => item.type === 'text')?.text || ''
-    : message.content;
+  // In SDK 5, UIMessage uses 'parts' array instead of 'content'
+  const textContent = message.parts
+    ? message.parts.find((part) => part.type === 'text')?.text || ''
+    : '';
 
   const modelMatch = textContent.match(MODEL_REGEX);
   const providerMatch = textContent.match(PROVIDER_REGEX);
@@ -28,18 +29,8 @@ export function extractPropertiesFromMessage(message: Omit<Message, 'id'>): {
    */
   const provider = providerMatch ? providerMatch[1] : DEFAULT_PROVIDER.name;
 
-  const cleanedContent = Array.isArray(message.content)
-    ? message.content.map((item) => {
-        if (item.type === 'text') {
-          return {
-            type: 'text',
-            text: item.text?.replace(MODEL_REGEX, '').replace(PROVIDER_REGEX, ''),
-          };
-        }
-
-        return item; // Preserve image_url and other types as is
-      })
-    : textContent.replace(MODEL_REGEX, '').replace(PROVIDER_REGEX, '');
+  // For SDK 5, return the cleaned text content as string
+  const cleanedContent = textContent.replace(MODEL_REGEX, '').replace(PROVIDER_REGEX, '');
 
   return { model, provider, content: cleanedContent };
 }
@@ -56,6 +47,7 @@ export function simplifyBoltActions(input: string): string {
 
 export function createFilesContext(files: FileMap, useRelativePath?: boolean) {
   const ig = ignore().add(IGNORE_PATTERNS);
+
   let filePaths = Object.keys(files);
   filePaths = filePaths.filter((x) => {
     const relPath = x.replace('/home/project/', '');
@@ -88,7 +80,7 @@ export function createFilesContext(files: FileMap, useRelativePath?: boolean) {
   return `<boltArtifact id="code-content" title="Code Content" >\n${fileContexts.join('\n')}\n</boltArtifact>`;
 }
 
-export function extractCurrentContext(messages: Message[]) {
+export function extractCurrentContext(messages: UIMessage[]) {
   const lastAssistantMessage = messages.filter((x) => x.role == 'assistant').slice(-1)[0];
 
   if (!lastAssistantMessage) {

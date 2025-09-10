@@ -1,17 +1,17 @@
-import { convertToCoreMessages, streamText as _streamText, type Message } from 'ai';
+import { convertToModelMessages, streamText as _streamText, type UIMessage } from 'ai';
 import { MAX_TOKENS, PROVIDER_COMPLETION_LIMITS, isReasoningModel, type FileMap } from './constants';
-import { getSystemPrompt } from '~/lib/common/prompts/prompts';
-import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODIFICATIONS_TAG_NAME, PROVIDER_LIST, WORK_DIR } from '~/utils/constants';
-import type { IProviderSetting } from '~/types/model';
-import { PromptLibrary } from '~/lib/common/prompt-library';
-import { allowedHTMLElements } from '~/utils/markdown';
-import { LLMManager } from '~/lib/modules/llm/manager';
-import { createScopedLogger } from '~/utils/logger';
 import { createFilesContext, extractPropertiesFromMessage } from './utils';
+import { PromptLibrary } from '~/lib/common/prompt-library';
 import { discussPrompt } from '~/lib/common/prompts/discuss-prompt';
+import { getSystemPrompt } from '~/lib/common/prompts/prompts';
+import { LLMManager } from '~/lib/modules/llm/manager';
 import type { DesignScheme } from '~/types/design-scheme';
+import type { IProviderSetting } from '~/types/model';
+import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODIFICATIONS_TAG_NAME, PROVIDER_LIST, WORK_DIR } from '~/utils/constants';
+import { createScopedLogger } from '~/utils/logger';
+import { allowedHTMLElements } from '~/utils/markdown';
 
-export type Messages = Message[];
+export type UIMessages = UIMessage[];
 
 export interface StreamingOptions extends Omit<Parameters<typeof _streamText>[0], 'model'> {
   supabaseConnection?: {
@@ -44,15 +44,26 @@ function getCompletionTokenLimit(modelDetails: any): number {
 }
 
 function sanitizeText(text: string): string {
-  let sanitized = text.replace(/<div class=\\"__boltThought__\\">.*?<\/div>/s, '');
-  sanitized = sanitized.replace(/<think>.*?<\/think>/s, '');
-  sanitized = sanitized.replace(/<boltAction type="file" filePath="package-lock\.json">[\s\S]*?<\/boltAction>/g, '');
+  // Re-enabled sanitization with safer regex patterns
+  let sanitized = text;
+
+  // Only remove specific known patterns, be more conservative
+  sanitized = sanitized.replace(/<div class=\\"__boltThought__\\">.*?<\/div>/gs, '');
+
+  // Use more specific regex for think tags to avoid false matches
+  sanitized = sanitized.replace(/<think>\s*[\s\S]*?\s*<\/think>/gs, '');
+
+  // Only remove package-lock.json boltActions (specific case)
+  sanitized = sanitized.replace(
+    /<boltAction\s+type="file"\s+filePath="package-lock\.json"[^>]*>[\s\S]*?<\/boltAction>/g,
+    '',
+  );
 
   return sanitized.trim();
 }
 
 export async function streamText(props: {
-  messages: Omit<Message, 'id'>[];
+  messages: UIMessage[];
   env?: Env;
   options?: StreamingOptions;
   apiKeys?: Record<string, string>;
@@ -80,22 +91,21 @@ export async function streamText(props: {
     chatMode,
     designScheme,
   } = props;
+
   let currentModel = DEFAULT_MODEL;
   let currentProvider = DEFAULT_PROVIDER.name;
+
   let processedMessages = messages.map((message) => {
     const newMessage = { ...message };
 
     if (message.role === 'user') {
-      const { model, provider, content } = extractPropertiesFromMessage(message);
+      const { model, provider } = extractPropertiesFromMessage(message);
       currentModel = model;
       currentProvider = provider;
-      newMessage.content = sanitizeText(content);
-    } else if (message.role == 'assistant') {
-      newMessage.content = sanitizeText(message.content);
     }
 
-    // Sanitize all text parts in parts array, if present
-    if (Array.isArray(message.parts)) {
+    // Sanitize all text parts in parts array
+    if (message.parts) {
       newMessage.parts = message.parts.map((part) =>
         part.type === 'text' ? { ...part, text: sanitizeText(part.text) } : part,
       );
@@ -106,6 +116,7 @@ export async function streamText(props: {
 
   const provider = PROVIDER_LIST.find((p) => p.name === currentProvider) || DEFAULT_PROVIDER;
   const staticModels = LLMManager.getInstance().getStaticModelListFromProvider(provider);
+
   let modelDetails = staticModels.find((m) => m.name === currentModel);
 
   if (!modelDetails) {
@@ -282,7 +293,7 @@ export async function streamText(props: {
     }),
     system: chatMode === 'build' ? systemPrompt : discussPrompt(),
     ...tokenParams,
-    messages: convertToCoreMessages(processedMessages as any),
+    messages: convertToModelMessages(processedMessages),
     ...filteredOptions,
 
     // Set temperature to 1 for reasoning models (required by OpenAI API)

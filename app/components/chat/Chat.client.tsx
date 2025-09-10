@@ -1,33 +1,34 @@
-import { useStore } from '@nanostores/react';
-import type { Message } from 'ai';
 import { useChat } from '@ai-sdk/react';
+import type { Attachment } from '@ai-sdk/ui-utils';
+import { useStore } from '@nanostores/react';
+import { useSearchParams } from '@remix-run/react';
+import type { UIMessage } from 'ai';
+import type { TextUIPart, FileUIPart } from 'ai';
 import { useAnimate } from 'framer-motion';
+import Cookies from 'js-cookie';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { cssTransition, toast, ToastContainer } from 'react-toastify';
+import { BaseChat } from './BaseChat';
+import type { ElementInfo } from '~/components/workbench/Inspector';
 import { useMessageParser, usePromptEnhancer, useShortcuts } from '~/lib/hooks';
+import { useSettings } from '~/lib/hooks/useSettings';
 import { description, useChatHistory } from '~/lib/persistence';
 import { chatStore } from '~/lib/stores/chat';
+import { logStore } from '~/lib/stores/logs';
+import { useMCPStore } from '~/lib/stores/mcp';
+import { streamingState } from '~/lib/stores/streaming';
+import { supabaseConnection } from '~/lib/stores/supabase';
 import { workbenchStore } from '~/lib/stores/workbench';
-import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROMPT_COOKIE_KEY, PROVIDER_LIST } from '~/utils/constants';
-import { cubicEasingFn } from '~/utils/easings';
-import { createScopedLogger, renderLogger } from '~/utils/logger';
-import { BaseChat } from './BaseChat';
-import Cookies from 'js-cookie';
-import { debounce } from '~/utils/debounce';
-import { useSettings } from '~/lib/hooks/useSettings';
+import type { LlmErrorAlertType } from '~/types/actions';
+import { defaultDesignScheme, type DesignScheme } from '~/types/design-scheme';
 import type { ProviderInfo } from '~/types/model';
-import { useSearchParams } from '@remix-run/react';
+import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROMPT_COOKIE_KEY, PROVIDER_LIST } from '~/utils/constants';
+import { debounce } from '~/utils/debounce';
+import { cubicEasingFn } from '~/utils/easings';
+import { filesToArtifacts } from '~/utils/fileUtils';
+import { createScopedLogger, renderLogger } from '~/utils/logger';
 import { createSampler } from '~/utils/sampler';
 import { getTemplates, selectStarterTemplate } from '~/utils/selectStarterTemplate';
-import { logStore } from '~/lib/stores/logs';
-import { streamingState } from '~/lib/stores/streaming';
-import { filesToArtifacts } from '~/utils/fileUtils';
-import { supabaseConnection } from '~/lib/stores/supabase';
-import { defaultDesignScheme, type DesignScheme } from '~/types/design-scheme';
-import type { ElementInfo } from '~/components/workbench/Inspector';
-import type { TextUIPart, FileUIPart, Attachment } from '@ai-sdk/ui-utils';
-import { useMCPStore } from '~/lib/stores/mcp';
-import type { LlmErrorAlertType } from '~/types/actions';
 
 const toastAnimation = cssTransition({
   enter: 'animated fadeInRight',
@@ -90,11 +91,11 @@ export function Chat() {
 
 const processSampledMessages = createSampler(
   (options: {
-    messages: Message[];
-    initialMessages: Message[];
+    messages: UIMessage[];
+    initialMessages: UIMessage[];
     isLoading: boolean;
-    parseMessages: (messages: Message[], isLoading: boolean) => void;
-    storeMessageHistory: (messages: Message[]) => Promise<void>;
+    parseMessages: (messages: UIMessage[], isLoading: boolean) => void;
+    storeMessageHistory: (messages: UIMessage[]) => Promise<void>;
   }) => {
     const { messages, initialMessages, isLoading, parseMessages, storeMessageHistory } = options;
     parseMessages(messages, isLoading);
@@ -107,9 +108,9 @@ const processSampledMessages = createSampler(
 );
 
 interface ChatProps {
-  initialMessages: Message[];
-  storeMessageHistory: (messages: Message[]) => Promise<void>;
-  importChat: (description: string, messages: Message[]) => Promise<void>;
+  initialMessages: UIMessage[];
+  storeMessageHistory: (messages: UIMessage[]) => Promise<void>;
+  importChat: (description: string, messages: UIMessage[]) => Promise<void>;
   exportChat: () => void;
   description?: string;
 }
@@ -129,12 +130,15 @@ export const ChatImpl = memo(
     const actionAlert = useStore(workbenchStore.alert);
     const deployAlert = useStore(workbenchStore.deployAlert);
     const supabaseConn = useStore(supabaseConnection);
+
     const selectedProject = supabaseConn.stats?.projects?.find(
       (project) => project.id === supabaseConn.selectedProjectId,
     );
+
     const supabaseAlert = useStore(workbenchStore.supabaseAlert);
     const { activeProviders, promptId, autoSelectTemplate, contextOptimizationEnabled } = useSettings();
     const [llmErrorAlert, setLlmErrorAlert] = useState<LlmErrorAlertType | undefined>(undefined);
+
     const [model, setModel] = useState(() => {
       const savedModel = Cookies.get('selectedModel');
       return savedModel || DEFAULT_MODEL;
@@ -143,6 +147,7 @@ export const ChatImpl = memo(
       const savedProvider = Cookies.get('selectedProvider');
       return (PROVIDER_LIST.find((p) => p.name === savedProvider) || DEFAULT_PROVIDER) as ProviderInfo;
     });
+
     const { showChat } = useStore(chatStore);
     const [animationScope, animate] = useAnimate();
     const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
@@ -150,65 +155,59 @@ export const ChatImpl = memo(
     const [selectedElement, setSelectedElement] = useState<ElementInfo | null>(null);
     const mcpSettings = useMCPStore((state) => state.settings);
 
+    // Manual input state management for AI SDK v5
+    const [input, setInput] = useState(Cookies.get(PROMPT_COOKIE_KEY) || '');
+    const [chatData, setChatData] = useState<any>(undefined);
+
     const {
       messages,
-      isLoading,
-      input,
-      handleInputChange,
-      setInput,
+      status,
       stop,
-      append,
+      sendMessage: sendMessageFromHook,
       setMessages,
-      reload,
+      regenerate,
       error,
-      data: chatData,
-      setData,
       addToolResult,
     } = useChat({
-      api: '/api/chat',
-      body: {
-        apiKeys,
-        files,
-        promptId,
-        contextOptimization: contextOptimizationEnabled,
-        chatMode,
-        designScheme,
-        supabase: {
-          isConnected: supabaseConn.isConnected,
-          hasSelectedProject: !!selectedProject,
-          credentials: {
-            supabaseUrl: supabaseConn?.credentials?.supabaseUrl,
-            anonKey: supabaseConn?.credentials?.anonKey,
-          },
-        },
-        maxLLMSteps: mcpSettings.maxLLMSteps,
-      },
-      sendExtraMessageFields: true,
       onError: (e) => {
         setFakeLoading(false);
         handleError(e, 'chat');
       },
-      onFinish: (message, response) => {
-        const usage = response.usage;
-        setData(undefined);
-
-        if (usage) {
-          console.log('Token usage:', usage);
-          logStore.logProvider('Chat response completed', {
-            component: 'Chat',
-            action: 'response',
-            model,
-            provider: provider.name,
-            usage,
-            messageLength: message.content.length,
-          });
-        }
-
+      onData: (data) => {
+        // Handle custom data streaming (progress indicators, etc.)
+        setChatData(data);
+      },
+      onFinish: (_message) => {
+        setChatData(undefined);
         logger.debug('Finished streaming');
       },
-      initialMessages,
-      initialInput: Cookies.get(PROMPT_COOKIE_KEY) || '',
     });
+
+    // Initialize messages with history in AI SDK v5
+    useEffect(() => {
+      if (initialMessages.length > 0 && messages.length === 0) {
+        setMessages(initialMessages as UIMessage[]);
+      }
+    }, [initialMessages, messages.length, setMessages]);
+
+    // Adapter function to bridge v4/v5 addToolResult API differences
+    const addToolResultAdapter = ({ toolCallId, result }: { toolCallId: string; result: any }) => {
+      // Call the original addToolResult with the expected v4 signature
+      return addToolResult({
+        tool: 'unknown', // The tool name isn't available in v5 usage
+        toolCallId,
+        output: result,
+      });
+    };
+
+    // Manual input change handler for AI SDK v5
+    const handleInputChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+      setInput(event.target.value);
+    };
+
+    // Derive isLoading from status for backward compatibility
+    const isLoading = status === 'streaming' || status === 'submitted';
+
     useEffect(() => {
       const prompt = searchParams.get('prompt');
 
@@ -217,10 +216,36 @@ export const ChatImpl = memo(
       if (prompt) {
         setSearchParams({});
         runAnimation();
-        append({
-          role: 'user',
-          content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${prompt}`,
-        });
+        sendMessageFromHook(
+          {
+            role: 'user',
+            parts: [
+              {
+                type: 'text',
+                text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${prompt}`,
+              },
+            ],
+          },
+          {
+            body: {
+              apiKeys,
+              files,
+              promptId,
+              contextOptimization: contextOptimizationEnabled,
+              chatMode,
+              designScheme,
+              supabase: {
+                isConnected: supabaseConn.isConnected,
+                hasSelectedProject: !!selectedProject,
+                credentials: {
+                  anonKey: supabaseConn.credentials?.anonKey,
+                  supabaseUrl: supabaseConn.credentials?.supabaseUrl,
+                },
+              },
+              maxLLMSteps: mcpSettings.maxLLMSteps,
+            },
+          },
+        );
       }
     }, [model, provider, searchParams]);
 
@@ -329,7 +354,7 @@ export const ChatImpl = memo(
           provider: provider.name,
           errorType,
         });
-        setData([]);
+        setChatData([]);
       },
       [provider.name, stop],
     );
@@ -379,13 +404,13 @@ export const ChatImpl = memo(
       // Add image parts if any
       images.forEach((imageData) => {
         // Extract correct MIME type from the data URL
-        const mimeType = imageData.split(';')[0].split(':')[1] || 'image/jpeg';
+        const mediaType = imageData.split(';')[0].split(':')[1] || 'image/jpeg';
 
-        // Create file part according to AI SDK format
+        // Create file part according to AI SDK v5 format
         parts.push({
           type: 'file',
-          mimeType,
-          data: imageData.replace(/^data:image\/[^;]+;base64,/, ''),
+          mediaType,
+          url: imageData, // Use the complete data URL
         });
       });
 
@@ -471,28 +496,23 @@ export const ChatImpl = memo(
                 {
                   id: `1-${new Date().getTime()}`,
                   role: 'user',
-                  content: userMessageText,
                   parts: createMessageParts(userMessageText, imageDataList),
                 },
                 {
                   id: `2-${new Date().getTime()}`,
                   role: 'assistant',
-                  content: assistantMessage,
+                  parts: [{ type: 'text', text: assistantMessage }],
                 },
                 {
                   id: `3-${new Date().getTime()}`,
                   role: 'user',
-                  content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${userMessage}`,
-                  annotations: ['hidden'],
+                  parts: [
+                    { type: 'text', text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${userMessage}` },
+                  ],
                 },
               ]);
 
-              const reloadOptions =
-                uploadedFiles.length > 0
-                  ? { experimental_attachments: await filesToAttachments(uploadedFiles) }
-                  : undefined;
-
-              reload(reloadOptions);
+              regenerate();
               setInput('');
               Cookies.remove(PROMPT_COOKIE_KEY);
 
@@ -517,12 +537,10 @@ export const ChatImpl = memo(
           {
             id: `${new Date().getTime()}`,
             role: 'user',
-            content: userMessageText,
             parts: createMessageParts(userMessageText, imageDataList),
-            experimental_attachments: attachments,
           },
         ]);
-        reload(attachments ? { experimental_attachments: attachments } : undefined);
+        regenerate();
         setFakeLoading(false);
         setInput('');
         Cookies.remove(PROMPT_COOKIE_KEY);
@@ -552,13 +570,36 @@ export const ChatImpl = memo(
         const attachmentOptions =
           uploadedFiles.length > 0 ? { experimental_attachments: await filesToAttachments(uploadedFiles) } : undefined;
 
-        append(
+        sendMessageFromHook(
           {
             role: 'user',
-            content: messageText,
-            parts: createMessageParts(messageText, imageDataList),
+            parts: [
+              {
+                type: 'text',
+                text: messageText,
+              },
+            ],
           },
-          attachmentOptions,
+          {
+            ...attachmentOptions,
+            body: {
+              apiKeys,
+              files,
+              promptId,
+              contextOptimization: contextOptimizationEnabled,
+              chatMode,
+              designScheme,
+              supabase: {
+                isConnected: supabaseConn.isConnected,
+                hasSelectedProject: !!selectedProject,
+                credentials: {
+                  anonKey: supabaseConn.credentials?.anonKey,
+                  supabaseUrl: supabaseConn.credentials?.supabaseUrl,
+                },
+              },
+              maxLLMSteps: mcpSettings.maxLLMSteps,
+            },
+          },
         );
 
         workbenchStore.resetAllFileModifications();
@@ -568,13 +609,36 @@ export const ChatImpl = memo(
         const attachmentOptions =
           uploadedFiles.length > 0 ? { experimental_attachments: await filesToAttachments(uploadedFiles) } : undefined;
 
-        append(
+        sendMessageFromHook(
           {
             role: 'user',
-            content: messageText,
-            parts: createMessageParts(messageText, imageDataList),
+            parts: [
+              {
+                type: 'text',
+                text: messageText,
+              },
+            ],
           },
-          attachmentOptions,
+          {
+            ...attachmentOptions,
+            body: {
+              apiKeys,
+              files,
+              promptId,
+              contextOptimization: contextOptimizationEnabled,
+              chatMode,
+              designScheme,
+              supabase: {
+                isConnected: supabaseConn.isConnected,
+                hasSelectedProject: !!selectedProject,
+                credentials: {
+                  anonKey: supabaseConn.credentials?.anonKey,
+                  supabaseUrl: supabaseConn.credentials?.supabaseUrl,
+                },
+              },
+              maxLLMSteps: mcpSettings.maxLLMSteps,
+            },
+          },
         );
       }
 
@@ -661,7 +725,11 @@ export const ChatImpl = memo(
 
           return {
             ...message,
-            content: parsedMessages[i] || '',
+            parts: message.parts?.map(part => 
+              part.type === 'text' 
+                ? { ...part, text: parsedMessages[i] || part.text }
+                : part
+            ) || [],
           };
         })}
         enhancePrompt={() => {
@@ -691,12 +759,11 @@ export const ChatImpl = memo(
         data={chatData}
         chatMode={chatMode}
         setChatMode={setChatMode}
-        append={append}
         designScheme={designScheme}
         setDesignScheme={setDesignScheme}
         selectedElement={selectedElement}
         setSelectedElement={setSelectedElement}
-        addToolResult={addToolResult}
+        addToolResult={addToolResultAdapter}
       />
     );
   },
