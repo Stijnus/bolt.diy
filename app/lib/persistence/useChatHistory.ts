@@ -1,5 +1,6 @@
+import { generateId } from '@ai-sdk/ui-utils';
+import type { JSONValue, UIMessage } from '@ai-sdk/ui-utils';
 import { useLoaderData, useNavigate, useSearchParams } from '@remix-run/react';
-import { createIdGenerator, type JSONValue, type UIMessage } from 'ai';
 import { atom } from 'nanostores';
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
@@ -43,7 +44,7 @@ export function useChatHistory() {
   const navigate = useNavigate();
   const { id: mixedId } = useLoaderData<{ id?: string }>();
   const [searchParams] = useSearchParams();
-  const generateId = createIdGenerator({ size: 16 });
+  const genId = () => generateId(16);
 
   const [archivedMessages, setArchivedMessages] = useState<UIMessage[]>([]);
   const [initialMessages, setInitialMessages] = useState<UIMessage[]>([]);
@@ -125,9 +126,10 @@ export function useChatHistory() {
 
               filteredMessages = [
                 {
-                  id: generateId(),
+                  id: genId(),
                   role: 'user',
                   content: `Restore project from snapshot`, // Removed newline
+                  parts: [{ type: 'text', text: `Restore project from snapshot` }],
                   annotations: ['no-store', 'hidden'],
                 },
                 {
@@ -150,9 +152,32 @@ ${value.content}
                       }
                     })
                     .join('\n')}
-                  ${commandActionsString} 
+                  ${commandActionsString}
                   </boltArtifact>
                   `, // Added commandActionsString, followupMessage, updated id and title
+                  parts: [
+                    {
+                      type: 'text',
+                      text: `Bolt Restored your chat from a snapshot. You can revert this message to load the full chat history.
+                  <boltArtifact id="restored-project-setup" title="Restored Project & Setup" type="bundled">
+                  ${Object.entries(snapshot?.files || {})
+                    .map(([key, value]) => {
+                      if (value?.type === 'file') {
+                        return `
+                      <boltAction type="file" filePath="${key}">
+${value.content}
+                      </boltAction>
+                      `;
+                      } else {
+                        return ``;
+                      }
+                    })
+                    .join('\\n')}
+                  ${commandActionsString}
+                  </boltArtifact>
+                  `,
+                    },
+                  ],
                   annotations: [
                     'no-store',
                     ...(summary

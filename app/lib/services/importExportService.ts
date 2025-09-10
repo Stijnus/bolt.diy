@@ -1,11 +1,7 @@
 import Cookies from 'js-cookie';
 import { getAllChats, deleteChat } from '~/lib/persistence/chats';
 
-interface ExtendedMessage extends Message {
-  name?: string;
-  function_call?: any;
-  timestamp?: number;
-}
+type ExtendedMessage = any;
 
 /**
  * Service for handling import and export operations of application data

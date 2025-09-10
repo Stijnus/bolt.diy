@@ -1,5 +1,6 @@
+import type { UIMessage } from '@ai-sdk/ui-utils';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { experimental_createMCPClient, type ToolSet, type UIMessage, convertToModelMessages } from 'ai';
+import { experimental_createMCPClient, type ToolSet, convertToModelMessages } from 'ai';
 import { Experimental_StdioMCPTransport } from 'ai/mcp-stdio';
 import { z } from 'zod';
 import type { ToolCallAnnotation } from '~/types/context';
@@ -405,7 +406,11 @@ export class MCPService {
 
             try {
               result = await toolInstance.execute(toolInvocation.args, {
-                messages: convertToModelMessages(messages),
+                messages: convertToModelMessages(
+                  (messages as any[]).filter(
+                    (m) => m.role === 'system' || m.role === 'user' || m.role === 'assistant',
+                  ) as any[],
+                ),
                 toolCallId,
               });
             } catch (error) {

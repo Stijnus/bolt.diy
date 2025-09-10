@@ -1,4 +1,4 @@
-import type { UIMessage } from 'ai';
+import type { UIMessage } from '@ai-sdk/ui-utils';
 import type { Snapshot } from './types'; // Import Snapshot type
 import type { ChatHistoryItem } from './useChatHistory';
 import { createScopedLogger } from '~/utils/logger';

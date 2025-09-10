@@ -1,4 +1,5 @@
-import { convertToModelMessages, streamText as _streamText, type UIMessage } from 'ai';
+import type { UIMessage } from '@ai-sdk/ui-utils';
+import { convertToModelMessages, streamText as _streamText } from 'ai';
 import { MAX_TOKENS, PROVIDER_COMPLETION_LIMITS, isReasoningModel, type FileMap } from './constants';
 import { createFilesContext, extractPropertiesFromMessage } from './utils';
 import { PromptLibrary } from '~/lib/common/prompt-library';
@@ -153,8 +154,8 @@ export async function streamText(props: {
 
   const dynamicMaxTokens = modelDetails ? getCompletionTokenLimit(modelDetails) : Math.min(MAX_TOKENS, 16384);
 
-  // Use model-specific limits directly - no artificial cap needed
-  const safeMaxTokens = dynamicMaxTokens;
+  // Clamp to provider-reported maxTokenAllowed to avoid warnings (e.g., Deepseek 8000)
+  const safeMaxTokens = Math.min(dynamicMaxTokens, modelDetails.maxTokenAllowed || dynamicMaxTokens);
 
   logger.info(
     `Token limits for model ${modelDetails.name}: maxTokens=${safeMaxTokens}, maxTokenAllowed=${modelDetails.maxTokenAllowed}, maxCompletionTokens=${modelDetails.maxCompletionTokens}`,
@@ -293,7 +294,9 @@ export async function streamText(props: {
     }),
     system: chatMode === 'build' ? systemPrompt : discussPrompt(),
     ...tokenParams,
-    messages: convertToModelMessages(processedMessages),
+    messages: convertToModelMessages(
+      processedMessages.filter((m) => m.role === 'system' || m.role === 'user' || m.role === 'assistant') as any[],
+    ),
     ...filteredOptions,
 
     // Set temperature to 1 for reasoning models (required by OpenAI API)
@@ -318,5 +321,5 @@ export async function streamText(props: {
     ),
   );
 
-  return await _streamText(streamParams);
+  return _streamText(streamParams as any);
 }

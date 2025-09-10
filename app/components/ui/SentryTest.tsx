@@ -14,7 +14,7 @@ export function SentryTest() {
       if (typeof Sentry !== 'undefined') {
         console.log('✅ Sentry object found:', Object.keys(Sentry));
 
-        if (Sentry.captureException && Sentry.captureMessage) {
+        if (typeof Sentry.captureException === 'function' && typeof (Sentry as any).captureMessage === 'function') {
           console.log('✅ Sentry methods available');
           setSentryStatus('✅ Sentry is initialized');
 
@@ -37,6 +37,7 @@ export function SentryTest() {
   const testSentryError = () => {
     try {
       setLastError('Sending test error...');
+
       const error = new Error('Sentry Test Error - ' + new Date().toISOString());
       Sentry.captureException(error);
       console.log('✅ Test error sent to Sentry:', error);

@@ -36,10 +36,15 @@ export const Artifact = memo(({ artifactId }: ArtifactProps) => {
 
   const actions = useStore(
     computed(artifact.runner.actions, (actions) => {
-      // Filter out Supabase actions except for migrations
+      // Filter out file actions and Supabase-related actions from the chat UI
       return Object.values(actions).filter((action) => {
-        // Exclude actions with type 'supabase' or actions that contain 'supabase' in their content
-        return action.type !== 'supabase' && !(action.type === 'shell' && action.content?.includes('supabase'));
+        // Hide file creation/update actions to avoid flooding the chat UI
+        if (action.type === 'file') {
+          return false;
+        }
+
+        // Exclude actions with type 'supabase' or shell commands that mention supabase
+        return action.type !== 'supabase' && !(action.type === 'shell' && action.content?.includes?.('supabase'));
       });
     }),
   );

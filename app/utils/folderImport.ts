@@ -1,4 +1,4 @@
-import type { UIMessage } from 'ai';
+import type { UIMessage } from '@ai-sdk/ui-utils';
 import { generateId } from './fileUtils';
 import { detectProjectCommands, createCommandsMessage, escapeBoltTags } from './projectCommands';
 
@@ -36,6 +36,7 @@ export const createChatFromFolder = async (
 
   const filesMessage: UIMessage = {
     role: 'assistant',
+    content: `Imported the contents of the "${folderName}" folder.`,
     parts: [
       {
         type: 'text',
@@ -58,6 +59,7 @@ ${escapeBoltTags(file.content)}
   const userMessage: UIMessage = {
     role: 'user',
     id: generateId(),
+    content: `Import the "${folderName}" folder`,
     parts: [
       {
         type: 'text',
@@ -72,6 +74,7 @@ ${escapeBoltTags(file.content)}
     messages.push({
       role: 'user',
       id: generateId(),
+      content: 'Setup the codebase and Start the application',
       parts: [
         {
           type: 'text',

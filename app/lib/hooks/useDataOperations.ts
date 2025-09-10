@@ -1,4 +1,4 @@
-import { createIdGenerator } from 'ai';
+import { generateId } from '@ai-sdk/ui-utils';
 import { useState, useCallback } from 'react';
 import { toast } from 'react-toastify';
 import { useIndexedDB } from '~/lib/hooks/useIndexedDB';
@@ -562,7 +562,6 @@ export function useDataOperations({
         return;
       }
 
-      const generateId = createIdGenerator({ size: 16 });
       setIsImporting(true);
       setProgressPercent(0);
 

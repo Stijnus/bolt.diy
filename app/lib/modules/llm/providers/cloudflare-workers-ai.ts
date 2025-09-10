@@ -58,7 +58,7 @@ export default class CloudflareWorkersAIProvider extends BaseProvider {
       defaultApiTokenKey: 'CLOUDFLARE_API_TOKEN',
     });
 
-    const accountId = serverEnv.CLOUDFLARE_ACCOUNT_ID || settings?.accountId;
+    const accountId = (serverEnv as any).CLOUDFLARE_ACCOUNT_ID || (settings as any)?.accountId;
 
     if (!apiKey || !accountId) {
       throw `Missing Api Key or Account ID configuration for ${this.name} provider`;
@@ -112,7 +112,7 @@ export default class CloudflareWorkersAIProvider extends BaseProvider {
       defaultApiTokenKey: 'CLOUDFLARE_API_TOKEN',
     });
 
-    const accountId = (serverEnv as any).CLOUDFLARE_ACCOUNT_ID || providerSettings?.[this.name]?.accountId;
+    const accountId = (serverEnv as any).CLOUDFLARE_ACCOUNT_ID || (providerSettings as any)?.[this.name]?.accountId;
 
     if (!apiKey || !accountId) {
       throw `Missing Api Key or Account ID configuration for ${this.name} provider`;
@@ -134,9 +134,9 @@ export default class CloudflareWorkersAIProvider extends BaseProvider {
     };
 
     const workersAI = createWorkersAI({
-      binding: mockAI,
+      binding: mockAI as any,
     });
 
-    return workersAI(model);
+    return workersAI(model as any);
   }
 }

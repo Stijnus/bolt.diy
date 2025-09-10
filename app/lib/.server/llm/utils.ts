@@ -1,4 +1,4 @@
-import { type UIMessage } from 'ai';
+import type { UIMessage } from '@ai-sdk/ui-utils';
 import ignore from 'ignore';
 import { IGNORE_PATTERNS, type FileMap } from './constants';
 import type { ContextAnnotation } from '~/types/context';
@@ -10,9 +10,7 @@ export function extractPropertiesFromMessage(message: UIMessage): {
   content: string;
 } {
   // In SDK 5, UIMessage uses 'parts' array instead of 'content'
-  const textContent = message.parts
-    ? message.parts.find((part) => part.type === 'text')?.text || ''
-    : '';
+  const textContent = message.parts ? message.parts.find((part) => part.type === 'text')?.text || '' : '';
 
   const modelMatch = textContent.match(MODEL_REGEX);
   const providerMatch = textContent.match(PROVIDER_REGEX);

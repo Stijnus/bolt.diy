@@ -61,11 +61,12 @@ export const startTransaction = (name: string, op: string) => {
 
 // User feedback
 export const captureUserFeedback = (name: string, email: string, comments: string) => {
-  Sentry.captureUserFeedback({
-    name,
-    email,
-    comments,
-  });
+  // Sentry v8+: captureFeedback replaces captureUserFeedback
+  if ((Sentry as any).captureFeedback) {
+    (Sentry as any).captureFeedback({ name, email, message: comments });
+  } else {
+    (Sentry as any).captureUserFeedback?.({ name, email, comments });
+  }
 };
 
 // Set user context

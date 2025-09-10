@@ -154,13 +154,19 @@ export const Markdown = memo(
                   if (type === 'file') {
                     openArtifactInWorkbench(path);
                   } else if (type === 'message') {
-                    // TODO: Re-implement with new AI SDK v5 sendMessage pattern
-                    console.log('Message action disabled during AI SDK v5 migration:', message);
-                  } else if (type === 'implement' && setChatMode) {
-                    setChatMode('build');
+                    // Dispatch a global event handled in Chat.client.tsx to send the message
+                    const evt = new CustomEvent('bolt:quick-action', {
+                      detail: { type: 'message', message },
+                    });
+                    window.dispatchEvent(evt);
+                  } else if (type === 'implement') {
+                    // Switch mode to build and optionally send the provided message
+                    setChatMode?.('build');
 
-                    // TODO: Re-implement with new AI SDK v5 sendMessage pattern
-                    console.log('Implement action disabled during AI SDK v5 migration');
+                    const evt = new CustomEvent('bolt:quick-action', {
+                      detail: { type: 'implement', message },
+                    });
+                    window.dispatchEvent(evt);
                   } else if (type === 'link' && typeof href === 'string') {
                     try {
                       const url = new URL(href, window.location.origin);

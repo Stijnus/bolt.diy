@@ -2,9 +2,9 @@
  * @ts-nocheck
  * Preventing TS checks with files presented in the video for a better presentation.
  */
+import type { JSONValue, UIMessage } from '@ai-sdk/ui-utils';
 import { useStore } from '@nanostores/react';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import type { JSONValue, UIMessage } from 'ai';
 import Cookies from 'js-cookie';
 import React, { type RefCallback, useEffect, useState } from 'react';
 import { ClientOnly } from 'remix-utils/client-only';
@@ -44,7 +44,7 @@ interface BaseChatProps {
   chatStarted?: boolean;
   isStreaming?: boolean;
   onStreamingChange?: (streaming: boolean) => void;
-  messages?: UIMessage[];
+  messages?: any[];
   description?: string;
   enhancingPrompt?: boolean;
   promptEnhanced?: boolean;

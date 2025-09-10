@@ -1,6 +1,6 @@
+import { generateId } from '@ai-sdk/ui-utils';
+import type { UIMessage } from '@ai-sdk/ui-utils';
 import { useSearchParams } from '@remix-run/react';
-import type { UIMessage } from 'ai';
-import { createIdGenerator } from 'ai';
 import ignore from 'ignore';
 import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
@@ -49,7 +49,7 @@ export function GitUrlImport() {
       return;
     }
 
-    const generateId = createIdGenerator({ size: 16 });
+    const genId = () => generateId(16);
 
     if (repoUrl) {
       const ig = ignore().add(IGNORE_PATTERNS);
@@ -77,6 +77,7 @@ export function GitUrlImport() {
 
           const filesMessage: UIMessage = {
             role: 'assistant',
+            content: `Cloning the repo ${repoUrl} into ${workdir}`,
             parts: [
               {
                 type: 'text',
@@ -93,7 +94,7 @@ ${escapeBoltTags(file.content)}
 </boltArtifact>`,
               },
             ],
-            id: generateId(),
+            id: genId(),
           };
 
           const messages = [filesMessage];
@@ -101,7 +102,8 @@ ${escapeBoltTags(file.content)}
           if (commandsMessage) {
             messages.push({
               role: 'user',
-              id: generateId(),
+              id: genId(),
+              content: 'Setup the codebase and Start the application',
               parts: [
                 {
                   type: 'text',

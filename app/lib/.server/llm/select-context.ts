@@ -1,4 +1,5 @@
-import { generateText, type GenerateTextResult, type UIMessage } from 'ai';
+import type { UIMessage } from '@ai-sdk/ui-utils';
+import { generateText, type GenerateTextResult } from 'ai';
 import ignore from 'ignore';
 import { IGNORE_PATTERNS, type FileMap } from './constants';
 import { createFilesContext, extractCurrentContext, extractPropertiesFromMessage, simplifyBoltActions } from './utils';

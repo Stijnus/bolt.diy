@@ -2,8 +2,6 @@ import { useChat } from '@ai-sdk/react';
 import type { Attachment } from '@ai-sdk/ui-utils';
 import { useStore } from '@nanostores/react';
 import { useSearchParams } from '@remix-run/react';
-import type { UIMessage } from 'ai';
-import type { TextUIPart, FileUIPart } from 'ai';
 import { useAnimate } from 'framer-motion';
 import Cookies from 'js-cookie';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
@@ -91,11 +89,11 @@ export function Chat() {
 
 const processSampledMessages = createSampler(
   (options: {
-    messages: UIMessage[];
-    initialMessages: UIMessage[];
+    messages: any[];
+    initialMessages: any[];
     isLoading: boolean;
-    parseMessages: (messages: UIMessage[], isLoading: boolean) => void;
-    storeMessageHistory: (messages: UIMessage[]) => Promise<void>;
+    parseMessages: (messages: any[], isLoading: boolean) => void;
+    storeMessageHistory: (messages: any[]) => Promise<void>;
   }) => {
     const { messages, initialMessages, isLoading, parseMessages, storeMessageHistory } = options;
     parseMessages(messages, isLoading);
@@ -108,9 +106,9 @@ const processSampledMessages = createSampler(
 );
 
 interface ChatProps {
-  initialMessages: UIMessage[];
-  storeMessageHistory: (messages: UIMessage[]) => Promise<void>;
-  importChat: (description: string, messages: UIMessage[]) => Promise<void>;
+  initialMessages: any[];
+  storeMessageHistory: (messages: any[]) => Promise<void>;
+  importChat: (description: string, messages: any[]) => Promise<void>;
   exportChat: () => void;
   description?: string;
 }
@@ -174,8 +172,20 @@ export const ChatImpl = memo(
         handleError(e, 'chat');
       },
       onData: (data) => {
-        // Handle custom data streaming (progress indicators, etc.)
-        setChatData(data);
+        // Normalize streamed custom data to an array and accumulate events
+        setChatData((prev: any) => {
+          if (Array.isArray(data)) {
+            return data;
+          }
+
+          const list = Array.isArray(prev) ? prev.slice() : [];
+
+          if (data !== undefined && data !== null) {
+            list.push(data);
+          }
+
+          return list;
+        });
       },
       onFinish: (_message) => {
         setChatData(undefined);
@@ -186,7 +196,7 @@ export const ChatImpl = memo(
     // Initialize messages with history in AI SDK v5
     useEffect(() => {
       if (initialMessages.length > 0 && messages.length === 0) {
-        setMessages(initialMessages as UIMessage[]);
+        setMessages(initialMessages as any);
       }
     }, [initialMessages, messages.length, setMessages]);
 
@@ -218,6 +228,7 @@ export const ChatImpl = memo(
         runAnimation();
         sendMessageFromHook(
           {
+            id: `${Date.now()}`,
             role: 'user',
             parts: [
               {
@@ -392,9 +403,9 @@ export const ChatImpl = memo(
     };
 
     // Helper function to create message parts array from text and images
-    const createMessageParts = (text: string, images: string[] = []): Array<TextUIPart | FileUIPart> => {
+    const createMessageParts = (text: string, images: string[] = []): any[] => {
       // Create an array of properly typed message parts
-      const parts: Array<TextUIPart | FileUIPart> = [
+      const parts: any[] = [
         {
           type: 'text',
           text,
@@ -531,7 +542,6 @@ export const ChatImpl = memo(
 
         // If autoSelectTemplate is disabled or template selection failed, proceed with normal message
         const userMessageText = `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${finalMessageContent}`;
-        const attachments = uploadedFiles.length > 0 ? await filesToAttachments(uploadedFiles) : undefined;
 
         setMessages([
           {
@@ -572,6 +582,7 @@ export const ChatImpl = memo(
 
         sendMessageFromHook(
           {
+            id: `${Date.now()}`,
             role: 'user',
             parts: [
               {
@@ -611,6 +622,7 @@ export const ChatImpl = memo(
 
         sendMessageFromHook(
           {
+            id: `${Date.now()}`,
             role: 'user',
             parts: [
               {
@@ -691,6 +703,97 @@ export const ChatImpl = memo(
       Cookies.set('selectedProvider', newProvider.name, { expires: 30 });
     };
 
+    // Handle quick action buttons dispatched from Markdown (message/implement)
+    useEffect(() => {
+      const handler = (ev: Event) => {
+        const e = ev as CustomEvent<{ type: string; message?: string } | undefined>;
+        const detail = e.detail;
+
+        if (!detail || !detail.type) {
+          return;
+        }
+
+        const send = (text: string) => {
+          // Kick off intro animation if needed, then stream like a normal send
+          runAnimation();
+
+          const wrapped = `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${text}`;
+
+          sendMessageFromHook(
+            {
+              id: `${Date.now()}`,
+              role: 'user',
+              parts: [
+                {
+                  type: 'text',
+                  text: wrapped,
+                },
+              ],
+            },
+            {
+              body: {
+                apiKeys,
+                files,
+                promptId,
+                contextOptimization: contextOptimizationEnabled,
+                chatMode,
+                designScheme,
+                supabase: {
+                  isConnected: supabaseConn.isConnected,
+                  hasSelectedProject: !!selectedProject,
+                  credentials: {
+                    anonKey: supabaseConn.credentials?.anonKey,
+                    supabaseUrl: supabaseConn.credentials?.supabaseUrl,
+                  },
+                },
+                maxLLMSteps: mcpSettings.maxLLMSteps,
+              },
+            },
+          );
+        };
+
+        if (detail.type === 'message') {
+          const text = (detail.message || '').trim();
+
+          if (!text) {
+            return;
+          }
+
+          send(text);
+        } else if (detail.type === 'implement') {
+          // Switch to build mode and optionally send a message
+          setChatMode('build');
+
+          const text = (detail.message || '').trim();
+
+          if (text) {
+            send(text);
+          }
+        }
+      };
+
+      window.addEventListener('bolt:quick-action', handler as EventListener);
+
+      return () => window.removeEventListener('bolt:quick-action', handler as EventListener);
+    }, [
+      model,
+      provider.name,
+      apiKeys,
+      files,
+      promptId,
+      contextOptimizationEnabled,
+      chatMode,
+      designScheme,
+      supabaseConn.isConnected,
+      supabaseConn.credentials?.anonKey,
+      supabaseConn.credentials?.supabaseUrl,
+      selectedProject,
+      mcpSettings.maxLLMSteps,
+      sendMessageFromHook,
+      runAnimation,
+      setChatMode,
+    ]);
+
     return (
       <BaseChat
         ref={animationScope}
@@ -725,11 +828,10 @@ export const ChatImpl = memo(
 
           return {
             ...message,
-            parts: message.parts?.map(part => 
-              part.type === 'text' 
-                ? { ...part, text: parsedMessages[i] || part.text }
-                : part
-            ) || [],
+            parts:
+              message.parts?.map((part) =>
+                part.type === 'text' ? { ...part, text: parsedMessages[i] || part.text } : part,
+              ) || [],
           };
         })}
         enhancePrompt={() => {

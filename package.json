@@ -13,7 +13,7 @@
   "scripts": {
     "deploy": "npm run build && wrangler pages deploy",
     "build": "remix vite:build && npm run sentry:sourcemaps",
-    "sentry:sourcemaps": "sentry-cli sourcemaps upload --org nastman --project javascript-react ./build/client",
+    "sentry:sourcemaps": "sentry-cli sourcemaps upload --org nastman --project boltdev-diy ./build/client",
     "dev": "node pre-start.cjs  && remix vite:dev",
     "test": "vitest --run",
     "test:watch": "vitest",

@@ -1,5 +1,5 @@
+import type { UIMessage } from '@ai-sdk/ui-utils';
 import { useLocation } from '@remix-run/react';
-import type { UIMessage } from 'ai';
 import { Fragment } from 'react';
 import { forwardRef } from 'react';
 import type { ForwardedRef } from 'react';
@@ -69,23 +69,32 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
                   })}
                 >
                   <div className="grid grid-col-1 w-full">
-                    {isUserMessage ? (
-                      <UserMessage content={content} parts={parts} />
-                    ) : (
-                      <AssistantMessage
-                        content={content}
-                        annotations={message.annotations}
-                        messageId={messageId}
-                        onRewind={handleRewind}
-                        onFork={handleFork}
-                        chatMode={props.chatMode}
-                        setChatMode={props.setChatMode}
-                        model={props.model}
-                        provider={props.provider}
-                        parts={parts}
-                        addToolResult={props.addToolResult}
-                      />
-                    )}
+                    {(() => {
+                      const textFromParts = (parts || [])
+                        .filter((p: any) => p && p.type === 'text' && typeof (p as any).text === 'string')
+                        .map((p: any) => (p as any).text)
+                        .join('\n\n');
+                      const derivedContent =
+                        textFromParts && textFromParts.length > 0 ? (textFromParts as any) : (content as any);
+
+                      return isUserMessage ? (
+                        <UserMessage content={derivedContent as any} parts={parts} />
+                      ) : (
+                        <AssistantMessage
+                          content={derivedContent as any}
+                          annotations={message.annotations}
+                          messageId={messageId}
+                          onRewind={handleRewind}
+                          onFork={handleFork}
+                          chatMode={props.chatMode}
+                          setChatMode={props.setChatMode}
+                          model={props.model}
+                          provider={props.provider}
+                          parts={parts}
+                          addToolResult={props.addToolResult}
+                        />
+                      );
+                    })()}
                   </div>
                 </div>
               );

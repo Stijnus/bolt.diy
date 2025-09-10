@@ -103,7 +103,7 @@ export default class FireworksProvider extends BaseProvider {
   }): LanguageModel {
     const { model, serverEnv, apiKeys, providerSettings } = options;
 
-    const { baseUrl, apiKey } = this.getProviderBaseUrlAndKey({
+    const { apiKey } = this.getProviderBaseUrlAndKey({
       apiKeys,
       providerSettings: providerSettings?.[this.name],
       serverEnv: serverEnv as any,
@@ -115,11 +115,7 @@ export default class FireworksProvider extends BaseProvider {
       throw `Missing Api Key configuration for ${this.name} provider`;
     }
 
-    const fireworksInstance = fireworks({
-      baseURL: baseUrl || 'https://api.fireworks.ai/inference/v1',
-      apiKey,
-    });
-
-    return fireworksInstance(model);
+    // fireworks() only accepts a single argument (model id) via ai-sdk v5
+    return fireworks(model);
   }
 }

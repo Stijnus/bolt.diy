@@ -1,5 +1,6 @@
-import { type ActionFunctionArgs } from '@remix-run/cloudflare';
-import { createUIMessageStream, createUIMessageStreamResponse, createIdGenerator } from 'ai';
+import { generateId } from '@ai-sdk/ui-utils';
+import type { ActionFunctionArgs } from '@remix-run/cloudflare';
+import { createUIMessageStream, createUIMessageStreamResponse } from 'ai';
 import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS, type FileMap } from '~/lib/.server/llm/constants';
 import { createSummary } from '~/lib/.server/llm/create-summary';
 import { getFilePaths, selectContext } from '~/lib/.server/llm/select-context';
@@ -78,13 +79,12 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     totalTokens: 0,
   };
 
-  const encoder: TextEncoder = new TextEncoder();
-
   let progressCounter: number = 1;
+  let responseSegments: number = 0;
 
   try {
     const mcpService = MCPService.getInstance();
-    const generateId = createIdGenerator({ size: 16 });
+    const genId = () => generateId(16);
 
     const totalMessageContent = messages.reduce((acc, message) => {
       const textContent =
@@ -108,7 +108,20 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         let summary: string | undefined = undefined;
         let messageSliceId = 0;
 
-        const processedMessages = await mcpService.processToolInvocations(messages, writer);
+        const processedMessages = await mcpService.processToolInvocations(messages, {
+          writeToolResult: (options) => {
+            writer.write({
+              type: 'data-tool-result',
+              data: options,
+            });
+          },
+          writeMessageAnnotation: (annotation) => {
+            writer.write({
+              type: 'data-message-annotation',
+              data: annotation,
+            });
+          },
+        });
 
         if (processedMessages.length > 3) {
           messageSliceId = processedMessages.length - 3;
@@ -119,6 +132,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           writer.write({
             type: 'data-progress',
             data: {
+              type: 'progress',
               label: 'summary',
               status: 'in-progress',
               order: progressCounter++,
@@ -148,6 +162,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           writer.write({
             type: 'data-progress',
             data: {
+              type: 'progress',
               label: 'summary',
               status: 'complete',
               order: progressCounter++,
@@ -168,6 +183,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           writer.write({
             type: 'data-progress',
             data: {
+              type: 'progress',
               label: 'context',
               status: 'in-progress',
               order: progressCounter++,
@@ -218,6 +234,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           writer.write({
             type: 'data-progress',
             data: {
+              type: 'progress',
               label: 'context',
               status: 'complete',
               order: progressCounter++,
@@ -235,7 +252,26 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           onStepFinish: ({ toolCalls }) => {
             // add tool call annotations for frontend processing
             toolCalls.forEach((toolCall) => {
-              mcpService.processToolCall(toolCall, writer);
+              const mcpToolCall = {
+                type: 'tool-call' as const,
+                toolCallId: toolCall.toolCallId,
+                toolName: toolCall.toolName,
+                args: (toolCall as any).args || {},
+              };
+              mcpService.processToolCall(mcpToolCall, {
+                writeToolResult: (options) => {
+                  writer.write({
+                    type: 'data-tool-result',
+                    data: options,
+                  });
+                },
+                writeMessageAnnotation: (annotation) => {
+                  writer.write({
+                    type: 'data-message-annotation',
+                    data: annotation,
+                  });
+                },
+              });
             });
           },
           onFinish: async ({ text: content, finishReason, usage }) => {
@@ -259,6 +295,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               writer.write({
                 type: 'data-progress',
                 data: {
+                  type: 'progress',
                   label: 'response',
                   status: 'complete',
                   order: progressCounter++,
@@ -271,20 +308,28 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               return;
             }
 
-            if (stream.switches >= MAX_RESPONSE_SEGMENTS) {
+            responseSegments++;
+
+            if (responseSegments >= MAX_RESPONSE_SEGMENTS) {
               throw Error('Cannot continue message: Maximum segments reached');
             }
 
-            const switchesLeft = MAX_RESPONSE_SEGMENTS - stream.switches;
+            const switchesLeft = MAX_RESPONSE_SEGMENTS - responseSegments;
 
             logger.info(`Reached max token limit (${MAX_TOKENS}): Continuing message (${switchesLeft} switches left)`);
 
             const lastUserMessage = processedMessages.filter((x) => x.role == 'user').slice(-1)[0];
             const { model, provider } = extractPropertiesFromMessage(lastUserMessage);
-            processedMessages.push({ id: generateId(), role: 'assistant', content });
             processedMessages.push({
-              id: generateId(),
+              id: genId(),
+              role: 'assistant',
+              parts: [{ type: 'text', text: content }],
+              content,
+            });
+            processedMessages.push({
+              id: genId(),
               role: 'user',
+              parts: [{ type: 'text', text: `[Model: ${model}]\n\n[Provider: ${provider}]\n\n${CONTINUE_PROMPT}` }],
               content: `[Model: ${model}]\n\n[Provider: ${provider}]\n\n${CONTINUE_PROMPT}`,
             });
 
@@ -326,6 +371,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         writer.write({
           type: 'data-progress',
           data: {
+            type: 'progress',
             label: 'response',
             status: 'in-progress',
             order: progressCounter++,
@@ -427,46 +473,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
         return `Custom error: ${errorMessage}`;
       },
-    }).pipeThrough(
-      new TransformStream({
-        transform: (chunk, controller) => {
-          /*
-           * SIMPLIFIED: Pass through chunks without complex transformations
-           * This prevents content corruption that was happening with the previous
-           * complex chunking logic that assumed specific AI SDK v4 format
-           */
-          const str = typeof chunk === 'string' ? chunk : JSON.stringify(chunk);
-          controller.enqueue(encoder.encode(str));
-
-          /*
-           * COMMENTED OUT: Complex chunk transformation that may be corrupting content
-           * if (!lastChunk) {
-           *   lastChunk = ' ';
-           * }
-           * if (typeof chunk === 'string') {
-           *   if (chunk.startsWith('g') && !lastChunk.startsWith('g')) {
-           *     logger.info(`DEBUG TRANSFORM: Adding __boltThought__ opening div`);
-           *     controller.enqueue(encoder.encode(`0: "<div class=\\"__boltThought__\\">"\n`));
-           *   }
-           *   if (lastChunk.startsWith('g') && !chunk.startsWith('g')) {
-           *     logger.info(`DEBUG TRANSFORM: Adding __boltThought__ closing div`);
-           *     controller.enqueue(encoder.encode(`0: "</div>\\n"\n`));
-           *   }
-           * }
-           * lastChunk = chunk;
-           * let transformedChunk = chunk;
-           * if (typeof chunk === 'string' && chunk.startsWith('g')) {
-           *   let content = chunk.split(':').slice(1).join(':');
-           *   if (content.endsWith('\n')) {
-           *     content = content.slice(0, content.length - 1);
-           *   }
-           *   transformedChunk = `0:${content}\n`;
-           *   logger.info(`DEBUG TRANSFORM: Transformed 'g' chunk from "${chunk.substring(0, 50)}..." to "${transformedChunk.substring(0, 50)}..."`);
-           * }
-           */
-        },
-      }),
-    );
+    });
 
     return createUIMessageStreamResponse({ stream });
   } catch (error: any) {

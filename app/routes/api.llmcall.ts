@@ -102,7 +102,9 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
         },
         messages: [
           {
+            id: `${Date.now()}`,
             role: 'user',
+            content: `${message}`,
             parts: [{ type: 'text', text: `${message}` }],
           },
         ],
@@ -232,7 +234,18 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
       const result = await generateText(finalParams);
       logger.info(`Generated response`);
 
-      return new Response(JSON.stringify(result), {
+      /*
+       * IMPORTANT: Avoid returning the raw result object directly since some fields (like getters)
+       * are non-enumerable and get stripped by JSON.stringify. Return a plain object instead.
+       */
+      const safePayload = {
+        text: result.text,
+        finishReason: (result as any).finishReason ?? undefined,
+        usage: (result as any).usage ?? undefined,
+        response: (result as any).response ?? undefined,
+      };
+
+      return new Response(JSON.stringify(safePayload), {
         status: 200,
         headers: {
           'Content-Type': 'application/json',

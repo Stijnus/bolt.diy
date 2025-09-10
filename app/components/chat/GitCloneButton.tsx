@@ -1,4 +1,4 @@
-import type { UIMessage } from 'ai';
+import type { UIMessage } from '@ai-sdk/ui-utils';
 import ignore from 'ignore';
 import { X, Github, GitBranch } from 'lucide-react';
 import { useState } from 'react';
@@ -123,6 +123,7 @@ export default function GitCloneButton({ importChat, className }: GitCloneButton
         const filesMessage: UIMessage = {
           role: 'assistant',
           id: generateId(),
+          content: `Cloning the repo ${repoUrl} into ${workdir}`,
           parts: [
             {
               type: 'text',

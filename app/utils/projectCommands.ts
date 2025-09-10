@@ -1,4 +1,4 @@
-import type { UIMessage } from 'ai';
+import type { UIMessage } from '@ai-sdk/ui-utils';
 import { generateId } from './fileUtils';
 
 export interface ProjectCommands {
@@ -13,36 +13,8 @@ interface FileContent {
   path: string;
 }
 
-// Helper function to make any command non-interactive
-function makeNonInteractive(command: string): string {
-  // Set environment variables for non-interactive mode
-  const envVars = 'export CI=true DEBIAN_FRONTEND=noninteractive FORCE_COLOR=0';
-
-  // Common interactive packages and their non-interactive flags
-  const interactivePackages = [
-    { pattern: /npx\s+([^@\s]+@?[^\s]*)\s+init/g, replacement: 'echo "y" | npx --yes $1 init --defaults --yes' },
-    { pattern: /npx\s+create-([^\s]+)/g, replacement: 'npx --yes create-$1 --template default' },
-    { pattern: /npx\s+([^@\s]+@?[^\s]*)\s+add/g, replacement: 'npx --yes $1 add --defaults --yes' },
-    { pattern: /npm\s+install(?!\s+--)/g, replacement: 'npm install --yes --no-audit --no-fund --silent' },
-    { pattern: /yarn\s+add(?!\s+--)/g, replacement: 'yarn add --non-interactive' },
-    { pattern: /pnpm\s+add(?!\s+--)/g, replacement: 'pnpm add --yes' },
-  ];
-
-  let processedCommand = command;
-
-  // Apply replacements for known interactive patterns
-  interactivePackages.forEach(({ pattern, replacement }) => {
-    processedCommand = processedCommand.replace(pattern, replacement);
-  });
-
-  return `${envVars} && ${processedCommand}`;
-}
-
 export async function detectProjectCommands(files: FileContent[]): Promise<ProjectCommands> {
   const hasFile = (name: string) => files.some((f) => f.path.endsWith(name));
-
-  const hasFileContent = (name: string, content: string) =>
-    files.some((f) => f.path.endsWith(name) && f.content.includes(content));
 
   if (hasFile('package.json')) {
     const packageJsonFile = files.find((f) => f.path.endsWith('package.json'));
@@ -54,32 +26,15 @@ export async function detectProjectCommands(files: FileContent[]): Promise<Proje
     try {
       const packageJson = JSON.parse(packageJsonFile.content);
       const scripts = packageJson?.scripts || {};
-      const dependencies = { ...packageJson.dependencies, ...packageJson.devDependencies };
-
-      // Check if this is a shadcn project
-      const isShadcnProject =
-        hasFileContent('components.json', 'shadcn') ||
-        Object.keys(dependencies).some((dep) => dep.includes('shadcn')) ||
-        hasFile('components.json');
 
       // Check for preferred commands in priority order
       const preferredCommands = ['dev', 'start', 'preview'];
       const availableCommand = preferredCommands.find((cmd) => scripts[cmd]);
 
-      // Build setup command with non-interactive handling
-      let baseSetupCommand = 'npx update-browserslist-db@latest && npm install';
-
-      // Add shadcn init if it's a shadcn project
-      if (isShadcnProject) {
-        baseSetupCommand += ' && npx shadcn@latest init';
-      }
-
-      const setupCommand = makeNonInteractive(baseSetupCommand);
-
       if (availableCommand) {
         return {
           type: 'Node.js',
-          setupCommand,
+          setupCommand: `npm install`,
           startCommand: `npm run ${availableCommand}`,
           followupMessage: `Found "${availableCommand}" script in package.json. Running "npm run ${availableCommand}" after installation.`,
         };
@@ -87,7 +42,7 @@ export async function detectProjectCommands(files: FileContent[]): Promise<Proje
 
       return {
         type: 'Node.js',
-        setupCommand,
+        setupCommand: 'npm install',
         followupMessage:
           'Would you like me to inspect package.json to determine the available scripts for running this project?',
       };
@@ -126,20 +81,19 @@ export function createCommandsMessage(commands: ProjectCommands): UIMessage | nu
 `;
   }
 
-  return {
-    role: 'assistant',
-    parts: [
-      {
-        type: 'text',
-        text: `
+  const text = `
 ${commands.followupMessage ? `\n\n${commands.followupMessage}` : ''}
 <boltArtifact id="project-setup" title="Project Setup">
 ${commandString}
-</boltArtifact>`,
-      },
-    ],
+</boltArtifact>`;
+
+  return {
+    role: 'assistant',
+    content: text,
+    parts: [{ type: 'text', text }],
     id: generateId(),
-  };
+    createdAt: new Date(),
+  } as UIMessage;
 }
 
 export function escapeBoltArtifactTags(input: string) {

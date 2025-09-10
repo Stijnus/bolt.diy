@@ -1,4 +1,5 @@
-import { generateText, type GenerateTextResult, type UIMessage } from 'ai';
+import type { UIMessage } from '@ai-sdk/ui-utils';
+import { generateText, type GenerateTextResult } from 'ai';
 import { extractCurrentContext, extractPropertiesFromMessage, simplifyBoltActions } from './utils';
 import { LLMManager } from '~/lib/modules/llm/manager';
 import type { IProviderSetting } from '~/types/model';
