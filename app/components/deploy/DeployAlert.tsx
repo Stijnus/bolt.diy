@@ -1,8 +1,8 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import type { DeployAlert } from '~/types/actions';
-import { classNames } from '~/utils/classNames';
 import { useMemo } from 'react';
+import type { DeployAlert } from '~/types/actions';
 import { summarizeBuildOutput } from '~/utils/buildErrorSummarizer';
+import { classNames } from '~/utils/classNames';
 
 interface DeployAlertProps {
   alert: DeployAlert;
@@ -18,7 +18,10 @@ export default function DeployChatAlert({ alert, clearAlert, postMessage }: Depl
 
   // Build error summarization (client-side, no external calls)
   const { summary, highlights } = useMemo(() => {
-    if (type !== 'error') return { summary: '', highlights: '' };
+    if (type !== 'error') {
+      return { summary: '', highlights: '' };
+    }
+
     return summarizeBuildOutput(content || description);
   }, [type, content, description]);
 

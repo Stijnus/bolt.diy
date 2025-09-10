@@ -5,7 +5,9 @@ export interface BuildErrorSummary {
 
 // Extracts key error lines from build output and produces a short summary.
 export function summarizeBuildOutput(raw: string | undefined): BuildErrorSummary {
-  if (!raw) return { summary: '', highlights: '' };
+  if (!raw) {
+    return { summary: '', highlights: '' };
+  }
 
   const lines = raw
     .split(/\r?\n/)
@@ -25,6 +27,7 @@ export function summarizeBuildOutput(raw: string | undefined): BuildErrorSummary
 
   // Select important lines
   const important: string[] = [];
+
   for (const l of lines) {
     if (
       /(ERROR|Error|ERR!|Failed|SyntaxError|ReferenceError|TypeError)/.test(l) ||
@@ -42,13 +45,18 @@ export function summarizeBuildOutput(raw: string | undefined): BuildErrorSummary
 
   // Count categories
   const counts = new Map<string, number>();
+
   for (const p of patterns) {
     const n = top.filter((l) => p.re.test(l)).length;
-    if (n > 0) counts.set(p.label, n);
+
+    if (n > 0) {
+      counts.set(p.label, n);
+    }
   }
 
   // Build summary sentence(s)
   const bullets: string[] = [];
+
   for (const [label, n] of counts) {
     bullets.push(`${label} (${n})`);
   }
@@ -57,16 +65,25 @@ export function summarizeBuildOutput(raw: string | undefined): BuildErrorSummary
   const fileMatch = top
     .map((l) => l.match(/([\w\-./]+\.(tsx?|jsx?|css|scss|json))(?:\:(\d+)(?::(\d+))?)?/))
     .find((m) => !!m);
+
   const fileInfo = fileMatch ? fileMatch[1] + (fileMatch[2] ? `:${fileMatch[2]}` : '') : undefined;
 
   const summaryParts: string[] = [];
-  if (bullets.length) summaryParts.push(`Detected: ${bullets.join(', ')}.`);
-  if (fileInfo) summaryParts.push(`First offending file: ${fileInfo}.`);
-  if (!summaryParts.length) summaryParts.push('Build failed with errors (see highlights).');
+
+  if (bullets.length) {
+    summaryParts.push(`Detected: ${bullets.join(', ')}.`);
+  }
+
+  if (fileInfo) {
+    summaryParts.push(`First offending file: ${fileInfo}.`);
+  }
+
+  if (!summaryParts.length) {
+    summaryParts.push('Build failed with errors (see highlights).');
+  }
 
   return {
     summary: summaryParts.join(' '),
     highlights: top.join('\n'),
   };
 }
-

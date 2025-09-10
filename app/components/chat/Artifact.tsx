@@ -36,11 +36,14 @@ export const Artifact = memo(({ artifactId }: ArtifactProps) => {
 
   const actions = useStore(
     computed(artifact.runner.actions, (actions) => {
-      // Filter out file actions and Supabase-related actions from the chat UI
+      /*
+       * Filter actions for chat UI.
+       * - Hide file actions only for bundled (project restore/create) artifacts to avoid flooding
+       * - Show file actions for normal artifacts (e.g., Ask Bolt fixes) so users can open files
+       */
       return Object.values(actions).filter((action) => {
-        // Hide file creation/update actions to avoid flooding the chat UI
         if (action.type === 'file') {
-          return false;
+          return artifact?.type !== 'bundled';
         }
 
         // Exclude actions with type 'supabase' or shell commands that mention supabase
