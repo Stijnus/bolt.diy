@@ -1,6 +1,8 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import type { DeployAlert } from '~/types/actions';
 import { classNames } from '~/utils/classNames';
+import { useMemo } from 'react';
+import { summarizeBuildOutput } from '~/utils/buildErrorSummarizer';
 
 interface DeployAlertProps {
   alert: DeployAlert;
@@ -13,6 +15,12 @@ export default function DeployChatAlert({ alert, clearAlert, postMessage }: Depl
 
   // Determine if we should show the deployment progress
   const showProgress = stage && (buildStatus || deployStatus);
+
+  // Build error summarization (client-side, no external calls)
+  const { summary, highlights } = useMemo(() => {
+    if (type !== 'error') return { summary: '', highlights: '' };
+    return summarizeBuildOutput(content || description);
+  }, [type, content, description]);
 
   return (
     <AnimatePresence>
@@ -129,8 +137,14 @@ export default function DeployChatAlert({ alert, clearAlert, postMessage }: Depl
                 </div>
               )}
 
+              {type === 'error' && summary && (
+                <div className="text-xs p-2 rounded mt-4 mb-2 bg-bolt-elements-background-depth-3">
+                  <div className="font-medium text-bolt-elements-textPrimary mb-1">Build error summary</div>
+                  <div className="text-bolt-elements-textSecondary">{summary}</div>
+                </div>
+              )}
               {content && (
-                <div className="text-xs text-bolt-elements-textSecondary p-2 bg-bolt-elements-background-depth-3 rounded mt-4 mb-4">
+                <div className="text-xs text-bolt-elements-textSecondary p-2 bg-bolt-elements-background-depth-3 rounded mt-2 mb-4">
                   {content}
                 </div>
               )}
@@ -160,7 +174,9 @@ export default function DeployChatAlert({ alert, clearAlert, postMessage }: Depl
                 {type === 'error' && (
                   <button
                     onClick={() =>
-                      postMessage(`*Fix this deployment error*\n\`\`\`\n${content || description}\n\`\`\`\n`)
+                      postMessage(
+                        `Implement fixes to resolve the build failure.\n\nSummary:\n${summary || 'See error highlights.'}\n\nError highlights:\n\`\`\`\n${(highlights || content || description || '').slice(0, 4000)}\n\`\`\`\n`,
+                      )
                     }
                     className={classNames(
                       `px-2 py-1.5 rounded-md text-sm font-medium`,
