@@ -713,11 +713,12 @@ export const ChatImpl = memo(
           return;
         }
 
-        const send = (text: string) => {
+        const send = (text: string, modeOverride?: 'discuss' | 'build') => {
           // Kick off intro animation if needed, then stream like a normal send
           runAnimation();
 
           const wrapped = `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${text}`;
+          const effectiveMode = modeOverride ?? chatMode;
 
           sendMessageFromHook(
             {
@@ -736,7 +737,7 @@ export const ChatImpl = memo(
                 files,
                 promptId,
                 contextOptimization: contextOptimizationEnabled,
-                chatMode,
+                chatMode: effectiveMode,
                 designScheme,
                 supabase: {
                   isConnected: supabaseConn.isConnected,
@@ -767,7 +768,8 @@ export const ChatImpl = memo(
           const text = (detail.message || '').trim();
 
           if (text) {
-            send(text);
+            // Explicitly send as build mode to avoid stale state closure using discuss
+            send(text, 'build');
           }
         }
       };
