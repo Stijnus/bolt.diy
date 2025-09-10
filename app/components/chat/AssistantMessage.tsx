@@ -1,12 +1,3 @@
-import { memo, Fragment } from 'react';
-import { Markdown } from './Markdown';
-import type { JSONValue } from 'ai';
-import Popover from '~/components/ui/Popover';
-import { workbenchStore } from '~/lib/stores/workbench';
-import { WORK_DIR } from '~/utils/constants';
-import WithTooltip from '~/components/ui/Tooltip';
-import type { Message } from 'ai';
-import type { ProviderInfo } from '~/types/model';
 import type {
   TextUIPart,
   ReasoningUIPart,
@@ -15,8 +6,16 @@ import type {
   FileUIPart,
   StepStartUIPart,
 } from '@ai-sdk/ui-utils';
+import type { JSONValue } from 'ai';
+import { memo, Fragment } from 'react';
+import { Markdown } from './Markdown';
 import { ToolInvocations } from './ToolInvocations';
+import Popover from '~/components/ui/Popover';
+import WithTooltip from '~/components/ui/Tooltip';
+import { workbenchStore } from '~/lib/stores/workbench';
 import type { ToolCallAnnotation } from '~/types/context';
+import type { ProviderInfo } from '~/types/model';
+import { WORK_DIR } from '~/utils/constants';
 
 interface AssistantMessageProps {
   content: string;
@@ -24,7 +23,6 @@ interface AssistantMessageProps {
   messageId?: string;
   onRewind?: (messageId: string) => void;
   onFork?: (messageId: string) => void;
-  append?: (message: Message) => void;
   chatMode?: 'discuss' | 'build';
   setChatMode?: (mode: 'discuss' | 'build') => void;
   model?: string;
@@ -66,7 +64,6 @@ export const AssistantMessage = memo(
     messageId,
     onRewind,
     onFork,
-    append,
     chatMode,
     setChatMode,
     model,
@@ -92,12 +89,13 @@ export const AssistantMessage = memo(
     }
 
     const usage: {
-      completionTokens: number;
-      promptTokens: number;
+      outputTokens: number;
+      inputTokens: number;
       totalTokens: number;
     } = filteredAnnotations.find((annotation) => annotation.type === 'usage')?.value;
 
     const toolInvocations = parts?.filter((part) => part.type === 'tool-invocation');
+
     const toolCallAnnotations = filteredAnnotations.filter(
       (annotation) => annotation.type === 'toolCall',
     ) as ToolCallAnnotation[];
@@ -148,7 +146,7 @@ export const AssistantMessage = memo(
             <div className="flex w-full items-center justify-between">
               {usage && (
                 <div>
-                  Tokens: {usage.totalTokens} (prompt: {usage.promptTokens}, completion: {usage.completionTokens})
+                  Tokens: {usage.totalTokens} (prompt: {usage.inputTokens}, completion: {usage.outputTokens})
                 </div>
               )}
               {(onRewind || onFork) && messageId && (
@@ -176,7 +174,7 @@ export const AssistantMessage = memo(
             </div>
           </div>
         </>
-        <Markdown append={append} chatMode={chatMode} setChatMode={setChatMode} model={model} provider={provider} html>
+        <Markdown chatMode={chatMode} setChatMode={setChatMode} model={model} provider={provider} html>
           {content}
         </Markdown>
         {toolInvocations && toolInvocations.length > 0 && (

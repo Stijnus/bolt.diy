@@ -1,15 +1,16 @@
 import { useSearchParams } from '@remix-run/react';
-import { generateId, type Message } from 'ai';
+import type { UIMessage } from 'ai';
+import { createIdGenerator } from 'ai';
 import ignore from 'ignore';
 import { useEffect, useState } from 'react';
+import { toast } from 'react-toastify';
 import { ClientOnly } from 'remix-utils/client-only';
 import { BaseChat } from '~/components/chat/BaseChat';
 import { Chat } from '~/components/chat/Chat.client';
+import { LoadingOverlay } from '~/components/ui/LoadingOverlay';
 import { useGit } from '~/lib/hooks/useGit';
 import { useChatHistory } from '~/lib/persistence';
 import { createCommandsMessage, detectProjectCommands, escapeBoltTags } from '~/utils/projectCommands';
-import { LoadingOverlay } from '~/components/ui/LoadingOverlay';
-import { toast } from 'react-toastify';
 
 const IGNORE_PATTERNS = [
   'node_modules/**',
@@ -48,6 +49,8 @@ export function GitUrlImport() {
       return;
     }
 
+    const generateId = createIdGenerator({ size: 16 });
+
     if (repoUrl) {
       const ig = ignore().add(IGNORE_PATTERNS);
 
@@ -72,9 +75,12 @@ export function GitUrlImport() {
           const commands = await detectProjectCommands(fileContents);
           const commandsMessage = createCommandsMessage(commands);
 
-          const filesMessage: Message = {
+          const filesMessage: UIMessage = {
             role: 'assistant',
-            content: `Cloning the repo ${repoUrl} into ${workdir}
+            parts: [
+              {
+                type: 'text',
+                text: `Cloning the repo ${repoUrl} into ${workdir}
 <boltArtifact id="imported-files" title="Git Cloned Files"  type="bundled">
 ${fileContents
   .map(
@@ -85,8 +91,9 @@ ${escapeBoltTags(file.content)}
   )
   .join('\n')}
 </boltArtifact>`,
+              },
+            ],
             id: generateId(),
-            createdAt: new Date(),
           };
 
           const messages = [filesMessage];
@@ -95,7 +102,12 @@ ${escapeBoltTags(file.content)}
             messages.push({
               role: 'user',
               id: generateId(),
-              content: 'Setup the codebase and Start the application',
+              parts: [
+                {
+                  type: 'text',
+                  text: 'Setup the codebase and Start the application',
+                },
+              ],
             });
             messages.push(commandsMessage);
           }

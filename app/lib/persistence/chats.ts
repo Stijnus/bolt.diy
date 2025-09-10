@@ -2,7 +2,7 @@
  * Functions for managing chat data in IndexedDB
  */
 
-import type { Message } from 'ai';
+import type { UIMessage } from 'ai';
 import type { IChatMetadata } from './db'; // Import IChatMetadata
 
 export interface ChatMessage {
@@ -15,7 +15,7 @@ export interface ChatMessage {
 export interface Chat {
   id: string;
   description?: string;
-  messages: Message[];
+  messages: UIMessage[];
   timestamp: string;
   urlId?: string;
   metadata?: IChatMetadata;

@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
-import { classNames } from '~/utils/classNames';
-import { Switch } from '~/components/ui/Switch';
 import type { UserProfile } from '~/components/@settings/core/types';
+import { ErrorButton } from '~/components/ui/ErrorButton';
+import { SentryTest } from '~/components/ui/SentryTest';
+import { Switch } from '~/components/ui/Switch';
+import { classNames } from '~/utils/classNames';
 import { isMac } from '~/utils/os';
 
 // Helper to get modifier key symbols/text
@@ -22,6 +24,7 @@ const getModifierSymbol = (modifier: string): string => {
 
 export default function SettingsTab() {
   const [currentTimezone, setCurrentTimezone] = useState('');
+
   const [settings, setSettings] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('bolt_user_profile');
     return saved
@@ -120,6 +123,7 @@ export default function SettingsTab() {
 
                 // Update localStorage immediately
                 const existingProfile = JSON.parse(localStorage.getItem('bolt_user_profile') || '{}');
+
                 const updatedProfile = {
                   ...existingProfile,
                   notifications: checked,
@@ -210,6 +214,37 @@ export default function SettingsTab() {
           </div>
         </div>
       </motion.div>
+
+      {/* Development/Debugging Tools - Only in development */}
+      {process.env.NODE_ENV === 'development' && (
+        <motion.div
+          className="bg-white dark:bg-[#0A0A0A] rounded-lg shadow-sm dark:shadow-none p-4"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <div className="i-ph:bug-fill w-4 h-4 text-orange-500" />
+            <span className="text-sm font-medium text-bolt-elements-textPrimary">Development Tools</span>
+          </div>
+
+          <div className="space-y-3">
+            <SentryTest />
+
+            <div className="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="i-ph:warning-fill w-4 h-4 text-yellow-600 dark:text-yellow-400" />
+                <span className="text-sm font-medium text-yellow-800 dark:text-yellow-200">Sentry Error Testing</span>
+              </div>
+              <p className="text-xs text-yellow-700 dark:text-yellow-300 mb-3">
+                Click the button below to test Sentry error tracking. This will intentionally throw an error to verify
+                Sentry is working correctly.
+              </p>
+              <ErrorButton />
+            </div>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }

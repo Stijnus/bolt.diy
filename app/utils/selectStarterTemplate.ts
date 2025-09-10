@@ -1,7 +1,7 @@
 import ignore from 'ignore';
+import { STARTER_TEMPLATES } from './constants';
 import type { ProviderInfo } from '~/types/model';
 import type { Template } from '~/types/template';
-import { STARTER_TEMPLATES } from './constants';
 
 const starterTemplateSelectionPrompt = (templates: Template[]) => `
 You are an experienced developer who helps people choose the best starter template for their projects.
@@ -84,6 +84,7 @@ const parseSelectedTemplate = (llmOutput: string): { template: string; title: st
 
 export const selectStarterTemplate = async (options: { message: string; model: string; provider: ProviderInfo }) => {
   const { message, model, provider } = options;
+
   const requestBody = {
     message,
     model,
@@ -94,10 +95,38 @@ export const selectStarterTemplate = async (options: { message: string; model: s
     method: 'POST',
     body: JSON.stringify(requestBody),
   });
-  const respJson: { text: string } = await response.json();
+
+  if (!response.ok) {
+    console.error('LLM API request failed with status:', response.status);
+    return {
+      template: 'blank',
+      title: 'Untitled Project',
+    };
+  }
+
+  const respJson: any = await response.json();
   console.log(respJson);
 
-  const { text } = respJson;
+  // Check if the response contains an error
+  if (respJson.error) {
+    console.error('LLM API returned error:', respJson.message);
+    return {
+      template: 'blank',
+      title: 'Untitled Project',
+    };
+  }
+
+  // Extract text from successful response - AI SDK v5 returns the full generateText result
+  const text = respJson.text;
+
+  if (!text) {
+    console.error('LLM API response missing text property');
+    return {
+      template: 'blank',
+      title: 'Untitled Project',
+    };
+  }
+
   const selectedTemplate = parseSelectedTemplate(text);
 
   if (selectedTemplate) {
@@ -196,7 +225,9 @@ ${file.content}
   .join('\n')}
 </boltArtifact>
 `;
+
   let userMessage = ``;
+
   const templatePromptFile = files.filter((x) => x.path.startsWith('.bolt')).find((x) => x.name == 'prompt');
 
   if (templatePromptFile) {

@@ -1,14 +1,13 @@
 import { memo, useMemo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import type { BundledLanguage } from 'shiki';
-import { createScopedLogger } from '~/utils/logger';
-import { rehypePlugins, remarkPlugins, allowedHTMLElements } from '~/utils/markdown';
 import { Artifact, openArtifactInWorkbench } from './Artifact';
 import { CodeBlock } from './CodeBlock';
-import type { Message } from 'ai';
 import styles from './Markdown.module.scss';
 import ThoughtBox from './ThoughtBox';
 import type { ProviderInfo } from '~/types/model';
+import { createScopedLogger } from '~/utils/logger';
+import { rehypePlugins, remarkPlugins, allowedHTMLElements } from '~/utils/markdown';
 
 const logger = createScopedLogger('MarkdownComponent');
 
@@ -16,7 +15,6 @@ interface MarkdownProps {
   children: string;
   html?: boolean;
   limitedMarkdown?: boolean;
-  append?: (message: Message) => void;
   chatMode?: 'discuss' | 'build';
   setChatMode?: (mode: 'discuss' | 'build') => void;
   model?: string;
@@ -24,7 +22,14 @@ interface MarkdownProps {
 }
 
 export const Markdown = memo(
-  ({ children, html = false, limitedMarkdown = false, append, setChatMode, model, provider }: MarkdownProps) => {
+  ({
+    children,
+    html = false,
+    limitedMarkdown = false,
+    setChatMode,
+    model: _model,
+    provider: _provider,
+  }: MarkdownProps) => {
     logger.trace('Render');
 
     const components = useMemo(() => {
@@ -148,30 +153,14 @@ export const Markdown = memo(
                 onClick={() => {
                   if (type === 'file') {
                     openArtifactInWorkbench(path);
-                  } else if (type === 'message' && append) {
-                    append({
-                      id: `quick-action-message-${Date.now()}`,
-                      content: [
-                        {
-                          type: 'text',
-                          text: `[Model: ${model}]\n\n[Provider: ${provider?.name}]\n\n${message}`,
-                        },
-                      ] as any,
-                      role: 'user',
-                    });
-                    console.log('Message appended:', message);
-                  } else if (type === 'implement' && append && setChatMode) {
+                  } else if (type === 'message') {
+                    // TODO: Re-implement with new AI SDK v5 sendMessage pattern
+                    console.log('Message action disabled during AI SDK v5 migration:', message);
+                  } else if (type === 'implement' && setChatMode) {
                     setChatMode('build');
-                    append({
-                      id: `quick-action-implement-${Date.now()}`,
-                      content: [
-                        {
-                          type: 'text',
-                          text: `[Model: ${model}]\n\n[Provider: ${provider?.name}]\n\n${message}`,
-                        },
-                      ] as any,
-                      role: 'user',
-                    });
+
+                    // TODO: Re-implement with new AI SDK v5 sendMessage pattern
+                    console.log('Implement action disabled during AI SDK v5 migration');
                   } else if (type === 'link' && typeof href === 'string') {
                     try {
                       const url = new URL(href, window.location.origin);
@@ -194,15 +183,16 @@ export const Markdown = memo(
     }, []);
 
     return (
-      <ReactMarkdown
-        allowedElements={allowedHTMLElements}
-        className={styles.MarkdownContent}
-        components={components}
-        remarkPlugins={remarkPlugins(limitedMarkdown)}
-        rehypePlugins={rehypePlugins(html)}
-      >
-        {stripCodeFenceFromArtifact(children)}
-      </ReactMarkdown>
+      <div className={styles.MarkdownContent}>
+        <ReactMarkdown
+          allowedElements={allowedHTMLElements}
+          components={components}
+          remarkPlugins={remarkPlugins(limitedMarkdown)}
+          rehypePlugins={rehypePlugins(html)}
+        >
+          {stripCodeFenceFromArtifact(children)}
+        </ReactMarkdown>
+      </div>
     );
   },
 );

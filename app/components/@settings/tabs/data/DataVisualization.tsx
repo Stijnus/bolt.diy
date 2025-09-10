@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -11,6 +10,7 @@ import {
   PointElement,
   LineElement,
 } from 'chart.js';
+import { useState, useEffect } from 'react';
 import { Bar, Pie } from 'react-chartjs-2';
 import type { Chat } from '~/lib/persistence/chats';
 import { classNames } from '~/utils/classNames';
@@ -55,6 +55,7 @@ export function DataVisualization({ chats }: DataVisualizationProps) {
     const chatDates: Record<string, number> = {};
     const roleCounts: Record<string, number> = {};
     const apiUsage: Record<string, number> = {};
+
     let totalMessages = 0;
 
     chats.forEach((chat) => {
@@ -66,7 +67,14 @@ export function DataVisualization({ chats }: DataVisualizationProps) {
         totalMessages++;
 
         if (message.role === 'assistant') {
-          const providerMatch = message.content.match(/provider:\s*([\w-]+)/i);
+          // Get content from parts array in AI SDK v5
+          const textContent =
+            message.parts
+              ?.filter((part) => part.type === 'text')
+              ?.map((part: any) => part.text)
+              ?.join(' ') || '';
+
+          const providerMatch = textContent.match(/provider:\s*([\w-]+)/i);
           const provider = providerMatch ? providerMatch[1] : 'unknown';
           apiUsage[provider] = (apiUsage[provider] || 0) + 1;
         }

@@ -1,5 +1,5 @@
+import crypto from 'node:crypto';
 import { type ActionFunctionArgs, json } from '@remix-run/cloudflare';
-import crypto from 'crypto';
 import type { NetlifySiteInfo } from '~/types/netlify';
 
 interface DeployRequestBody {
@@ -22,6 +22,7 @@ export async function action({ request }: ActionFunctionArgs) {
     // If no siteId provided, create a new site
     if (!targetSiteId) {
       const siteName = `bolt-diy-${chatId}-${Date.now()}`;
+
       const createSiteResponse = await fetch('https://api.netlify.com/api/v1/sites', {
         method: 'POST',
         headers: {
@@ -71,6 +72,7 @@ export async function action({ request }: ActionFunctionArgs) {
       // If no siteId provided or site doesn't exist, create a new site
       if (!targetSiteId) {
         const siteName = `bolt-diy-${chatId}-${Date.now()}`;
+
         const createSiteResponse = await fetch('https://api.netlify.com/api/v1/sites', {
           method: 'POST',
           headers: {
@@ -131,7 +133,9 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     const deploy = (await deployResponse.json()) as any;
+
     let retryCount = 0;
+
     const maxRetries = 60;
 
     // Poll until deploy is ready for file uploads

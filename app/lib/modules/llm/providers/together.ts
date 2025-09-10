@@ -1,7 +1,7 @@
+import type { LanguageModel } from 'ai';
 import { BaseProvider, getOpenAILikeModel } from '~/lib/modules/llm/base-provider';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import type { IProviderSetting } from '~/types/model';
-import type { LanguageModelV1 } from 'ai';
 
 export default class TogetherProvider extends BaseProvider {
   name = 'Together';
@@ -47,6 +47,7 @@ export default class TogetherProvider extends BaseProvider {
       defaultBaseUrlKey: 'TOGETHER_API_BASE_URL',
       defaultApiTokenKey: 'TOGETHER_API_KEY',
     });
+
     const baseUrl = fetchBaseUrl || 'https://api.together.xyz/v1';
 
     if (!baseUrl || !apiKey) {
@@ -78,7 +79,7 @@ export default class TogetherProvider extends BaseProvider {
     serverEnv: Env;
     apiKeys?: Record<string, string>;
     providerSettings?: Record<string, IProviderSetting>;
-  }): LanguageModelV1 {
+  }): LanguageModel {
     const { model, serverEnv, apiKeys, providerSettings } = options;
 
     const { baseUrl, apiKey } = this.getProviderBaseUrlAndKey({

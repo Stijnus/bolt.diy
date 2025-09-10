@@ -1,4 +1,4 @@
-import type { Message } from 'ai';
+import type { UIMessage } from 'ai';
 import { generateId } from './fileUtils';
 
 export interface ProjectCommands {
@@ -40,6 +40,7 @@ function makeNonInteractive(command: string): string {
 
 export async function detectProjectCommands(files: FileContent[]): Promise<ProjectCommands> {
   const hasFile = (name: string) => files.some((f) => f.path.endsWith(name));
+
   const hasFileContent = (name: string, content: string) =>
     files.some((f) => f.path.endsWith(name) && f.content.includes(content));
 
@@ -107,7 +108,7 @@ export async function detectProjectCommands(files: FileContent[]): Promise<Proje
   return { type: '', setupCommand: '', followupMessage: '' };
 }
 
-export function createCommandsMessage(commands: ProjectCommands): Message | null {
+export function createCommandsMessage(commands: ProjectCommands): UIMessage | null {
   if (!commands.setupCommand && !commands.startCommand) {
     return null;
   }
@@ -127,13 +128,17 @@ export function createCommandsMessage(commands: ProjectCommands): Message | null
 
   return {
     role: 'assistant',
-    content: `
+    parts: [
+      {
+        type: 'text',
+        text: `
 ${commands.followupMessage ? `\n\n${commands.followupMessage}` : ''}
 <boltArtifact id="project-setup" title="Project Setup">
 ${commandString}
 </boltArtifact>`,
+      },
+    ],
     id: generateId(),
-    createdAt: new Date(),
   };
 }
 

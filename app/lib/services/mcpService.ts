@@ -1,13 +1,6 @@
-import {
-  experimental_createMCPClient,
-  type ToolSet,
-  type Message,
-  type DataStreamWriter,
-  convertToCoreMessages,
-  formatDataStreamPart,
-} from 'ai';
-import { Experimental_StdioMCPTransport } from 'ai/mcp-stdio';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { experimental_createMCPClient, type ToolSet, type UIMessage, convertToModelMessages } from 'ai';
+import { Experimental_StdioMCPTransport } from 'ai/mcp-stdio';
 import { z } from 'zod';
 import type { ToolCallAnnotation } from '~/types/context';
 import {
@@ -70,6 +63,11 @@ export const mcpConfigSchema = z.object({
   mcpServers: z.record(z.string(), mcpServerConfigSchema),
 });
 export type MCPConfig = z.infer<typeof mcpConfigSchema>;
+
+export interface StreamWriter {
+  writeToolResult(options: { toolCallId: string; result: any }): void;
+  writeMessageAnnotation(annotation: any): void;
+}
 
 export type MCPClient = {
   tools: () => Promise<ToolSet>;
@@ -355,7 +353,7 @@ export class MCPService {
     return toolName in this._tools;
   }
 
-  processToolCall(toolCall: ToolCall, dataStream: DataStreamWriter): void {
+  processToolCall(toolCall: ToolCall, dataStream: StreamWriter): void {
     const { toolCallId, toolName } = toolCall;
 
     if (this.isValidToolName(toolName)) {
@@ -374,7 +372,7 @@ export class MCPService {
     }
   }
 
-  async processToolInvocations(messages: Message[], dataStream: DataStreamWriter): Promise<Message[]> {
+  async processToolInvocations(messages: UIMessage[], dataStream: StreamWriter): Promise<UIMessage[]> {
     const lastMessage = messages[messages.length - 1];
     const parts = lastMessage.parts;
 
@@ -407,7 +405,7 @@ export class MCPService {
 
             try {
               result = await toolInstance.execute(toolInvocation.args, {
-                messages: convertToCoreMessages(messages),
+                messages: convertToModelMessages(messages),
                 toolCallId,
               });
             } catch (error) {
@@ -425,12 +423,10 @@ export class MCPService {
         }
 
         // Forward updated tool result to the client.
-        dataStream.write(
-          formatDataStreamPart('tool_result', {
-            toolCallId,
-            result,
-          }),
-        );
+        dataStream.writeToolResult({
+          toolCallId,
+          result,
+        });
 
         // Return updated toolInvocation with the actual result.
         return {

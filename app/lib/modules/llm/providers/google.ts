@@ -1,8 +1,8 @@
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import type { LanguageModel } from 'ai';
 import { BaseProvider } from '~/lib/modules/llm/base-provider';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import type { IProviderSetting } from '~/types/model';
-import type { LanguageModelV1 } from 'ai';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
 
 export default class GoogleProvider extends BaseProvider {
   name = 'Google';
@@ -102,10 +102,10 @@ export default class GoogleProvider extends BaseProvider {
       const finalContext = Math.min(contextWindow, maxAllowed);
 
       // Get completion token limit from Google API
-      let completionTokens = 8192; // default fallback (Gemini 1.5 standard limit)
+      let outputTokens = 8192; // default fallback (Gemini 1.5 standard limit)
 
       if (m.outputTokenLimit && m.outputTokenLimit > 0) {
-        completionTokens = Math.min(m.outputTokenLimit, 128000); // Use API value, cap at reasonable limit
+        outputTokens = Math.min(m.outputTokenLimit, 128000); // Use API value, cap at reasonable limit
       }
 
       return {
@@ -113,7 +113,7 @@ export default class GoogleProvider extends BaseProvider {
         label: `${m.displayName} (${finalContext >= 1000000 ? Math.floor(finalContext / 1000000) + 'M' : Math.floor(finalContext / 1000) + 'k'} context)`,
         provider: this.name,
         maxTokenAllowed: finalContext,
-        maxCompletionTokens: completionTokens,
+        maxCompletionTokens: outputTokens,
       };
     });
   }
@@ -123,7 +123,7 @@ export default class GoogleProvider extends BaseProvider {
     serverEnv: any;
     apiKeys?: Record<string, string>;
     providerSettings?: Record<string, IProviderSetting>;
-  }): LanguageModelV1 {
+  }): LanguageModel {
     const { model, serverEnv, apiKeys, providerSettings } = options;
 
     const { apiKey } = this.getProviderBaseUrlAndKey({

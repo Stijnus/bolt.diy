@@ -1,33 +1,40 @@
-import { generateText, type CoreTool, type GenerateTextResult, type Message } from 'ai';
+import { generateText, type GenerateTextResult, type UIMessage } from 'ai';
+import { extractCurrentContext, extractPropertiesFromMessage, simplifyBoltActions } from './utils';
+import { LLMManager } from '~/lib/modules/llm/manager';
 import type { IProviderSetting } from '~/types/model';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROVIDER_LIST } from '~/utils/constants';
-import { extractCurrentContext, extractPropertiesFromMessage, simplifyBoltActions } from './utils';
 import { createScopedLogger } from '~/utils/logger';
-import { LLMManager } from '~/lib/modules/llm/manager';
 
 const logger = createScopedLogger('create-summary');
 
 export async function createSummary(props: {
-  messages: Message[];
+  messages: UIMessage[];
   env?: Env;
   apiKeys?: Record<string, string>;
   providerSettings?: Record<string, IProviderSetting>;
   promptId?: string;
   contextOptimization?: boolean;
-  onFinish?: (resp: GenerateTextResult<Record<string, CoreTool<any, any>>, never>) => void;
+  onFinish?: (resp: GenerateTextResult<Record<string, any>, never>) => void;
 }) {
   const { messages, env: serverEnv, apiKeys, providerSettings, onFinish } = props;
+
   let currentModel = DEFAULT_MODEL;
   let currentProvider = DEFAULT_PROVIDER.name;
+
   const processedMessages = messages.map((message) => {
     if (message.role === 'user') {
-      const { model, provider, content } = extractPropertiesFromMessage(message);
+      const { model, provider, content } = extractPropertiesFromMessage(message as any);
       currentModel = model;
       currentProvider = provider;
 
       return { ...message, content };
     } else if (message.role == 'assistant') {
-      let content = message.content;
+      // Extract content from UIMessage
+      const messageWithContent = message as any;
+
+      let content = Array.isArray(messageWithContent.content)
+        ? messageWithContent.content.find((part: any) => part.type === 'text')?.text || ''
+        : messageWithContent.content || '';
 
       content = simplifyBoltActions(content);
       content = content.replace(/<div class=\\"__boltThought__\\">.*?<\/div>/s, '');
@@ -41,6 +48,7 @@ export async function createSummary(props: {
 
   const provider = PROVIDER_LIST.find((p) => p.name === currentProvider) || DEFAULT_PROVIDER;
   const staticModels = LLMManager.getInstance().getStaticModelListFromProvider(provider);
+
   let modelDetails = staticModels.find((m) => m.name === currentModel);
 
   if (!modelDetails) {
@@ -69,7 +77,9 @@ export async function createSummary(props: {
   }
 
   let slicedMessages = processedMessages;
+
   const { summary } = extractCurrentContext(processedMessages);
+
   let summaryText: string | undefined = undefined;
   let chatId: string | undefined = undefined;
 
@@ -94,10 +104,13 @@ ${summary.summary}`;
 
   logger.debug('Sliced Messages:', slicedMessages.length);
 
-  const extractTextContent = (message: Message) =>
-    Array.isArray(message.content)
-      ? (message.content.find((item) => item.type === 'text')?.text as string) || ''
-      : message.content;
+  const extractTextContent = (message: any) => {
+    if (Array.isArray(message.content)) {
+      return (message.content.find((item: any) => item.type === 'text')?.text as string) || '';
+    }
+
+    return typeof message.content === 'string' ? message.content : '';
+  };
 
   // select files from the list of code file from the project that might be useful for the current request from the user
   const resp = await generateText({
@@ -171,7 +184,7 @@ Below is the chat after that:
 <new_chats>
 ${slicedMessages
   .map((x) => {
-    return `---\n[${x.role}] ${extractTextContent(x)}\n---`;
+    return `---\n[${x.role}] ${extractTextContent(x as any)}\n---`;
   })
   .join('\n')}
 </new_chats>
