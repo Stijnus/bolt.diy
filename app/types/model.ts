@@ -23,6 +23,7 @@ export interface IProviderSetting {
   enabled?: boolean;
   baseUrl?: string;
   OPENAI_LIKE_API_MODELS?: string;
+
   // New optional advanced controls for SDK v5 alignment
   customHeaders?: Record<string, string>;
   timeout?: number; // in ms

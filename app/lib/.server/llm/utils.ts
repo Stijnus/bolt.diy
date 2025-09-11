@@ -63,7 +63,9 @@ export function createFilesContext(files: FileMap, useRelativePath?: boolean, op
 
       // Optionally truncate very large files to keep prompt size manageable
       const maxChars = options?.maxCharsPerFile;
+
       let processedContent = dirent.content;
+
       if (typeof maxChars === 'number' && maxChars > 0 && processedContent.length > maxChars) {
         const headSize = Math.floor(maxChars * 0.6);
         const tailSize = maxChars - headSize;

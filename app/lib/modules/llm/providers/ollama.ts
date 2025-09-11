@@ -94,6 +94,7 @@ export default class OllamaProvider extends BaseProvider {
       },
       { maxRetries: settings?.maxRetries ?? 2 },
     );
+
     const data = (await response.json()) as OllamaApiResponse;
 
     // console.log({ ollamamodels: data.models });

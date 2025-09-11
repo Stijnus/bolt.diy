@@ -18,30 +18,38 @@ function parseBuildSummaryFiles(text: string): string[] {
   try {
     const lines = text.split(/\r?\n/);
     const results = new Set<string>();
+
     const fileLike =
       /^(?:\s*[-•]?\s*)?([^\s].*\.(?:tsx|ts|jsx|js|css|scss|json|md|mdx|html|vue|svelte|astro))(?::\d+(?::\d+)?)?/i;
 
     for (const line of lines) {
       const m = line.match(fileLike);
+
       if (m) {
         let p = m[1].trim();
+
         // Normalize backslashes and remove leading ./
         p = p.replace(/\\/g, '/').replace(/^\.\//, '');
+
         // Only accept src/* or app/* or top-level files
         if (/^(src|app)\//.test(p) || /^[^/]+\.(?:tsx|ts|jsx|js|css|scss|json|md|mdx|html)$/i.test(p)) {
           results.add(p);
         }
       }
+
       // Parse summary table lines like: "3  src/components/Foo.tsx:12"
       const tableMatch = line.match(/\b([\w./-]+\.(?:tsx|ts|jsx|js))(?::\d+)?\b/);
+
       if (tableMatch) {
         let p = tableMatch[1].replace(/^\.\//, '');
         p = p.replace(/\\/g, '/');
+
         if (/^(src|app)\//.test(p) || /^[^/]+\.(?:tsx|ts|jsx|js)$/i.test(p)) {
           results.add(p);
         }
       }
     }
+
     return Array.from(results);
   } catch {
     return [];
@@ -167,16 +175,21 @@ export async function selectContext(props: {
 
   // Augment context with files referenced in DeployAlert build error summaries (if present in last user message)
   const __lastUserForSummary = processedMessages.filter((x) => x.role === 'user').pop();
+
   const __lastUserText = __lastUserForSummary?.parts
     ? __lastUserForSummary.parts.find((p) => p.type === 'text')?.text || ''
     : '';
+
   const deploySummaryFiles = __lastUserText ? parseBuildSummaryFiles(__lastUserText) : [];
+
   for (const relPath of deploySummaryFiles) {
     const fullPath = relPath.startsWith('/home/project/') ? relPath : `/home/project/${relPath}`;
+
     if (files[fullPath]) {
       contextFiles[relPath] = files[fullPath];
     }
   }
+
   if (deploySummaryFiles.length) {
     context = createFilesContext(contextFiles);
   }
@@ -212,14 +225,39 @@ export async function selectContext(props: {
 
   const pathWeight = (rel: string) => {
     let w = 0;
-    if (rel.startsWith('app/lib/.server/llm')) w += 6;
-    if (rel.startsWith('app/components/')) w += 4;
-    if (rel.startsWith('app/routes/')) w += 3;
-    if (rel.startsWith('app/lib/')) w += 3;
-    if (rel.startsWith('app/utils/')) w += 2;
-    if (rel.startsWith('app/types/')) w += 2;
-    if (/\.(tsx|ts|jsx|js|css|scss|md|mdx)$/i.test(rel)) w += 1;
-    if (/(\.test\.|\.spec\.|\/__tests__\/)/i.test(rel)) w -= 2;
+
+    if (rel.startsWith('app/lib/.server/llm')) {
+      w += 6;
+    }
+
+    if (rel.startsWith('app/components/')) {
+      w += 4;
+    }
+
+    if (rel.startsWith('app/routes/')) {
+      w += 3;
+    }
+
+    if (rel.startsWith('app/lib/')) {
+      w += 3;
+    }
+
+    if (rel.startsWith('app/utils/')) {
+      w += 2;
+    }
+
+    if (rel.startsWith('app/types/')) {
+      w += 2;
+    }
+
+    if (/\.(tsx|ts|jsx|js|css|scss|md|mdx)$/i.test(rel)) {
+      w += 1;
+    }
+
+    if (/(\.test\.|\.spec\.|\/__tests__\/)/i.test(rel)) {
+      w -= 2;
+    }
+
     return w;
   };
 
@@ -228,23 +266,41 @@ export async function selectContext(props: {
     const base = rel.split('/').pop() || rel;
 
     const pw = pathWeight(rel);
+
     let fileHitScore = 0;
     let relHitScore = 0;
     let exactPathScore = 0;
 
     for (const kw of allKeywords) {
-      if (!kw) continue;
-      if (base.includes(kw)) fileHitScore += 3;
-      if (rel.includes(kw)) relHitScore += 1;
-      if (kw.includes('.') && kw === rel) exactPathScore += 20; // exact file path mention
+      if (!kw) {
+        continue;
+      }
+
+      if (base.includes(kw)) {
+        fileHitScore += 3;
+      }
+
+      if (rel.includes(kw)) {
+        relHitScore += 1;
+      }
+
+      if (kw.includes('.') && kw === rel) {
+        exactPathScore += 20;
+      } // exact file path mention
     }
 
     let contentHits = 0;
+
     const dirent = files[fullPath];
+
     if (dirent && dirent.type === 'file' && !dirent.isBinary) {
       const sample = dirent.content.slice(0, 2000).toLowerCase();
+
       for (const kw of allKeywords) {
-        if (contentHits >= 10) break;
+        if (contentHits >= 10) {
+          break;
+        }
+
         if (kw.length >= 3 && sample.includes(kw)) {
           contentHits += 1;
         }
@@ -252,6 +308,7 @@ export async function selectContext(props: {
     }
 
     const score = pw + fileHitScore + relHitScore + exactPathScore + contentHits;
+
     return { score, reasons: { pathWeight: pw, fileHitScore, relHitScore, contentHits }, rel };
   };
 
@@ -269,7 +326,7 @@ export async function selectContext(props: {
         .sort((a, b) => b.score - a.score)
         .slice(0, 30);
       props.onDebug({ candidates: details });
-    } catch (e) {
+    } catch {
       // ignore debug emission errors
     }
   }
@@ -374,10 +431,20 @@ export async function selectContext(props: {
 
     // Ensure files referenced in the build/deploy summary are included, unless explicitly excluded
     for (const relPath of deploySummaryFiles) {
-      if (currrentFiles.includes(relPath)) continue; // already in buffer
-      if (excludeFiles.includes(relPath)) continue; // user/model explicitly excluded
-      if (filteredFiles[relPath]) continue; // already added
+      if (currrentFiles.includes(relPath)) {
+        continue;
+      } // already in buffer
+
+      if (excludeFiles.includes(relPath)) {
+        continue;
+      } // user/model explicitly excluded
+
+      if (filteredFiles[relPath]) {
+        continue;
+      } // already added
+
       const fullPath = relPath.startsWith('/home/project/') ? relPath : `/home/project/${relPath}`;
+
       if (files[fullPath]) {
         filteredFiles[relPath] = files[fullPath];
       }
@@ -401,6 +468,7 @@ export async function selectContext(props: {
       const selectedReasons = Object.keys(filteredFiles).map((rel) => {
         const full = rel.startsWith('/home/project/') ? rel : `/home/project/${rel}`;
         const { score, reasons } = computeScore(full);
+
         return { path: rel, score, reasons };
       });
       props.onSelected({ reasons: selectedReasons });

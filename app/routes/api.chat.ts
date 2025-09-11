@@ -384,6 +384,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             if (heartbeat) {
               clearInterval(heartbeat);
             }
+
             heartbeat = setInterval(() => streamRecovery.updateActivity(), 1000);
 
             writer.merge(result.toUIMessageStream());
@@ -391,11 +392,11 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             /*
              * COMMENTED OUT: This async fullStream processing may be interfering with the main stream
              * (async () => {
-
-	            // Start/refresh heartbeat for continuation streaming
-	            if (heartbeat) { clearInterval(heartbeat); }
-	            heartbeat = setInterval(() => streamRecovery.updateActivity(), 1000);
-
+             *
+             * // Start/refresh heartbeat for continuation streaming
+             * if (heartbeat) { clearInterval(heartbeat); }
+             * heartbeat = setInterval(() => streamRecovery.updateActivity(), 1000);
+             *
              *   for await (const part of result.fullStream) {
              *     if (part.type === 'error') {
              *       const error: any = part.error;
@@ -458,10 +459,10 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
         /*
          *       // Enhanced error handling for common streaming issues
-
-	      // Ensure any active heartbeat is cleared on error
-	      if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
-
+         *
+         *       // Ensure any active heartbeat is cleared on error
+         *       if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
+         *
          *       if (error.message?.includes('Invalid JSON response')) {
          *         logger.error('Invalid JSON response detected - likely malformed API response');
          *       } else if (error.message?.includes('token')) {
@@ -477,11 +478,11 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
          *       logger.info(`DEBUG STREAM: fullStream text-delta length: ${part.textDelta.length}, content: "${part.textDelta.substring(0, 100)}${part.textDelta.length > 100 ? '...' : ''}"`);
          *     }
          *   }
-
-	        // Start/refresh heartbeat for primary streaming
-	        if (heartbeat) { clearInterval(heartbeat); }
-	        heartbeat = setInterval(() => streamRecovery.updateActivity(), 1000);
-
+         *
+         *       // Start/refresh heartbeat for primary streaming
+         *       if (heartbeat) { clearInterval(heartbeat); }
+         *       heartbeat = setInterval(() => streamRecovery.updateActivity(), 1000);
+         *
          *   logger.info(`DEBUG STREAM: fullStream processing completed, total parts: ${partCount}`);
          *   streamRecovery.stop();
          * })();
@@ -493,6 +494,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         if (heartbeat) {
           clearInterval(heartbeat);
         }
+
         heartbeat = setInterval(() => streamRecovery.updateActivity(), 1000);
 
         writer.merge(result.toUIMessageStream());

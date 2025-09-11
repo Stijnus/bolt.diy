@@ -39,15 +39,19 @@ export function summarizeBuildOutput(raw: string | undefined): BuildErrorSummary
 
   for (const l of lines) {
     const m = l.match(tsLineRe);
+
     if (m && m.groups) {
       important.push(l);
+
       const file = m.groups.file;
+
       const entry = {
         line: m.groups.line ? Number(m.groups.line) : undefined,
         col: m.groups.col ? Number(m.groups.col) : undefined,
         code: m.groups.code,
         message: m.groups.msg.trim(),
       };
+
       const arr = fileErrors.get(file) ?? [];
       arr.push(entry);
       fileErrors.set(file, arr);
@@ -110,18 +114,28 @@ export function summarizeBuildOutput(raw: string | undefined): BuildErrorSummary
   // Generate fix hints for common TS codes
   const hints: string[] = [];
   const allCodes = top.join(' ');
-  if (/TS6133/.test(allCodes)) hints.push('Remove unused imports/vars (TS6133) or prefix with underscore.');
-  if (/TS2741/.test(allCodes))
+
+  if (/TS6133/.test(allCodes)) {
+    hints.push('Remove unused imports/vars (TS6133) or prefix with underscore.');
+  }
+
+  if (/TS2741/.test(allCodes)) {
     hints.push('Missing required prop (TS2741): provide required prop or make it optional in the component type.');
-  if (/TS2322/.test(allCodes))
+  }
+
+  if (/TS2322/.test(allCodes)) {
     hints.push('Type mismatch (TS2322): coerce or change types (e.g., parse number from string).');
+  }
+
   if (/TS2339/.test(allCodes) && /import\.meta\.env/.test(allCodes)) {
     hints.push(
       'Add Vite types for import.meta.env (add "types": ["vite/client"] to tsconfig or a env.d.ts with /// <reference types=\"vite/client\" />).',
     );
   }
-  if (/module not found|cannot find module/i.test(allCodes))
+
+  if (/module not found|cannot find module/i.test(allCodes)) {
     hints.push('Missing dependency or wrong import path: check package.json and file paths.');
+  }
 
   const files = Array.from(fileErrors.entries()).map(([file, errors]) => ({ file, errors }));
 

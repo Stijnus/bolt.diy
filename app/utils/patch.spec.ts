@@ -9,12 +9,8 @@ describe('patch utils', () => {
 
   it('applies a simple add/remove hunk', () => {
     const original = ['hello', 'world'].join('\n');
-    const diff = [
-      '@@ -1,2 +1,2 @@',
-      '-hello',
-      '+hi',
-      ' world',
-    ].join('\n');
+
+    const diff = ['@@ -1,2 +1,2 @@', '-hello', '+hi', ' world'].join('\n');
 
     const patched = applyUnifiedDiffBody(original, diff);
     expect(patched).toBe(['hi', 'world'].join('\n'));
@@ -22,16 +18,8 @@ describe('patch utils', () => {
 
   it('applies multiple hunks', () => {
     const original = ['a', 'b', 'c', 'd', 'e'].join('\n');
-    const diff = [
-      '@@ -1,2 +1,2 @@',
-      ' a',
-      '-b',
-      '+B',
-      '@@ -4,2 +4,3 @@',
-      ' d',
-      '+D2',
-      ' e',
-    ].join('\n');
+
+    const diff = ['@@ -1,2 +1,2 @@', ' a', '-b', '+B', '@@ -4,2 +4,3 @@', ' d', '+D2', ' e'].join('\n');
 
     const patched = applyUnifiedDiffBody(original, diff);
     expect(patched).toBe(['a', 'B', 'c', 'd', 'D2', 'e'].join('\n'));
@@ -44,4 +32,3 @@ describe('patch utils', () => {
     expect(patched).toBeNull();
   });
 });
-

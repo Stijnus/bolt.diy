@@ -1,5 +1,7 @@
-import { memo, useMemo, useState } from 'react';
+/* eslint-disable @typescript-eslint/naming-convention */
+
 import { AnimatePresence, motion } from 'framer-motion';
+import { memo, useMemo, useState } from 'react';
 import type { ProviderInfo } from '~/types/model';
 import { classNames } from '~/utils/classNames';
 import { cubicEasingFn } from '~/utils/easings';
@@ -28,11 +30,16 @@ export const LLMDebugPanel = memo(
     const [showWhy, setShowWhy] = useState(false);
 
     const hasAny = !!usage || (codeFiles && codeFiles.length > 0) || (candidates && candidates.length > 0);
+
     const usageSummary = useMemo(() => {
-      if (!usage) return '—';
+      if (!usage) {
+        return '—';
+      }
+
       const i = usage.inputTokens ?? 0;
       const o = usage.outputTokens ?? 0;
       const t = usage.totalTokens ?? i + o;
+
       return `${t} tokens (in ${i} • out ${o})`;
     }, [usage]);
     const reasonMap = useMemo(() => {
@@ -45,10 +52,13 @@ export const LLMDebugPanel = memo(
         }
       >();
       (reasons || []).forEach((r) => m.set(r.path, r));
+
       return m;
     }, [reasons]);
 
-    if (!hasAny) return null;
+    if (!hasAny) {
+      return null;
+    }
 
     return (
       <div

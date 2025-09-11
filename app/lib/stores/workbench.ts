@@ -15,11 +15,10 @@ import { webcontainer } from '~/lib/webcontainer';
 import type { ActionAlert, DeployAlert, SupabaseAlert } from '~/types/actions';
 import type { ITerminal } from '~/types/terminal';
 import { extractRelativePath, diffFiles } from '~/utils/diff';
+import { applyUnifiedDiffBody, isUnifiedDiffBody } from '~/utils/patch';
 import { path } from '~/utils/path';
 import { createSampler } from '~/utils/sampler';
 import { unreachable } from '~/utils/unreachable';
-
-import { applyUnifiedDiffBody, isUnifiedDiffBody } from '~/utils/patch';
 
 const { saveAs } = fileSaver;
 
@@ -583,6 +582,7 @@ export class WorkbenchStore {
           content: `Path: ${data.action.filePath}`,
           source: 'terminal',
         });
+
         return;
       }
 
@@ -601,6 +601,7 @@ export class WorkbenchStore {
       try {
         if (existingFile && typeof existingFile.content === 'string' && isUnifiedDiffBody(data.action.content)) {
           const patched = applyUnifiedDiffBody(existingFile.content, data.action.content);
+
           if (patched === null) {
             this.actionAlert.set({
               type: 'error',
@@ -611,6 +612,7 @@ export class WorkbenchStore {
             });
             return;
           }
+
           data.action.content = patched;
         }
       } catch (e: any) {
@@ -634,6 +636,7 @@ export class WorkbenchStore {
         try {
           const relPath = extractRelativePath(fullPath);
           const fileName = path.basename(relPath);
+
           const protectedPatterns = [
             /^package\.json$/i,
             /^pnpm-lock\.yaml$/i,
@@ -641,6 +644,7 @@ export class WorkbenchStore {
             /^yarn\.lock$/i,
             /^\.env(\..+)?$/i,
           ];
+
           const isProtected = protectedPatterns.some((re) => re.test(fileName));
 
           const oldText = existingFile.content;
@@ -653,14 +657,26 @@ export class WorkbenchStore {
 
           // Compute unified diff to estimate changed lines
           const unified = diffFiles(relPath || fileName, oldText, newText) || '';
+
           let added = 0;
           let removed = 0;
+
           for (const line of unified.split('\n')) {
-            if (line.startsWith('@@')) continue;
-            if (line.startsWith('+++') || line.startsWith('---')) continue;
-            if (line.startsWith('+')) added++;
-            else if (line.startsWith('-')) removed++;
+            if (line.startsWith('@@')) {
+              continue;
+            }
+
+            if (line.startsWith('+++') || line.startsWith('---')) {
+              continue;
+            }
+
+            if (line.startsWith('+')) {
+              added++;
+            } else if (line.startsWith('-')) {
+              removed++;
+            }
           }
+
           const changedLines = added + removed;
           const baseLines = Math.max(oldLines, newLines) || 1;
           const changeRatio = changedLines / baseLines;
@@ -677,7 +693,7 @@ export class WorkbenchStore {
             });
             return;
           }
-        } catch (e) {
+        } catch {
           // If guard calculation fails, do not block by default
         }
       }

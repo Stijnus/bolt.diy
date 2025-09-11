@@ -53,6 +53,7 @@ export default class LMStudioProvider extends BaseProvider {
       },
       { maxRetries: settings?.maxRetries ?? 2 },
     );
+
     const data = (await response.json()) as { data: Array<{ id: string }> };
 
     return data.data.map((model) => ({

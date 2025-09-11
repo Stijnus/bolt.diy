@@ -143,12 +143,15 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const [isModelLoading, setIsModelLoading] = useState<string | undefined>('all');
     const [progressAnnotations, setProgressAnnotations] = useState<ProgressAnnotation[]>([]);
     const expoUrl = useStore(expoUrlAtom);
+
     const [debugUsage, setDebugUsage] = useState<{
       inputTokens?: number;
       outputTokens?: number;
       totalTokens?: number;
     } | null>(null);
+
     const [debugFiles, setDebugFiles] = useState<string[]>([]);
+
     const [debugCandidates, setDebugCandidates] = useState<
       Array<{
         path: string;
@@ -172,24 +175,32 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       }
     }, [expoUrl]);
     useEffect(() => {
-      if (!data) return;
+      if (!data) {
+        return;
+      }
+
       try {
         const list = Array.isArray(data) ? (data as any[]) : [data];
+
         let lastUsage: any = null;
         let lastFiles: string[] | null = null;
+
         for (const item of list) {
           if (item && typeof item === 'object') {
             if ((item as any).type === 'data-usage' && (item as any).data) {
               lastUsage = (item as any).data;
             }
+
             if ((item as any).type === 'data-codeContext' && (item as any).data?.files) {
               lastFiles = (item as any).data.files as string[];
             }
+
             if ((item as any).type === 'data-codeContextCandidates' && (item as any).data?.candidates) {
               try {
                 setDebugCandidates((item as any).data.candidates as any);
               } catch {}
             }
+
             if ((item as any).type === 'data-codeContextReasons' && (item as any).data?.reasons) {
               try {
                 setDebugReasons((item as any).data.reasons as any);
@@ -199,7 +210,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         }
         setDebugUsage(lastUsage);
         setDebugFiles(lastFiles ?? []);
-      } catch (e) {
+      } catch {
         // ignore parsing errors
       }
     }, [data]);
