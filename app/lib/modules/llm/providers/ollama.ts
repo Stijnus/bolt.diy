@@ -1,6 +1,6 @@
 import type { LanguageModel } from 'ai';
 import { ollama } from 'ollama-ai-provider';
-import { BaseProvider } from '~/lib/modules/llm/base-provider';
+import { BaseProvider, fetchWithRetry } from '~/lib/modules/llm/base-provider';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import type { IProviderSetting } from '~/types/model';
 import { logger } from '~/utils/logger';
@@ -87,7 +87,13 @@ export default class OllamaProvider extends BaseProvider {
       baseUrl = isDocker ? baseUrl.replace('127.0.0.1', 'host.docker.internal') : baseUrl;
     }
 
-    const response = await fetch(`${baseUrl}/api/tags`);
+    const response = await fetchWithRetry(
+      `${baseUrl}/api/tags`,
+      {
+        timeout: settings?.timeout ?? 6000,
+      },
+      { maxRetries: settings?.maxRetries ?? 2 },
+    );
     const data = (await response.json()) as OllamaApiResponse;
 
     // console.log({ ollamamodels: data.models });

@@ -131,3 +131,40 @@ export function getOpenAILikeModel(baseURL: string, apiKey: OptionalApiKey, mode
 
   return openai(model);
 }
+
+export async function fetchWithRetry(
+  url: string,
+  init: { headers?: Record<string, string>; method?: string; body?: any; timeout?: number } = {},
+  retry: { maxRetries?: number; retryDelays?: number[] } = {},
+): Promise<Response> {
+  const { timeout = 15000, ...rest } = init;
+  const { maxRetries = 2, retryDelays = [1000, 2000, 4000, 8000] } = retry;
+
+  let lastError: any;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+      const res = await fetch(url, { ...rest, signal: controller.signal } as RequestInit);
+      clearTimeout(timer);
+      if (!res.ok && res.status >= 500 && attempt < maxRetries) {
+        // Retry on server errors
+        const delay = retryDelays[Math.min(attempt, retryDelays.length - 1)];
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      clearTimeout(timer);
+      lastError = err;
+      // Retry on abort/network errors if attempts remain
+      if (attempt < maxRetries) {
+        const delay = retryDelays[Math.min(attempt, retryDelays.length - 1)];
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError ?? new Error('fetchWithRetry failed without specific error');
+}

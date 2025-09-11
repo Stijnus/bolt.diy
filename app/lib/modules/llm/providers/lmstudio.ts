@@ -1,6 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModel } from 'ai';
-import { BaseProvider } from '~/lib/modules/llm/base-provider';
+import { BaseProvider, fetchWithRetry } from '~/lib/modules/llm/base-provider';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import type { IProviderSetting } from '~/types/model';
 import { logger } from '~/utils/logger';
@@ -46,7 +46,13 @@ export default class LMStudioProvider extends BaseProvider {
       baseUrl = isDocker ? baseUrl.replace('127.0.0.1', 'host.docker.internal') : baseUrl;
     }
 
-    const response = await fetch(`${baseUrl}/v1/models`);
+    const response = await fetchWithRetry(
+      `${baseUrl}/v1/models`,
+      {
+        timeout: settings?.timeout ?? 10000,
+      },
+      { maxRetries: settings?.maxRetries ?? 2 },
+    );
     const data = (await response.json()) as { data: Array<{ id: string }> };
 
     return data.data.map((model) => ({

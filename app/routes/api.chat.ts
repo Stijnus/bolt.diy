@@ -82,6 +82,9 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
   let progressCounter: number = 1;
   let responseSegments: number = 0;
 
+  // Streaming heartbeat: keeps streamRecovery aware during long responses
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+
   try {
     const mcpService = MCPService.getInstance();
     const genId = () => generateId(16);
@@ -210,6 +213,22 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                 cumulativeUsage.totalTokens += resp.usage.totalTokens || 0;
               }
             },
+            onDebug(payload) {
+              try {
+                writer.write({
+                  type: 'data-codeContextCandidates',
+                  data: payload,
+                });
+              } catch {}
+            },
+            onSelected(payload) {
+              try {
+                writer.write({
+                  type: 'data-codeContextReasons',
+                  data: payload,
+                });
+              } catch {}
+            },
           });
 
           if (filteredFiles) {
@@ -273,9 +292,21 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                 },
               });
             });
+
+            // Clear any active heartbeat on finish (success or length)
+            if (heartbeat) {
+              clearInterval(heartbeat);
+              heartbeat = null;
+            }
           },
           onFinish: async ({ text: content, finishReason, usage }) => {
             logger.debug('usage', JSON.stringify(usage));
+
+            // Clear heartbeat at the beginning of onFinish to ensure no stale timers
+            if (heartbeat) {
+              clearInterval(heartbeat);
+              heartbeat = null;
+            }
 
             if (usage) {
               cumulativeUsage.outputTokens += usage.outputTokens || 0;
@@ -349,11 +380,22 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               messageSliceId,
             });
 
+            // Start/refresh heartbeat for continuation streaming
+            if (heartbeat) {
+              clearInterval(heartbeat);
+            }
+            heartbeat = setInterval(() => streamRecovery.updateActivity(), 1000);
+
             writer.merge(result.toUIMessageStream());
 
             /*
              * COMMENTED OUT: This async fullStream processing may be interfering with the main stream
              * (async () => {
+
+	            // Start/refresh heartbeat for continuation streaming
+	            if (heartbeat) { clearInterval(heartbeat); }
+	            heartbeat = setInterval(() => streamRecovery.updateActivity(), 1000);
+
              *   for await (const part of result.fullStream) {
              *     if (part.type === 'error') {
              *       const error: any = part.error;
@@ -416,6 +458,10 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
         /*
          *       // Enhanced error handling for common streaming issues
+
+	      // Ensure any active heartbeat is cleared on error
+	      if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
+
          *       if (error.message?.includes('Invalid JSON response')) {
          *         logger.error('Invalid JSON response detected - likely malformed API response');
          *       } else if (error.message?.includes('token')) {
@@ -431,16 +477,35 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
          *       logger.info(`DEBUG STREAM: fullStream text-delta length: ${part.textDelta.length}, content: "${part.textDelta.substring(0, 100)}${part.textDelta.length > 100 ? '...' : ''}"`);
          *     }
          *   }
+
+	        // Start/refresh heartbeat for primary streaming
+	        if (heartbeat) { clearInterval(heartbeat); }
+	        heartbeat = setInterval(() => streamRecovery.updateActivity(), 1000);
+
          *   logger.info(`DEBUG STREAM: fullStream processing completed, total parts: ${partCount}`);
          *   streamRecovery.stop();
          * })();
          */
 
         streamRecovery.stop(); // Stop monitoring since we're not manually processing fullStream
+
+        // Start/refresh heartbeat for primary streaming
+        if (heartbeat) {
+          clearInterval(heartbeat);
+        }
+        heartbeat = setInterval(() => streamRecovery.updateActivity(), 1000);
+
         writer.merge(result.toUIMessageStream());
       },
       onError: (error: any) => {
         // Provide more specific error messages for common issues
+
+        // Ensure any active heartbeat is cleared on error
+        if (heartbeat) {
+          clearInterval(heartbeat);
+          heartbeat = null;
+        }
+
         const errorMessage = error.message || 'Unknown error';
 
         if (errorMessage.includes('model') && errorMessage.includes('not found')) {

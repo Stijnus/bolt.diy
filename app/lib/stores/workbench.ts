@@ -14,10 +14,12 @@ import type { ActionCallbackData, ArtifactCallbackData } from '~/lib/runtime/mes
 import { webcontainer } from '~/lib/webcontainer';
 import type { ActionAlert, DeployAlert, SupabaseAlert } from '~/types/actions';
 import type { ITerminal } from '~/types/terminal';
-import { extractRelativePath } from '~/utils/diff';
+import { extractRelativePath, diffFiles } from '~/utils/diff';
 import { path } from '~/utils/path';
 import { createSampler } from '~/utils/sampler';
 import { unreachable } from '~/utils/unreachable';
+
+import { applyUnifiedDiffBody, isUnifiedDiffBody } from '~/utils/patch';
 
 const { saveAs } = fileSaver;
 
@@ -567,11 +569,118 @@ export class WorkbenchStore {
       const wc = await webcontainer;
       const fullPath = path.join(wc.workdir, data.action.filePath);
 
-      /*
-       * For scoped locks, we would need to implement diff checking here
-       * to determine if the AI is modifying existing code or just adding new code
-       * This is a more complex feature that would be implemented in a future update
-       */
+      // Phase 3 guardrails: prevent edits to locked or binary files and respect locked folders
+      const lockInfo = this.#filesStore.isFileLocked(fullPath);
+      const folderLockInfo = this.#filesStore.isFileInLockedFolder(fullPath);
+      const existingFile = this.#filesStore.getFile(fullPath);
+
+      if (lockInfo.locked || folderLockInfo.locked) {
+        const lockedBy = lockInfo.lockedBy || folderLockInfo.lockedBy || fullPath;
+        this.actionAlert.set({
+          type: 'error',
+          title: 'Edit blocked: Locked path',
+          description: `The file is locked and cannot be modified (locked by: ${lockedBy}).`,
+          content: `Path: ${data.action.filePath}`,
+          source: 'terminal',
+        });
+        return;
+      }
+
+      if (existingFile?.isBinary) {
+        this.actionAlert.set({
+          type: 'error',
+          title: 'Edit blocked: Binary file',
+          description: 'Binary files are not editable via AI file actions. Please modify or replace manually.',
+          content: `Path: ${data.action.filePath}`,
+          source: 'terminal',
+        });
+        return;
+      }
+
+      // Phase 3.1: Apply patch-based updates when content is a unified diff body
+      try {
+        if (existingFile && typeof existingFile.content === 'string' && isUnifiedDiffBody(data.action.content)) {
+          const patched = applyUnifiedDiffBody(existingFile.content, data.action.content);
+          if (patched === null) {
+            this.actionAlert.set({
+              type: 'error',
+              title: 'Failed to apply patch',
+              description: 'The provided diff could not be applied cleanly.',
+              content: `Path: ${data.action.filePath}`,
+              source: 'terminal',
+            });
+            return;
+          }
+          data.action.content = patched;
+        }
+      } catch (e: any) {
+        this.actionAlert.set({
+          type: 'error',
+          title: 'Patch error',
+          description: e?.message || 'An error occurred while applying the diff.',
+          content: `Path: ${data.action.filePath}`,
+          source: 'terminal',
+        });
+        return;
+      }
+
+      // Phase 3.2: Large-overwrite guard for non-diff updates
+      if (
+        existingFile &&
+        typeof existingFile.content === 'string' &&
+        typeof data.action.content === 'string' &&
+        !isUnifiedDiffBody(data.action.content)
+      ) {
+        try {
+          const relPath = extractRelativePath(fullPath);
+          const fileName = path.basename(relPath);
+          const protectedPatterns = [
+            /^package\.json$/i,
+            /^pnpm-lock\.yaml$/i,
+            /^package-lock\.json$/i,
+            /^yarn\.lock$/i,
+            /^\.env(\..+)?$/i,
+          ];
+          const isProtected = protectedPatterns.some((re) => re.test(fileName));
+
+          const oldText = existingFile.content;
+          const newText = data.action.content;
+
+          const oldLines = oldText.split('\n').length;
+          const newLines = newText.split('\n').length;
+          const minGuardLines = 200; // knob: minimum size to consider for guard
+          const maxChangeRatio = 0.5; // knob: block if >50% of lines are changed
+
+          // Compute unified diff to estimate changed lines
+          const unified = diffFiles(relPath || fileName, oldText, newText) || '';
+          let added = 0;
+          let removed = 0;
+          for (const line of unified.split('\n')) {
+            if (line.startsWith('@@')) continue;
+            if (line.startsWith('+++') || line.startsWith('---')) continue;
+            if (line.startsWith('+')) added++;
+            else if (line.startsWith('-')) removed++;
+          }
+          const changedLines = added + removed;
+          const baseLines = Math.max(oldLines, newLines) || 1;
+          const changeRatio = changedLines / baseLines;
+
+          if (isProtected || (oldLines >= minGuardLines && changeRatio > maxChangeRatio)) {
+            this.actionAlert.set({
+              type: 'error',
+              title: 'Large overwrite blocked',
+              description: isProtected
+                ? 'Edits to this file require a unified diff for safety. Please resend your changes as a unified diff.'
+                : `This update modifies ~${Math.round(changeRatio * 100)}% of a large file without a diff. Please resend as a unified diff so we can apply it safely.`,
+              content: `Path: ${data.action.filePath}`,
+              source: 'terminal',
+            });
+            return;
+          }
+        } catch (e) {
+          // If guard calculation fails, do not block by default
+        }
+      }
 
       if (this.selectedFile.value !== fullPath) {
         this.setSelectedFile(fullPath);

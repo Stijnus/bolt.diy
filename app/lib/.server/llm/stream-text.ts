@@ -1,5 +1,5 @@
 import type { UIMessage } from '@ai-sdk/ui-utils';
-import { convertToModelMessages, streamText as _streamText } from 'ai';
+import { convertToCoreMessages, streamText as _streamText } from 'ai';
 import { MAX_TOKENS, PROVIDER_COMPLETION_LIMITS, isReasoningModel, type FileMap } from './constants';
 import { createFilesContext, extractPropertiesFromMessage } from './utils';
 import { PromptLibrary } from '~/lib/common/prompt-library';
@@ -175,7 +175,7 @@ export async function streamText(props: {
     }) ?? getSystemPrompt();
 
   if (chatMode === 'build' && contextFiles && contextOptimization) {
-    const codeContext = createFilesContext(contextFiles, true);
+    const codeContext = createFilesContext(contextFiles, true, { maxCharsPerFile: 8000 });
 
     systemPrompt = `${systemPrompt}
 
@@ -294,7 +294,7 @@ export async function streamText(props: {
     }),
     system: chatMode === 'build' ? systemPrompt : discussPrompt(),
     ...tokenParams,
-    messages: convertToModelMessages(
+    messages: convertToCoreMessages(
       processedMessages.filter((m) => m.role === 'system' || m.role === 'user' || m.role === 'assistant') as any[],
     ),
     ...filteredOptions,

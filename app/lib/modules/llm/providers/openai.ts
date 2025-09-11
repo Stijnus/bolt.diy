@@ -1,6 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModel } from 'ai';
-import { BaseProvider } from '~/lib/modules/llm/base-provider';
+import { BaseProvider, fetchWithRetry } from '~/lib/modules/llm/base-provider';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import type { IProviderSetting } from '~/types/model';
 
@@ -67,11 +67,17 @@ export default class OpenAIProvider extends BaseProvider {
       throw `Missing Api Key configuration for ${this.name} provider`;
     }
 
-    const response = await fetch(`https://api.openai.com/v1/models`, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
+    const response = await fetchWithRetry(
+      `https://api.openai.com/v1/models`,
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          ...(settings?.customHeaders || {}),
+        },
+        timeout: settings?.timeout ?? 15000,
       },
-    });
+      { maxRetries: settings?.maxRetries ?? 2 },
+    );
 
     const res = (await response.json()) as any;
     const staticModelIds = this.staticModels.map((m) => m.name);

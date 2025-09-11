@@ -43,7 +43,7 @@ export function simplifyBoltActions(input: string): string {
   });
 }
 
-export function createFilesContext(files: FileMap, useRelativePath?: boolean) {
+export function createFilesContext(files: FileMap, useRelativePath?: boolean, options?: { maxCharsPerFile?: number }) {
   const ig = ignore().add(IGNORE_PATTERNS);
 
   let filePaths = Object.keys(files);
@@ -61,10 +61,19 @@ export function createFilesContext(files: FileMap, useRelativePath?: boolean) {
         return '';
       }
 
-      const codeWithLinesNumbers = dirent.content
-        .split('\n')
-        // .map((v, i) => `${i + 1}|${v}`)
-        .join('\n');
+      // Optionally truncate very large files to keep prompt size manageable
+      const maxChars = options?.maxCharsPerFile;
+      let processedContent = dirent.content;
+      if (typeof maxChars === 'number' && maxChars > 0 && processedContent.length > maxChars) {
+        const headSize = Math.floor(maxChars * 0.6);
+        const tailSize = maxChars - headSize;
+        const head = processedContent.slice(0, headSize);
+        const tail = processedContent.slice(-tailSize);
+        const marker = '\n/* ... truncated for context (head+tail) ... */\n';
+        processedContent = head + marker + tail;
+      }
+
+      const codeWithLinesNumbers = processedContent;
 
       let filePath = path;
 

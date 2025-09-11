@@ -17,9 +17,11 @@ export default function DeployChatAlert({ alert, clearAlert, postMessage }: Depl
   const showProgress = stage && (buildStatus || deployStatus);
 
   // Build error summarization (client-side, no external calls)
-  const { summary, highlights } = useMemo(() => {
+  const { summary, highlights, files, hints } = useMemo(() => {
     if (type !== 'error') {
-      return { summary: '', highlights: '' };
+      return { summary: '', highlights: '', files: undefined, hints: undefined } as ReturnType<
+        typeof summarizeBuildOutput
+      >;
     }
 
     return summarizeBuildOutput(content || description);
@@ -178,7 +180,7 @@ export default function DeployChatAlert({ alert, clearAlert, postMessage }: Depl
                   <button
                     onClick={() =>
                       postMessage(
-                        `Implement fixes to resolve the build failure.\n\nSummary:\n${summary || 'See error highlights.'}\n\nError highlights:\n\`\`\`\n${(highlights || content || description || '').slice(0, 4000)}\n\`\`\`\n`,
+                        `Implement fixes to resolve the build failure.\n\nSummary:\n${summary || 'See error highlights.'}\n\n$${files?.length ? 'Files with errors:\n' + files.map((f) => `- ${f.file}: ` + f.errors.map((e) => `${e.code || ''}${e.code ? ' ' : ''}${e.message}${e.line ? ` (line ${e.line}${e.col ? `:${e.col}` : ''})` : ''}`).join('; ')).join('\n') + '\n\n' : ''}${hints?.length ? 'Hints:\n- ' + hints.join('\n- ') + '\n\n' : ''}Error highlights:\n\`\`\`\n${(highlights || content || description || '').slice(0, 4000)}\n\`\`\`\n`,
                       )
                     }
                     className={classNames(

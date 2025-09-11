@@ -14,6 +14,8 @@ import ChatAlert from './ChatAlert';
 import { ChatBox } from './ChatBox';
 import GitCloneButton from './GitCloneButton';
 import LlmErrorAlert from './LLMApiAlert';
+import { LLMDebugPanel } from './LLMDebugPanel';
+
 import { Messages } from './Messages.client';
 import ProgressCompilation from './ProgressCompilation';
 import StarterTemplates from './StarterTemplates';
@@ -141,6 +143,27 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const [isModelLoading, setIsModelLoading] = useState<string | undefined>('all');
     const [progressAnnotations, setProgressAnnotations] = useState<ProgressAnnotation[]>([]);
     const expoUrl = useStore(expoUrlAtom);
+    const [debugUsage, setDebugUsage] = useState<{
+      inputTokens?: number;
+      outputTokens?: number;
+      totalTokens?: number;
+    } | null>(null);
+    const [debugFiles, setDebugFiles] = useState<string[]>([]);
+    const [debugCandidates, setDebugCandidates] = useState<
+      Array<{
+        path: string;
+        score: number;
+        reasons?: { pathWeight: number; fileHitScore: number; relHitScore: number; contentHits: number };
+      }>
+    >([]);
+    const [debugReasons, setDebugReasons] = useState<
+      Array<{
+        path: string;
+        score: number;
+        reasons?: { pathWeight: number; fileHitScore: number; relHitScore: number; contentHits: number };
+      }>
+    >([]);
+
     const [qrModalOpen, setQrModalOpen] = useState(false);
 
     useEffect(() => {
@@ -148,6 +171,38 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         setQrModalOpen(true);
       }
     }, [expoUrl]);
+    useEffect(() => {
+      if (!data) return;
+      try {
+        const list = Array.isArray(data) ? (data as any[]) : [data];
+        let lastUsage: any = null;
+        let lastFiles: string[] | null = null;
+        for (const item of list) {
+          if (item && typeof item === 'object') {
+            if ((item as any).type === 'data-usage' && (item as any).data) {
+              lastUsage = (item as any).data;
+            }
+            if ((item as any).type === 'data-codeContext' && (item as any).data?.files) {
+              lastFiles = (item as any).data.files as string[];
+            }
+            if ((item as any).type === 'data-codeContextCandidates' && (item as any).data?.candidates) {
+              try {
+                setDebugCandidates((item as any).data.candidates as any);
+              } catch {}
+            }
+            if ((item as any).type === 'data-codeContextReasons' && (item as any).data?.reasons) {
+              try {
+                setDebugReasons((item as any).data.reasons as any);
+              } catch {}
+            }
+          }
+        }
+        setDebugUsage(lastUsage);
+        setDebugFiles(lastFiles ?? []);
+      } catch (e) {
+        // ignore parsing errors
+      }
+    }, [data]);
 
     useEffect(() => {
       if (data) {
@@ -388,6 +443,14 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                 })}
               >
                 <div className="flex flex-col gap-2">
+                  <LLMDebugPanel
+                    provider={provider}
+                    model={model}
+                    usage={debugUsage}
+                    codeFiles={debugFiles}
+                    candidates={debugCandidates}
+                    reasons={debugReasons}
+                  />
                   {deployAlert && (
                     <DeployChatAlert
                       alert={deployAlert}
