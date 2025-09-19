@@ -22,7 +22,8 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "~/*": ["./app/*"]
+      "~/*": ["./app/*"],
+      "@isomorphic-git/lightning-fs": ["./types/lightning-fs.d.ts"]
     },
     // vite takes care of building everything, not tsc
     "noEmit": true
