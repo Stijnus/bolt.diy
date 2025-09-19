@@ -62,6 +62,7 @@ export const ControlPanel = ({ open, onClose, initialTab }: ControlPanelProps) =
   const acknowledgeAllFeaturesRef = useRef(acknowledgeAllFeatures);
   const markAllAsReadRef = useRef(markAllAsRead);
   const acknowledgeIssueRef = useRef(acknowledgeIssue);
+  const lastInitialTabRef = useRef<TabType | null>(null);
 
   useEffect(() => {
     acknowledgeAllFeaturesRef.current = acknowledgeAllFeatures;
@@ -77,20 +78,37 @@ export const ControlPanel = ({ open, onClose, initialTab }: ControlPanelProps) =
 
   // Set initial tab when dialog opens (moved after hooks)
   useEffect(() => {
-    if (!open) {
-      setActiveTab(null);
-      setLoadingTab(null);
+    let timeoutId: number | null = null;
 
-      return undefined;
+    const clearLoadingTimeout = () => {
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+
+    if (!open) {
+      lastInitialTabRef.current = null;
+
+      setActiveTab((prev) => (prev === null ? prev : null));
+      setLoadingTab((prev) => (prev === null ? prev : null));
+      setShowTabManagement((prev) => (prev ? false : prev));
+
+      return clearLoadingTimeout;
     }
 
     if (!initialTab) {
-      return undefined;
+      return clearLoadingTimeout;
     }
 
-    setLoadingTab(initialTab);
-    setActiveTab(initialTab);
-    setShowTabManagement(false);
+    if (lastInitialTabRef.current === initialTab) {
+      return clearLoadingTimeout;
+    }
+
+    lastInitialTabRef.current = initialTab;
+
+    setShowTabManagement((prev) => (prev ? false : prev));
+    setLoadingTab((prev) => (prev === initialTab ? prev : initialTab));
+    setActiveTab((prev) => (prev === initialTab ? prev : initialTab));
 
     switch (initialTab) {
       case 'features':
@@ -108,11 +126,11 @@ export const ControlPanel = ({ open, onClose, initialTab }: ControlPanelProps) =
         break;
     }
 
-    const timeoutId = window.setTimeout(() => setLoadingTab(null), 500);
+    timeoutId = window.setTimeout(() => {
+      setLoadingTab((prev) => (prev === null ? prev : null));
+    }, 500);
 
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
+    return clearLoadingTimeout;
   }, [open, initialTab]);
 
   // Memoize the base tab configurations to avoid recalculation
@@ -146,19 +164,6 @@ export const ControlPanel = ({ open, onClose, initialTab }: ControlPanelProps) =
       })
       .sort((a, b) => a.order - b.order);
   }, [tabConfiguration, profile?.preferences?.notifications, baseTabConfig]);
-
-  // Reset to default view when modal opens/closes
-  useEffect(() => {
-    if (!open) {
-      // Reset when closing
-      setActiveTab(null);
-      setLoadingTab(null);
-      setShowTabManagement(false);
-    } else {
-      // When opening, set to null to show the main view
-      setActiveTab(null);
-    }
-  }, [open]);
 
   // Handle closing
   const handleClose = () => {
