@@ -129,29 +129,19 @@ export const featureService: FeatureService = {
 
       const isWebcontainerProject = projectService.isWebContainerProject(project);
       let createdBranch: Branch | undefined;
-      let skippedBranchCreation = false;
 
       if (!isWebcontainerProject) {
         try {
           createdBranch = await gitService.createBranch(project.gitUrl, newFeature.branchRef, newFeature.branchFrom);
         } catch (error) {
-          const isMissingRepoError =
-            error instanceof GitRepositoryNotFoundError ||
-            (typeof error === 'object' &&
-              error !== null &&
-              'name' in error &&
-              (error as { name?: unknown }).name === 'GitRepositoryNotFoundError');
-
-          if (isMissingRepoError) {
-            console.warn('Git repository not found for project, proceeding without creating a branch.');
-            toast.warn(
-              'No Git repository was detected for this project. The feature was added without creating a branch.',
+          if (error instanceof GitRepositoryNotFoundError) {
+            throw new Error(
+              'No Git repository was detected for this project. Please reconnect the project to a valid Git repository and try again.',
             );
-            skippedBranchCreation = true;
-          } else {
-            console.error('Failed to create git branch:', error);
-            throw error;
           }
+
+          console.error('Failed to create git branch:', error);
+          throw error;
         }
       }
 
@@ -197,15 +187,8 @@ export const featureService: FeatureService = {
         }
       }
 
-      if (createdBranch) {
-        const branchNameForMessage = createdBranch.name;
-        toast.success(`Feature "${feature.name}" added successfully with branch '${branchNameForMessage}'`);
-      } else if (skippedBranchCreation) {
-        toast.success(`Feature "${feature.name}" added successfully without creating a Git branch.`);
-      } else {
-        const branchNameForMessage = newFeature.branchRef;
-        toast.success(`Feature "${feature.name}" added successfully with branch '${branchNameForMessage}'`);
-      }
+      const branchNameForMessage = createdBranch?.name ?? newFeature.branchRef;
+      toast.success(`Feature "${feature.name}" added successfully with branch '${branchNameForMessage}'`);
     } catch (error) {
       console.error('Error adding feature:', error);
 

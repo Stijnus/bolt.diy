@@ -383,14 +383,28 @@ export const gitService: GitService = {
 
     if (!hasGit) {
       await fs.promises.mkdir(dir, { recursive: true });
-      await git.clone({
-        fs,
-        dir,
-        url: projectGitUrl,
-        depth: 1,
-        ...gitHttpOptions,
-        ...authOptions,
-      });
+
+      try {
+        await git.clone({
+          fs,
+          dir,
+          url: projectGitUrl,
+          depth: 1,
+          ...gitHttpOptions,
+          ...authOptions,
+        });
+      } catch (cloneError) {
+        console.error('Failed to clone repository into WebContainer:', cloneError);
+        throw cloneError;
+      }
+
+      const clonedHasGit = await hasGitMetadata(fs, dir);
+
+      if (!clonedHasGit) {
+        throw new GitRepositoryNotFoundError(
+          'The Git repository could not be cloned into the development environment. Please verify the repository access.',
+        );
+      }
     }
 
     return { container, fs, dir } as const;
