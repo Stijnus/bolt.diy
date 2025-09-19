@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '@nanostores/react';
 import * as RadixDialog from '@radix-ui/react-dialog';
 import { classNames } from '~/utils/classNames';
@@ -59,45 +59,79 @@ export const ControlPanel = ({ open, onClose, initialTab }: ControlPanelProps) =
   const { hasUnreadNotifications, unreadNotifications, markAllAsRead } = useNotifications();
   const { hasConnectionIssues, currentIssue, acknowledgeIssue } = useConnectionStatus();
 
+  const acknowledgeAllFeaturesRef = useRef(acknowledgeAllFeatures);
+  const markAllAsReadRef = useRef(markAllAsRead);
+  const acknowledgeIssueRef = useRef(acknowledgeIssue);
+  const lastInitialTabRef = useRef<TabType | null>(null);
+
+  useEffect(() => {
+    acknowledgeAllFeaturesRef.current = acknowledgeAllFeatures;
+  }, [acknowledgeAllFeatures]);
+
+  useEffect(() => {
+    markAllAsReadRef.current = markAllAsRead;
+  }, [markAllAsRead]);
+
+  useEffect(() => {
+    acknowledgeIssueRef.current = acknowledgeIssue;
+  }, [acknowledgeIssue]);
+
   // Set initial tab when dialog opens (moved after hooks)
   useEffect(() => {
-    console.log('ControlPanel useEffect - open:', open, 'initialTab:', initialTab);
+    let timeoutId: number | null = null;
 
-    if (open && initialTab) {
-      console.log('Setting initial tab state for:', initialTab);
-
-      // Use the same logic as handleTabClick but inline
-      setLoadingTab(initialTab);
-      setActiveTab(initialTab);
-      setShowTabManagement(false);
-
-      // Acknowledge notifications based on tab
-      switch (initialTab) {
-        case 'features':
-          acknowledgeAllFeatures();
-          break;
-        case 'notifications':
-          markAllAsRead();
-          break;
-        case 'github':
-        case 'gitlab':
-        case 'supabase':
-        case 'vercel':
-        case 'netlify':
-          acknowledgeIssue();
-          break;
+    const clearLoadingTimeout = () => {
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
       }
+    };
 
-      // Clear loading state after a delay
-      setTimeout(() => setLoadingTab(null), 500);
-    } else if (open && !initialTab) {
-      console.log('Dialog opened without initialTab');
-    } else if (!open) {
-      // Reset when dialog closes
-      setActiveTab(null);
-      setLoadingTab(null);
+    if (!open) {
+      lastInitialTabRef.current = null;
+
+      setActiveTab((prev) => (prev === null ? prev : null));
+      setLoadingTab((prev) => (prev === null ? prev : null));
+      setShowTabManagement((prev) => (prev ? false : prev));
+
+      return clearLoadingTimeout;
     }
-  }, [open, initialTab, acknowledgeAllFeatures, markAllAsRead, acknowledgeIssue]);
+
+    if (!initialTab) {
+      return clearLoadingTimeout;
+    }
+
+    if (lastInitialTabRef.current === initialTab) {
+      return clearLoadingTimeout;
+    }
+
+    lastInitialTabRef.current = initialTab;
+
+    setShowTabManagement((prev) => (prev ? false : prev));
+    setLoadingTab((prev) => (prev === initialTab ? prev : initialTab));
+    setActiveTab((prev) => (prev === initialTab ? prev : initialTab));
+
+    switch (initialTab) {
+      case 'features':
+        acknowledgeAllFeaturesRef.current?.();
+        break;
+      case 'notifications':
+        markAllAsReadRef.current?.();
+        break;
+      case 'github':
+      case 'gitlab':
+      case 'supabase':
+      case 'vercel':
+      case 'netlify':
+        acknowledgeIssueRef.current?.();
+        break;
+    }
+
+    timeoutId = window.setTimeout(() => {
+      setLoadingTab((prev) => (prev === null ? prev : null));
+    }, 500);
+
+    return clearLoadingTimeout;
+  }, [open, initialTab]);
 
   // Memoize the base tab configurations to avoid recalculation
   const baseTabConfig = useMemo(() => {
@@ -130,19 +164,6 @@ export const ControlPanel = ({ open, onClose, initialTab }: ControlPanelProps) =
       })
       .sort((a, b) => a.order - b.order);
   }, [tabConfiguration, profile?.preferences?.notifications, baseTabConfig]);
-
-  // Reset to default view when modal opens/closes
-  useEffect(() => {
-    if (!open) {
-      // Reset when closing
-      setActiveTab(null);
-      setLoadingTab(null);
-      setShowTabManagement(false);
-    } else {
-      // When opening, set to null to show the main view
-      setActiveTab(null);
-    }
-  }, [open]);
 
   // Handle closing
   const handleClose = () => {

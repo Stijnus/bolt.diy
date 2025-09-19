@@ -55,15 +55,22 @@ export function BranchSelector({
       let response: Response;
 
       if (provider === 'github') {
-        response = await fetch('/api/github-branches', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            owner: repoOwner,
-            repo: repoName,
-            token,
-          }),
-        });
+        const hasToken = typeof token === 'string' && token.trim().length > 0;
+
+        if (hasToken) {
+          response = await fetch('/api/github-branches', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              owner: repoOwner,
+              repo: repoName,
+              token,
+            }),
+          });
+        } else {
+          const params = new URLSearchParams({ owner: repoOwner, repo: repoName });
+          response = await fetch(`/api/github-branches?${params.toString()}`);
+        }
       } else {
         // GitLab
         if (!projectId) {
@@ -114,7 +121,7 @@ export function BranchSelector({
     if (isOpen && !branches.length) {
       fetchBranches();
     }
-  }, [isOpen, repoOwner, repoName, projectId]);
+  }, [isOpen, repoOwner, repoName, projectId, token]);
 
   // Reset search when closing
   useEffect(() => {
