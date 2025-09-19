@@ -45,11 +45,18 @@ const syncLightningWorkspace = async (workspace: GitWorkspace, projectGitUrl: st
       ...authOptions,
     });
 
+    const defaultIdentity = {
+      name: 'Bolt DIY',
+      email: 'noreply@bolt.diy',
+    } as const;
+
     await git.pull({
       fs: workspace.fs,
       dir: workspace.dir,
       singleBranch: false,
       fastForwardOnly: true,
+      author: defaultIdentity,
+      committer: defaultIdentity,
       ...gitHttpOptions,
       ...authOptions,
     });
