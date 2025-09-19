@@ -7,6 +7,7 @@ import {
   deleteProjectById,
   getAllProjects,
   getProjectById,
+  getProjectByGitUrl,
   getProjectChats,
   openDatabase,
   updateProject,
@@ -405,10 +406,43 @@ export function useProjectHistory(selectedProjectId?: string) {
     [gitReady, getRepoDir],
   );
 
+  const readBranchMetadata = useCallback(
+    async (fs: PromiseFsClient, dir: string, branchName: string): Promise<Branch> => {
+      const fallbackTimestamp = new Date().toISOString();
+
+      try {
+        const [latestCommit] = await git.log({ fs, dir, ref: branchName, depth: 1 });
+
+        if (!latestCommit) {
+          return {
+            name: branchName,
+            author: 'Unknown',
+            updated: fallbackTimestamp,
+          };
+        }
+
+        return {
+          name: branchName,
+          author: latestCommit.commit.author.name || 'Unknown',
+          updated: new Date(latestCommit.commit.author.timestamp * 1000).toISOString(),
+          commitHash: latestCommit.oid,
+        };
+      } catch (logError) {
+        console.warn(`Unable to read metadata for branch '${branchName}':`, logError);
+
+        return {
+          name: branchName,
+          author: 'Unknown',
+          updated: fallbackTimestamp,
+        };
+      }
+    },
+    [],
+  );
+
   // Helper function to create a git branch in WebContainer
   const createGitBranch = useCallback(
     async (projectGitUrl: string, branchName: string, branchFrom: string = 'main') => {
-      // Input validation
       if (!projectGitUrl || typeof projectGitUrl !== 'string') {
         throw new Error('Invalid project Git URL provided');
       }
@@ -421,7 +455,6 @@ export function useProjectHistory(selectedProjectId?: string) {
         throw new Error('Invalid source branch name provided');
       }
 
-      // Sanitize branch name
       const sanitizedBranchName = branchName.trim().replace(/[^a-zA-Z0-9\-_\/]/g, '-');
 
       if (sanitizedBranchName !== branchName.trim()) {
@@ -429,217 +462,81 @@ export function useProjectHistory(selectedProjectId?: string) {
       }
 
       try {
-        const container = await webcontainer;
+        const { fs, dir } = await ensureRepoInWebContainer(projectGitUrl);
         const authOptions = getGitAuthOptions(projectGitUrl);
 
-        if (!container) {
-          throw new Error('WebContainer is not available. Please ensure the development environment is running.');
-        }
-
-        if (!gitReady) {
-          throw new Error('Git system is not ready. Please wait for initialization to complete.');
-        }
-
-        // Get the project directory name from git URL
-        const projectName = projectGitUrl.split('/').pop()?.replace('.git', '') || 'unknown';
-        const workdir = container.workdir;
-
-        // Check if the project is already cloned in WebContainer
         try {
-          const entries = await container.fs.readdir('.', { withFileTypes: true });
-          const hasGit = entries?.some((e: any) => e.name === '.git' && e.isDirectory && e.isDirectory());
-
-          if (!hasGit) {
-            throw new Error(`Git repository not found in WebContainer`);
-          }
-        } catch (statError) {
-          console.warn('Git repository not found in WebContainer. Falling back to internal FS:', statError);
-
-          // Fallback: use internal Lightning-FS clone (same store used by refreshProject)
-          try {
-            if (!fsRef.current) {
-              fsRef.current = new FS('ProjectFS');
-            }
-
-            const fs = fsRef.current;
-            const dir = `/${projectName}`;
-
-            try {
-              await fs.promises.stat(`${dir}/.git`);
-            } catch {
-              await git.clone({
-                fs,
-                dir,
-                url: projectGitUrl,
-                depth: 1,
-                ...gitHttpOptions,
-                ...authOptions,
-              });
-            }
-
-            // Check local branches in fallback repo
-            let branches: string[] = [];
-
-            try {
-              branches = await git.listBranches({ fs, dir });
-            } catch (branchListError) {
-              console.error('Failed to list branches in fallback repo:', branchListError);
-              throw new Error('Failed to access fallback git repository.');
-            }
-
-            if (!Array.isArray(branches) || branches.length === 0) {
-              throw new Error('No branches found in fallback repository.');
-            }
-
-            if (!branches.includes(branchFrom)) {
-              const availableBranches = branches.slice(0, 5).join(', ');
-              throw new Error(
-                `Source branch '${branchFrom}' does not exist in fallback repo. Available branches: ${availableBranches}${
-                  branches.length > 5 ? '...' : ''
-                }`,
-              );
-            }
-
-            if (branches.includes(sanitizedBranchName)) {
-              console.warn(`Branch '${sanitizedBranchName}' already exists (fallback), skipping creation`);
-              toast.info(`Branch '${sanitizedBranchName}' already exists`);
-
-              return sanitizedBranchName;
-            }
-
-            try {
-              await (git as any).branch({
-                fs,
-                dir,
-                ref: sanitizedBranchName,
-                checkout: false,
-                from: branchFrom,
-              } as any);
-            } catch (branchError) {
-              console.error('Fallback branch creation failed:', branchError);
-              throw new Error(
-                `Failed to create branch '${sanitizedBranchName}' from '${branchFrom}' in fallback repo. ${
-                  branchError instanceof Error ? branchError.message : ''
-                }`,
-              );
-            }
-
-            console.log(`Successfully created branch '${sanitizedBranchName}' in fallback repository`);
-
-            return sanitizedBranchName;
-          } catch (fallbackError) {
-            console.error('Fallback repository handling failed:', fallbackError);
-
-            throw new Error(
-              `Project '${projectName}' not found in WebContainer and fallback failed. Please refresh the project first.`,
-            );
-          }
-        }
-
-        // Create the fs interface for isomorphic-git
-        const fs: any = {
-          promises: {
-            readFile: (path: string, options: any) => container.fs.readFile(path, options),
-            writeFile: (path: string, data: any, options: any) => container.fs.writeFile(path, data, options),
-            mkdir: (path: string, options: any) => container.fs.mkdir(path, { recursive: true, ...options }),
-            readdir: (path: string, options: any) => container.fs.readdir(path, options),
-            stat: async (path: string) => {
-              try {
-                const stats = await container.fs.readdir(
-                  path.includes('/') ? path.split('/').slice(0, -1).join('/') : '.',
-                  { withFileTypes: true },
-                );
-                const fileName = path.includes('/') ? path.split('/').pop() : path;
-                const fileInfo = stats.find((f: any) => f.name === fileName);
-
-                if (!fileInfo) {
-                  const error = new Error(`ENOENT: no such file or directory '${path}'`) as any;
-                  error.code = 'ENOENT';
-                  throw error;
-                }
-
-                return {
-                  isFile: () => fileInfo.isFile(),
-                  isDirectory: () => fileInfo.isDirectory(),
-                  size: fileInfo.isFile() ? 1 : 4096,
-                  mode: fileInfo.isDirectory() ? 0o040755 : 0o100644,
-                  mtime: new Date(),
-                };
-              } catch (error: any) {
-                if (!error.code) {
-                  error.code = 'ENOENT';
-                }
-
-                throw error;
-              }
-            },
-          },
-        };
-
-        // Check if the source branch exists
-        let branches: string[] = [];
-
-        try {
-          branches = await git.listBranches({ fs, dir: workdir });
-        } catch (branchListError) {
-          console.error('Failed to list branches:', branchListError);
-          throw new Error('Failed to access git repository. The repository may be corrupted.');
-        }
-
-        if (!Array.isArray(branches) || branches.length === 0) {
-          throw new Error('No branches found in repository. Repository may be empty or corrupted.');
-        }
-
-        if (!branches.includes(branchFrom)) {
-          const availableBranches = branches.slice(0, 5).join(', ');
-          throw new Error(
-            `Source branch '${branchFrom}' does not exist. Available branches: ${availableBranches}${branches.length > 5 ? '...' : ''}`,
-          );
-        }
-
-        // Check if the target branch already exists
-        if (branches.includes(sanitizedBranchName)) {
-          console.warn(`Branch '${sanitizedBranchName}' already exists, skipping creation`);
-          toast.info(`Branch '${sanitizedBranchName}' already exists`);
-
-          return sanitizedBranchName;
-        }
-
-        // Create the new branch from the source branch
-        try {
-          await (git as any).branch({
+          await git.fetch({
             fs,
-            dir: workdir,
+            dir,
+            remote: 'origin',
+            ref: branchFrom,
+            singleBranch: true,
+            depth: 1,
+            ...gitHttpOptions,
+            ...authOptions,
+          });
+        } catch (fetchError) {
+          console.warn(`Failed to fetch branch '${branchFrom}':`, fetchError);
+        }
+
+        let localBranches = await git.listBranches({ fs, dir });
+
+        if (!localBranches.includes(branchFrom)) {
+          const remoteBranches = await git.listBranches({ fs, dir, remote: 'origin' });
+
+          if (!remoteBranches.includes(branchFrom)) {
+            throw new Error(`Source branch '${branchFrom}' does not exist on the remote repository.`);
+          }
+
+          const baseRemoteRef = `refs/remotes/origin/${branchFrom}`;
+          const baseOid = await git.resolveRef({ fs, dir, ref: baseRemoteRef });
+          await git.branch({ fs, dir, ref: branchFrom, checkout: false, object: baseOid });
+          localBranches = [...localBranches, branchFrom];
+        }
+
+        if (localBranches.includes(sanitizedBranchName)) {
+          toast.info(`Branch '${sanitizedBranchName}' already exists`);
+          return await readBranchMetadata(fs, dir, sanitizedBranchName);
+        }
+
+        const baseOid = await git.resolveRef({ fs, dir, ref: branchFrom });
+        await git.branch({ fs, dir, ref: sanitizedBranchName, checkout: false, object: baseOid });
+
+        try {
+          await git.push({
+            fs,
+            dir,
+            remote: 'origin',
             ref: sanitizedBranchName,
-            checkout: false,
-            from: branchFrom,
-          } as any);
-        } catch (branchError) {
-          console.error('Branch creation failed:', branchError);
+            force: false,
+            ...gitHttpOptions,
+            ...authOptions,
+          });
+        } catch (pushError) {
+          console.error('Failed to push new branch to remote:', pushError);
           throw new Error(
-            `Failed to create branch '${sanitizedBranchName}' from '${branchFrom}'. ${branchError instanceof Error ? branchError.message : ''}`,
+            pushError instanceof Error
+              ? `Branch '${sanitizedBranchName}' was created locally but pushing to remote failed: ${pushError.message}`
+              : `Branch '${sanitizedBranchName}' was created locally but pushing to remote failed.`,
           );
         }
 
-        console.log(`Successfully created branch '${sanitizedBranchName}' from '${branchFrom}'`);
+        const branchMetadata = await readBranchMetadata(fs, dir, sanitizedBranchName);
+        toast.success(`Branch '${branchMetadata.name}' created from '${branchFrom}'`);
 
-        return sanitizedBranchName;
+        return branchMetadata;
       } catch (error) {
         console.error('Error creating git branch:', error);
 
-        // Re-throw with more context if it's a generic error
         if (error instanceof Error) {
-          if (error.message.includes('WebContainer') || error.message.includes('Git')) {
-            throw error; // Already has good context
-          } else {
-            throw new Error(`Git branch creation failed: ${error.message}`);
-          }
-        } else {
-          throw new Error(`Git branch creation failed due to an unexpected error`);
+          throw error;
         }
+
+        throw new Error('Git branch creation failed due to an unexpected error');
       }
     },
-    [gitReady],
+    [ensureRepoInWebContainer, readBranchMetadata],
   );
 
   // Helper function to switch to a git branch in WebContainer
@@ -1043,7 +940,19 @@ export function useProjectHistory(selectedProjectId?: string) {
         }
 
         if (db) {
-          await updateProjectBranches(db, gitUrl, branches);
+          let projectKey = gitUrl;
+
+          try {
+            const existingProject = await getProjectByGitUrl(db, gitUrl);
+
+            if (existingProject?.id) {
+              projectKey = existingProject.id;
+            }
+          } catch (lookupError) {
+            console.warn('Unable to resolve project by git URL while refreshing:', lookupError);
+          }
+
+          await updateProjectBranches(db, projectKey, branches);
           await loadProjects();
         }
 
@@ -1096,14 +1005,20 @@ export function useProjectHistory(selectedProjectId?: string) {
       try {
         const now = new Date().toISOString();
 
-        // Get the project to access its git URL
-        let project;
+        let project: Project | undefined;
 
         try {
           project = await getProjectById(db, projectId);
         } catch (dbError) {
-          console.error('Database error while fetching project:', dbError);
-          throw new Error('Failed to access project data. Please try again.');
+          console.error('Database error while fetching project by id:', dbError);
+        }
+
+        if (!project) {
+          try {
+            project = await getProjectByGitUrl(db, projectId);
+          } catch (lookupError) {
+            console.error('Database error while fetching project by git URL:', lookupError);
+          }
         }
 
         if (!project) {
@@ -1115,14 +1030,13 @@ export function useProjectHistory(selectedProjectId?: string) {
         }
 
         const isWebcontainerProject = project.source === 'webcontainer' || project.gitUrl.startsWith('webcontainer://');
+        let createdBranch: Branch | undefined;
 
         if (!isWebcontainerProject) {
-          // First create the actual git branch
           try {
-            await createGitBranch(project.gitUrl, newFeature.branchRef, newFeature.branchFrom);
+            createdBranch = await createGitBranch(project.gitUrl, newFeature.branchRef, newFeature.branchFrom);
           } catch (error) {
             console.error('Failed to create git branch:', error);
-            toast.error(`Failed to create git branch: ${error instanceof Error ? error.message : 'Unknown error'}`);
             throw error;
           }
         }
@@ -1130,7 +1044,7 @@ export function useProjectHistory(selectedProjectId?: string) {
         const feature: Feature = {
           id: `${Date.now()}`,
           name: newFeature.name,
-          branchRef: newFeature.branchRef,
+          branchRef: createdBranch?.name ?? newFeature.branchRef,
           description: newFeature.description || '',
           branchFrom: newFeature.branchFrom,
           status: 'pending',
@@ -1153,9 +1067,26 @@ export function useProjectHistory(selectedProjectId?: string) {
           },
         };
 
-        await addOrUpdateFeature(db, projectId, feature);
+        await addOrUpdateFeature(db, project.id ?? projectId, feature);
+
+        if (createdBranch) {
+          try {
+            const existingBranches = Array.isArray(project.branches) ? project.branches : [];
+            const mergedBranches = [
+              ...existingBranches.filter((branch) => branch.name !== createdBranch.name),
+              createdBranch,
+            ].sort((a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime());
+
+            await updateProjectBranches(db, project.id ?? projectId, mergedBranches);
+          } catch (branchUpdateError) {
+            console.warn('Failed to persist branch metadata:', branchUpdateError);
+          }
+        }
+
         await loadProjects();
-        toast.success(`Feature "${feature.name}" added successfully with branch '${newFeature.branchRef}'`);
+
+        const branchNameForMessage = createdBranch?.name ?? newFeature.branchRef;
+        toast.success(`Feature "${feature.name}" added successfully with branch '${branchNameForMessage}'`);
       } catch (error) {
         console.error('Error adding feature:', error);
 
