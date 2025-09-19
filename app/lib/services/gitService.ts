@@ -544,6 +544,12 @@ export const gitService: GitService = {
     try {
       const { fs, dir } = await this.ensureRepoInWebContainer(projectGitUrl);
 
+      const repositoryReady = await hasGitMetadata(fs, dir);
+
+      if (!repositoryReady) {
+        throw new GitRepositoryNotFoundError();
+      }
+
       // Ensure branch exists locally; if not, try fetch and check again
       let branches = await git.listBranches({ fs, dir });
 
@@ -576,6 +582,18 @@ export const gitService: GitService = {
       return branchName;
     } catch (error) {
       console.error('Error switching to branch:', error);
+
+      if (error instanceof GitRepositoryNotFoundError) {
+        throw error;
+      }
+
+      const errnoError = error as NodeJS.ErrnoException | undefined;
+      const message = error instanceof Error ? error.message : String(error ?? '');
+      const errorCode = errnoError?.code || (error as { code?: string })?.code;
+
+      if (errorCode === 'ENOENT' || errorCode === 'NotFoundError' || message.includes('ENOENT')) {
+        throw new GitRepositoryNotFoundError();
+      }
 
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Failed to switch to branch: ${errorMessage}`);

@@ -499,6 +499,7 @@ export const featureService: FeatureService = {
       toast.info(`Setting up development environment for "${feature.name}"...`, { autoClose: 2000 });
 
       const isWebcontainerProject = projectService.isWebContainerProject(project);
+      let skippedBranchSwitch = false;
 
       if (!isWebcontainerProject) {
         // Step 1: Ensure project is cloned and up to date
@@ -513,8 +514,21 @@ export const featureService: FeatureService = {
         try {
           await gitService.switchBranch(project.gitUrl, feature.branchRef);
         } catch (error) {
-          console.error('Failed to switch to feature branch:', error);
-          toast.error(`Failed to switch to branch '${feature.branchRef}'. You may need to switch manually.`);
+          const isMissingRepoError =
+            error instanceof GitRepositoryNotFoundError ||
+            (typeof error === 'object' &&
+              error !== null &&
+              'name' in error &&
+              (error as { name?: unknown }).name === 'GitRepositoryNotFoundError');
+
+          if (isMissingRepoError) {
+            console.warn('Git repository not found while starting feature work. Skipping branch switch.');
+            toast.warn('No Git repository was detected for this project. Branch switching was skipped.');
+            skippedBranchSwitch = true;
+          } else {
+            console.error('Failed to switch to feature branch:', error);
+            toast.error(`Failed to switch to branch '${feature.branchRef}'. You may need to switch manually.`);
+          }
 
           // Continue anyway - user can switch manually
         }
@@ -534,7 +548,11 @@ export const featureService: FeatureService = {
 
       await addOrUpdateFeatureDb(db, projectId, updatedFeature);
 
-      toast.success(`🚀 Ready to work on "${feature.name}"! Branch: ${feature.branchRef}`, { autoClose: 4000 });
+      const readyMessage = skippedBranchSwitch
+        ? `🚀 Ready to work on "${feature.name}"! (Git repository unavailable, branch switch skipped.)`
+        : `🚀 Ready to work on "${feature.name}"! Branch: ${feature.branchRef}`;
+
+      toast.success(readyMessage, { autoClose: 4000 });
     } catch (error) {
       console.error('Error starting work on feature:', error);
       toast.error('Failed to start working on feature');
