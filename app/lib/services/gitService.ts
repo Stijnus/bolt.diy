@@ -441,7 +441,7 @@ export const gitService: GitService = {
           ...authOptions,
         });
       } catch (cloneError) {
-        console.error('Failed to clone repository into WebContainer:', cloneError);
+        console.warn('Failed to clone repository into WebContainer:', cloneError);
         throw cloneError;
       }
 
@@ -565,6 +565,8 @@ export const gitService: GitService = {
       const baseOid = await git.resolveRef({ fs, dir, ref: branchFrom });
       await git.branch({ fs, dir, ref: sanitizedBranchName, checkout: false, object: baseOid });
 
+      let remotePushWarning: string | undefined;
+
       try {
         await git.push({
           fs,
@@ -576,15 +578,37 @@ export const gitService: GitService = {
           ...authOptions,
         });
       } catch (pushError) {
-        console.error('Failed to push new branch to remote:', pushError);
-        throw new Error(
-          pushError instanceof Error
-            ? `Branch '${sanitizedBranchName}' was created locally but pushing to remote failed: ${pushError.message}`
-            : `Branch '${sanitizedBranchName}' was created locally but pushing to remote failed.`,
-        );
+        const pushMessage = pushError instanceof Error ? pushError.message : String(pushError ?? '');
+        const normalizedMessage = pushMessage.toLowerCase();
+        const isAuthFailure =
+          normalizedMessage.includes('401') ||
+          normalizedMessage.includes('403') ||
+          normalizedMessage.includes('unauthorized') ||
+          normalizedMessage.includes('forbidden');
+
+        if (isAuthFailure) {
+          const authFailureMessage = `Branch '${sanitizedBranchName}' was created locally but pushing to remote failed: ${pushMessage}`;
+          remotePushWarning = authFailureMessage;
+          console.warn('Skipping remote push for branch due to authentication failure:', pushError);
+          toast.warning(
+            `Branch '${sanitizedBranchName}' was created locally, but pushing to the remote repository failed. Reconnect your Git credentials to enable automatic pushes.`,
+          );
+        } else {
+          console.error('Failed to push new branch to remote:', pushError);
+          throw new Error(
+            pushError instanceof Error
+              ? `Branch '${sanitizedBranchName}' was created locally but pushing to remote failed: ${pushError.message}`
+              : `Branch '${sanitizedBranchName}' was created locally but pushing to remote failed.`,
+          );
+        }
       }
 
       const branchMetadata = await this.readBranchMetadata(fs, dir, sanitizedBranchName);
+
+      if (remotePushWarning) {
+        console.warn(remotePushWarning);
+      }
+
       toast.success(`Branch '${branchMetadata.name}' created from '${branchFrom}'`);
 
       return branchMetadata;
