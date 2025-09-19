@@ -1,5 +1,6 @@
 import http from 'isomorphic-git/http/web';
 import git, { type PromiseFsClient, type GitAuth } from 'isomorphic-git';
+import LightningFS from '@isomorphic-git/lightning-fs';
 import Cookies from 'js-cookie';
 import { toast } from 'react-toastify';
 import type { WebContainer } from '@webcontainer/api';
@@ -26,6 +27,49 @@ const hasGitMetadata = async (fs: PromiseFsClient, dir: string) => {
   }
 };
 
+const sanitizeRepoKey = (gitUrl: string) => {
+  return gitUrl.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase();
+};
+
+const ensureRepoInLightningFs = async (projectGitUrl: string): Promise<GitWorkspace> => {
+  const repoKey = sanitizeRepoKey(projectGitUrl) || 'repo';
+  const lightningFs = new LightningFS(`git-repo:${repoKey}:${Date.now()}`, { wipe: true });
+  const fs = lightningFs as unknown as PromiseFsClient;
+  const dir = `/${repoKey}`;
+
+  try {
+    await fs.promises.mkdir(dir, { recursive: true });
+  } catch (mkdirError) {
+    console.warn('Failed to prepare lightning-fs directory:', mkdirError);
+  }
+
+  const authOptions = getGitAuthOptions(projectGitUrl);
+
+  try {
+    await git.clone({
+      fs,
+      dir,
+      url: projectGitUrl,
+      depth: 1,
+      ...gitHttpOptions,
+      ...authOptions,
+    });
+  } catch (cloneError) {
+    console.error('Failed to clone repository into lightning-fs workspace:', cloneError);
+    throw cloneError instanceof Error ? cloneError : new Error(String(cloneError ?? ''));
+  }
+
+  const repoReady = await hasGitMetadata(fs, dir);
+
+  if (!repoReady) {
+    throw new GitRepositoryNotFoundError(
+      'The Git repository could not be cloned into the in-memory workspace. Please verify repository access.',
+    );
+  }
+
+  return { fs, dir };
+};
+
 export interface GitService {
   createBranch(projectGitUrl: string, branch: string, from?: string): Promise<Branch>;
   switchBranch(projectGitUrl: string, branch: string): Promise<string>;
@@ -34,6 +78,9 @@ export interface GitService {
   ): Promise<{ container: WebContainer; fs: PromiseFsClient; dir: string }>;
   readBranchMetadata(fs: PromiseFsClient, dir: string, branchName: string): Promise<Branch>;
 }
+
+type GitWorkspace = { fs: PromiseFsClient; dir: string };
+type WebcontainerWorkspace = GitWorkspace & { container: WebContainer };
 
 // Git utility functions
 const encodeBasicAuth = (username: string, password: string) => {
@@ -461,7 +508,17 @@ export const gitService: GitService = {
     }
 
     try {
-      const { fs, dir } = await this.ensureRepoInWebContainer(projectGitUrl);
+      let workspace: GitWorkspace | WebcontainerWorkspace;
+
+      try {
+        workspace = await this.ensureRepoInWebContainer(projectGitUrl);
+      } catch (webcontainerError) {
+        console.warn('Falling back to lightning-fs for branch creation:', webcontainerError);
+        workspace = await ensureRepoInLightningFs(projectGitUrl);
+      }
+
+      const { fs, dir } = workspace;
+
       const repositoryReady = await hasGitMetadata(fs, dir);
 
       if (!repositoryReady) {
@@ -556,7 +613,16 @@ export const gitService: GitService = {
 
   async switchBranch(projectGitUrl: string, branchName: string): Promise<string> {
     try {
-      const { fs, dir } = await this.ensureRepoInWebContainer(projectGitUrl);
+      let workspace: GitWorkspace | WebcontainerWorkspace;
+
+      try {
+        workspace = await this.ensureRepoInWebContainer(projectGitUrl);
+      } catch (webcontainerError) {
+        console.warn('Falling back to lightning-fs for branch switching:', webcontainerError);
+        workspace = await ensureRepoInLightningFs(projectGitUrl);
+      }
+
+      const { fs, dir } = workspace;
 
       const repositoryReady = await hasGitMetadata(fs, dir);
 
