@@ -5,7 +5,7 @@ import { toast } from 'react-toastify';
 import { Dialog, DialogRoot, DialogTitle, DialogDescription } from '~/components/ui/Dialog';
 import { Button } from '~/components/ui/Button';
 import { Label } from '~/components/ui/Label';
-import { useProjectHistory } from '~/lib/persistence/useProjectHistory';
+import { useProjectHistory } from '~/components/projects/hooks/useProjectHistory';
 
 interface AssociateChatDialogProps {
   isOpen: boolean;

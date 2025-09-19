@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useProjectHistory } from '~/lib/persistence/useProjectHistory';
+import { useProjectHistory } from '~/components/projects/hooks/useProjectHistory';
 import type { IChatMetadata } from '~/lib/persistence/db';
 
 interface ProjectChatContextProps {

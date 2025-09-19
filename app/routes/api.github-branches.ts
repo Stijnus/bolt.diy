@@ -36,7 +36,13 @@ async function githubBranchesLoader({ request, context }: { request: Request; co
       }
 
       if (!githubToken) {
-        return json({ error: 'GitHub token is required' }, { status: 400 });
+        return json(
+          {
+            error:
+              'GitHub authentication required. Please connect your GitHub account in Settings > Connections to access repository branches.',
+          },
+          { status: 401 },
+        );
       }
     } else {
       // Handle GET request with params and cookie token (backwards compatibility)
@@ -64,7 +70,13 @@ async function githubBranchesLoader({ request, context }: { request: Request; co
     }
 
     if (!githubToken) {
-      return json({ error: 'GitHub token not found' }, { status: 401 });
+      return json(
+        {
+          error:
+            'GitHub authentication required. Please connect your GitHub account in Settings > Connections to access repository branches.',
+        },
+        { status: 401 },
+      );
     }
 
     // First, get repository info to know the default branch
@@ -82,7 +94,13 @@ async function githubBranchesLoader({ request, context }: { request: Request; co
       }
 
       if (repoResponse.status === 401) {
-        return json({ error: 'Invalid GitHub token' }, { status: 401 });
+        return json(
+          {
+            error:
+              'GitHub authentication failed. Please check your GitHub token in Settings > Connections or reconnect your account.',
+          },
+          { status: 401 },
+        );
       }
 
       throw new Error(`GitHub API error: ${repoResponse.status}`);

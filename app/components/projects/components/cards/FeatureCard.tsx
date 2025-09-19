@@ -12,8 +12,9 @@ import {
   Target,
   Tag,
   Play,
+  Loader2,
 } from 'lucide-react';
-import type { Feature, FeatureStatus, FeaturePriority } from './types';
+import type { Feature, FeatureStatus, FeaturePriority } from '~/components/projects/types';
 import { Button } from '~/components/ui/Button';
 import { Select } from '~/components/ui/Select';
 import { UserDisplay } from '~/components/ui/UserDisplay';
@@ -31,6 +32,10 @@ interface FeatureCardProps {
   onStartTimer?: (featureId: string) => void;
   onStopTimer?: (featureId: string) => void;
   onStartWorking?: (featureId: string) => void;
+  chatLoading?: boolean;
+  canStartChat?: boolean;
+  permissionsLoading?: boolean;
+  startWorkingLoading?: boolean;
 }
 
 export const FeatureCard = ({
@@ -43,6 +48,10 @@ export const FeatureCard = ({
   onStartTimer,
   onStopTimer,
   onStartWorking,
+  chatLoading = false,
+  canStartChat = true,
+  permissionsLoading = false,
+  startWorkingLoading = false,
 }: FeatureCardProps) => {
   const [ab, setAb] = useState<{ ahead: number; behind: number } | null>(null);
   const [prs, setPrs] = useState<PRRow[] | null>(null);
@@ -202,12 +211,28 @@ export const FeatureCard = ({
               variant="primary"
               size="sm"
               onClick={() => onStartWorking(feature.id)}
-              title="Start working on this feature"
+              title={
+                startWorkingLoading
+                  ? 'Setting up development environment and opening chat...'
+                  : canStartChat
+                    ? 'Start working on this feature and open chat'
+                    : 'Start working on this feature'
+              }
               className="inline-flex items-center"
               style={{ gap: 'var(--bolt-elements-spacing-xs)' }}
+              disabled={startWorkingLoading || permissionsLoading}
             >
-              <Play className="w-4 h-4" />
-              Start Working
+              {startWorkingLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Setting up...
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4" />
+                  {canStartChat ? 'Start Working & Chat' : 'Start Working'}
+                </>
+              )}
             </Button>
           )}
 
@@ -243,11 +268,24 @@ export const FeatureCard = ({
             variant="ghost"
             size="icon"
             onClick={() => onOpenChat(feature.id)}
-            title="Open chat for this feature"
+            title={
+              permissionsLoading
+                ? 'Checking permissions...'
+                : !canStartChat
+                  ? "You don't have permission to start chats"
+                  : chatLoading
+                    ? 'Starting chat...'
+                    : 'Open chat for this feature'
+            }
             aria-label={`Open chat for ${feature.name} feature`}
-            className="text-bolt-elements-textTertiary hover:text-bolt-elements-item-contentAccent"
+            className={`${
+              canStartChat && !permissionsLoading
+                ? 'text-bolt-elements-textTertiary hover:text-bolt-elements-item-contentAccent'
+                : 'text-bolt-elements-textTertiary opacity-50 cursor-not-allowed'
+            }`}
+            disabled={chatLoading || !canStartChat || permissionsLoading}
           >
-            <MessageCircle className="w-5 h-5" />
+            {chatLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <MessageCircle className="w-5 h-5" />}
           </Button>
 
           {onOpenComments && (

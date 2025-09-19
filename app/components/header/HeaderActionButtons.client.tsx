@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useStore } from '@nanostores/react';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { DeployButton } from '~/components/deploy/DeployButton';
-import { AssociateChatDialog } from '~/components/projects/AssociateChatDialog';
+import { AssociateChatDialog } from '~/components/projects/components/dialogs/AssociateChatDialog';
 import { description, useChatHistory } from '~/lib/persistence';
 import { toast } from 'react-toastify';
 

@@ -8,7 +8,7 @@ import { Textarea } from '~/components/ui/Textarea';
 import { Select } from '~/components/ui/Select';
 import { Label } from '~/components/ui/Label';
 import { UserAssigneeSelect } from '~/components/ui/UserAssigneeSelect';
-import type { Branch, NewFeature, Project } from './types';
+import type { Branch, NewFeature, Project } from '~/components/projects/types';
 
 interface NewFeatureDialogProps {
   isOpen: boolean;
@@ -86,6 +86,10 @@ export const NewFeatureDialog = ({ isOpen, onClose, onAdd, branches, project }: 
           throw new Error('Authentication failed. Please check your API keys in settings.');
         } else if (response.status === 429) {
           throw new Error('Rate limit exceeded. Please try again in a few minutes.');
+        } else if (response.status === 408) {
+          throw new Error('Request timed out. Please try again.');
+        } else if (response.status === 402) {
+          throw new Error('Provider quota exceeded or billing issue. Please check your account.');
         } else if (response.status >= 500) {
           throw new Error('Server error. Please try again later.');
         } else {
@@ -102,35 +106,90 @@ export const NewFeatureDialog = ({ isOpen, onClose, onAdd, branches, project }: 
       }
 
       try {
-        const timeout = setTimeout(() => {
-          reader.cancel();
-          throw new Error('Enhancement request timed out');
-        }, 30000); // 30 second timeout
+        let timeoutId: NodeJS.Timeout | undefined;
+        let isTimedOut = false;
 
-        while (true) {
-          const { done, value } = await reader.read();
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            isTimedOut = true;
+            reader.cancel();
+            reject(new Error('Enhancement request timed out after 30 seconds'));
+          }, 30000);
+        });
 
-          if (done) {
-            break;
+        const readStream = async () => {
+          while (true) {
+            const { done, value } = await reader.read();
+
+            if (done) {
+              break;
+            }
+
+            if (isTimedOut) {
+              throw new Error('Stream reading was interrupted due to timeout');
+            }
+
+            const chunk = new TextDecoder().decode(value);
+            enhancedText += chunk;
+
+            // Basic validation that we're getting actual content
+            if (enhancedText.length > 10000) {
+              // Prevent extremely long responses
+              reader.cancel();
+              throw new Error('Response too long - please try with a shorter feature description');
+            }
           }
+        };
 
-          const chunk = new TextDecoder().decode(value);
-          enhancedText += chunk;
+        await Promise.race([readStream(), timeoutPromise]);
+
+        if (timeoutId) {
+          clearTimeout(timeoutId);
         }
-
-        clearTimeout(timeout);
       } catch (streamError) {
         console.error('Stream reading error:', streamError);
-        throw new Error('Failed to read enhancement response');
+
+        if (streamError instanceof Error) {
+          if (streamError.message.includes('timeout')) {
+            throw new Error('Enhancement request timed out. The AI service may be overloaded - please try again.');
+          } else if (streamError.message.includes('network')) {
+            throw new Error('Network error during enhancement. Please check your connection and try again.');
+          } else {
+            throw new Error(`Failed to read enhancement response: ${streamError.message}`);
+          }
+        } else {
+          throw new Error('Failed to read enhancement response');
+        }
       }
 
+      // Enhanced validation of the response
       if (!enhancedText.trim()) {
-        throw new Error('Enhancement service returned empty response');
+        throw new Error(
+          'Enhancement service returned empty response. The AI provider may be unavailable - please try again later.',
+        );
+      }
+
+      // Check if response looks like actual enhancement content
+      if (enhancedText.length < 10) {
+        throw new Error('Enhancement response too short. Please try again with a more detailed feature description.');
       }
 
       // Parse the enhanced response
-      parseEnhancedFeature(enhancedText);
-      toast.success('Feature enhanced with AI! Please review and adjust the fields as needed.');
+      try {
+        parseEnhancedFeature(enhancedText);
+        toast.success('Feature enhanced with AI! Please review and adjust the fields as needed.');
+      } catch (parseError) {
+        console.error('Error parsing enhancement response:', parseError);
+
+        const parseErrorMessage = parseError instanceof Error ? parseError.message : 'Unknown parsing error';
+
+        // Show the raw response for debugging if parsing fails completely
+        if (enhancedText.length > 0 && enhancedText.length < 500) {
+          console.log('Raw enhancement response:', enhancedText);
+        }
+
+        throw new Error(`Enhancement parsing failed: ${parseErrorMessage}`);
+      }
     } catch (error) {
       console.error('Error enhancing feature:', error);
 
@@ -143,6 +202,7 @@ export const NewFeatureDialog = ({ isOpen, onClose, onAdd, branches, project }: 
 
   const parseEnhancedFeature = (enhancedText: string) => {
     const lines = enhancedText.split('\n');
+    let parsedFields = 0;
 
     lines.forEach((line) => {
       const trimmedLine = line.trim();
@@ -150,36 +210,50 @@ export const NewFeatureDialog = ({ isOpen, onClose, onAdd, branches, project }: 
       if (trimmedLine.startsWith('Description:')) {
         const desc = trimmedLine.replace('Description:', '').trim();
 
-        if (desc) {
+        if (desc && desc.length > 5) {
           setDescription(desc);
+          parsedFields++;
         }
       } else if (trimmedLine.startsWith('Tags:')) {
         const tagsText = trimmedLine.replace('Tags:', '').trim();
 
-        if (tagsText) {
+        if (tagsText && tagsText.length > 2) {
           setTags(tagsText);
+          parsedFields++;
         }
       } else if (trimmedLine.startsWith('Priority:')) {
         const priorityText = trimmedLine.replace('Priority:', '').trim().toLowerCase();
 
         if (['low', 'medium', 'high', 'critical'].includes(priorityText)) {
           setPriority(priorityText as any);
+          parsedFields++;
         }
       } else if (trimmedLine.startsWith('Complexity:')) {
         const complexityText = trimmedLine.replace('Complexity:', '').trim().toLowerCase();
 
         if (['simple', 'medium', 'complex', 'epic'].includes(complexityText)) {
           setComplexity(complexityText as any);
+          parsedFields++;
         }
       } else if (trimmedLine.startsWith('Estimated Hours:')) {
         const hoursText = trimmedLine.replace('Estimated Hours:', '').trim();
         const hours = parseFloat(hoursText);
 
-        if (!isNaN(hours)) {
+        if (!isNaN(hours) && hours > 0) {
           setEstimatedHours(hours.toString());
+          parsedFields++;
         }
       }
     });
+
+    // Validate that we parsed at least some fields successfully
+    if (parsedFields === 0) {
+      console.warn('No valid fields parsed from enhancement response:', enhancedText);
+      throw new Error('Could not parse enhancement response. The AI response format was unexpected. Please try again.');
+    } else if (parsedFields < 2) {
+      console.warn(`Only ${parsedFields} field(s) parsed from enhancement response`);
+      toast.warn('Enhancement partially successful. Please review and complete any missing fields.');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

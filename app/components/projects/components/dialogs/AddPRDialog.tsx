@@ -6,7 +6,7 @@ import { Button } from '~/components/ui/Button';
 import { Input } from '~/components/ui/Input';
 import { Label } from '~/components/ui/Label';
 import { Select } from '~/components/ui/Select';
-import type { Feature, Project } from './types';
+import type { Feature, Project } from '~/components/projects/types';
 import { createPR } from '~/lib/services/prService';
 import { toast } from 'react-toastify';
 

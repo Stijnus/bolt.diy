@@ -306,10 +306,53 @@ export const ChatImpl = memo(
               })
               .catch((error) => {
                 console.error('Failed to import project:', error);
-                toast.error(`Failed to import project: ${error.message}`);
 
-                // Remove pending metadata on failure to prevent retry loops
-                sessionStorage.removeItem('pendingChatMetadata');
+                // Provide fallback chat without full project context
+                const fallbackContext = [
+                  `## Feature Chat - Limited Context`,
+                  `I wasn't able to load the full project files, but I can still help you work on this feature.`,
+                  '',
+                  `**Feature:** ${metadata.featureName}`,
+                  metadata.featureDescription ? `**Description:** ${metadata.featureDescription}` : '',
+                  metadata.featureStatus ? `**Status:** ${metadata.featureStatus}` : '',
+                  '',
+                  `**Repository:** ${metadata.gitUrl}`,
+                  metadata.gitBranch ? `**Branch:** ${metadata.gitBranch}` : '',
+                  '',
+                  `⚠️ **Note:** Project files couldn't be loaded due to: ${error.message}`,
+                  '',
+                  `I can still help you with:`,
+                  `- Planning the feature implementation`,
+                  `- Writing code snippets`,
+                  `- Discussing architecture`,
+                  `- Troubleshooting issues`,
+                  '',
+                  `What would you like to work on for this feature?`,
+                ]
+                  .filter(Boolean)
+                  .join('\n');
+
+                const fallbackMessage = {
+                  id: `fallback-${Date.now()}`,
+                  role: 'assistant' as const,
+                  content: fallbackContext,
+                  annotations: ['fallback-context'],
+                };
+
+                setMessages([fallbackMessage]);
+
+                // Show error with retry option
+                toast.error(
+                  <div>
+                    <div>Failed to load project: {error.message}</div>
+                    <div className="text-xs mt-1 opacity-75">Chat started with limited context</div>
+                  </div>,
+                  { autoClose: 5000 },
+                );
+
+                // Keep metadata for potential manual retry, but mark as failed
+                const failedMetadata = { ...metadata, _failed: true, _error: error.message };
+                sessionStorage.setItem('pendingChatMetadata', JSON.stringify(failedMetadata));
               });
           } else {
             // If no git URL, just ensure metadata is handled for future persistence
@@ -317,7 +360,52 @@ export const ChatImpl = memo(
           }
         } catch (error) {
           console.error('Error processing pending chat metadata:', error);
-          sessionStorage.removeItem('pendingChatMetadata'); // Clean up on error
+
+          // Try to provide a minimal fallback even with corrupted metadata
+          const corruptedMetadata = sessionStorage.getItem('pendingChatMetadata');
+          let fallbackFeatureName = 'Unknown Feature';
+
+          try {
+            if (corruptedMetadata) {
+              const parsed = JSON.parse(corruptedMetadata);
+              fallbackFeatureName = parsed.featureName || 'Unknown Feature';
+            }
+          } catch {
+            // Ignore secondary parsing errors
+          }
+
+          const errorContext = [
+            `## Feature Chat - Error Recovery`,
+            `There was an issue setting up your feature chat, but I'm here to help!`,
+            '',
+            `**Feature:** ${fallbackFeatureName}`,
+            '',
+            `⚠️ **Issue:** Chat metadata was corrupted or invalid`,
+            '',
+            `I can still assist you with:`,
+            `- Feature planning and implementation`,
+            `- Code review and suggestions`,
+            `- Architecture discussions`,
+            `- Debugging help`,
+            '',
+            `Please describe what you'd like to work on, and I'll do my best to help!`,
+          ].join('\n');
+
+          const errorMessage = {
+            id: `error-recovery-${Date.now()}`,
+            role: 'assistant' as const,
+            content: errorContext,
+            annotations: ['error-recovery'],
+          };
+
+          setMessages([errorMessage]);
+
+          toast.error('Chat setup failed, but I can still help with your feature', {
+            autoClose: 4000,
+          });
+
+          // Clean up corrupted metadata
+          sessionStorage.removeItem('pendingChatMetadata');
         }
       }
     }, [initialMessages.length, gitClone, setMessages, chatId, gitReady]);

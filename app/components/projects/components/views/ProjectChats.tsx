@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from '@remix-run/react';
 import { Loader2, MessageCircle, Zap, GitBranch, Clock, MessageSquare, ArrowRight } from 'lucide-react';
 import type { ChatHistoryItem } from '~/lib/persistence/useChatHistory';
-import type { Project } from './types';
+import type { Project } from '~/components/projects/types';
 
 interface ProjectChatsProps {
   project: Project;

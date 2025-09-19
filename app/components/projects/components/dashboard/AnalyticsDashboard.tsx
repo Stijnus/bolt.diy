@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp, Clock, Target, BarChart3, Zap, Users, CheckCircle2 } from 'lucide-react';
-import type { Project, ChartDataPoint } from './types';
+import type { Project, ChartDataPoint } from '~/components/projects/types';
 
 interface AnalyticsDashboardProps {
   projects: Project[];

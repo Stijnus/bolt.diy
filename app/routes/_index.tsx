@@ -46,7 +46,7 @@ export default function Index() {
       icon: 'i-ph:user-plus',
     },
     {
-      title: 'Build & ship features',
+      title: 'Buil & ship features',
       description: 'Track branches, chats, and assignments from a single hub.',
       icon: 'i-ph:rocket',
     },
@@ -73,7 +73,16 @@ export default function Index() {
 
   useEffect(() => {
     if (!authLoading && authed) {
-      navigate('/projects');
+      // Check if there's pending chat metadata that needs to be processed
+      const pendingChatMetadata = typeof window !== 'undefined' ? sessionStorage.getItem('pendingChatMetadata') : null;
+
+      // If there's pending chat metadata, redirect to the dedicated chat route
+      if (pendingChatMetadata) {
+        navigate('/chat');
+      } else {
+        // Otherwise, redirect to projects as usual
+        navigate('/projects');
+      }
     }
   }, [authLoading, authed, navigate]);
 
@@ -96,110 +105,116 @@ export default function Index() {
 
   return (
     <>
-      {!authLoading && !authed && !hasChosenGuest ? (
+      {(() => {
+        if (!authLoading && !authed && !hasChosenGuest) {
+          return (
 
-        // Full-screen landing page
-        <div className="relative flex h-screen w-full flex-col bg-bolt-elements-background-depth-1 overflow-hidden">
-          <BackgroundRays />
+            // Full-screen landing page
+            <div className="relative flex h-screen w-full flex-col bg-bolt-elements-background-depth-1 overhead-hidden">
+              <BackgroundRays />
 
-          {/* Minimal Header */}
-          <header className="relative z-20 flex items-center justify-between px-6 py-4">
-            <div className="flex items-center gap-2">
-              <div className="i-ph:squares-four w-6 h-6 text-bolt-elements-item-contentAccent" />
-              <span className="text-lg font-semibold text-bolt-elements-textPrimary">bolt.diy</span>
-            </div>
-          </header>
-
-          {/* Hero Content */}
-          <main className="relative z-10 flex flex-1 items-center justify-center px-6">
-            <div className="w-full max-w-4xl text-center space-y-8">
-              {/* Welcome Badge */}
-              <div className="inline-flex items-center gap-2 rounded-full border border-bolt-elements-borderColor/40 bg-bolt-elements-background/20 px-4 py-2 backdrop-blur-sm">
-                <span className="i-ph:sparkle w-4 h-4 text-bolt-elements-item-contentAccent" />
-                <span className="text-sm font-medium text-bolt-elements-textSecondary">Welcome to BoltDIY</span>
-              </div>
-
-              {/* Main Headline */}
-              <div className="space-y-4">
-                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-bolt-elements-textPrimary leading-tight">
-                  Collaborate on features with your{' '}
-                  <span className="bg-gradient-to-r from-bolt-elements-item-contentAccent to-purple-400 bg-clip-text text-transparent">
-                    entire team
-                  </span>
-                </h1>
-                <p className="text-lg sm:text-xl text-bolt-elements-textSecondary max-w-2xl mx-auto leading-relaxed">
-                  Sign in to sync your chats, manage teams, and keep every feature assignment in one place.
-                </p>
-              </div>
-
-              {/* Primary CTA */}
-              <div className="flex flex-col items-center gap-6">
-                <Button
-                  variant="cta"
-                  size="lg"
-                  className="px-8 py-4 text-base font-semibold h-auto min-w-[200px] justify-between shadow-lg hover:shadow-xl transition-all duration-300"
-                  onClick={() => setShowLoginDialog(true)}
-                >
-                  <span className="flex items-center gap-3">
-                    <span className="i-ph:sign-in w-5 h-5" />
-                    <span>Sign In</span>
-                  </span>
-                  <span className="i-ph:arrow-right w-5 h-5" />
-                </Button>
-
-                {/* Continue as Guest */}
-                <Button
-                  variant="ghost"
-                  className="group flex items-center gap-2 text-bolt-elements-textSecondary hover:!text-bolt-elements-borderColorActive transition-colors"
-                  onClick={handleContinueAsGuest}
-                >
-                  <span className="i-ph:user w-4 h-4" />
-                  <span>Continue as guest</span>
-                  <span className="i-ph:arrow-right w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-                </Button>
-              </div>
-
-              {/* Always Visible Onboarding Section */}
-              <div className="mt-16 rounded-2xl border border-bolt-elements-borderColor/30 bg-bolt-elements-background/10 backdrop-blur-sm p-8 max-w-4xl mx-auto">
-                <div className="text-center mb-8">
-                  <h2 className="text-2xl font-semibold text-bolt-elements-textPrimary mb-2">
-                    Getting started is simple
-                  </h2>
-                  <p className="text-bolt-elements-textSecondary">
-                    Follow these steps to unlock collaborative project management.
-                  </p>
+              {/* Minimal Heade */}
+              <header className="relative z-20 flex items-center justify-between px-6 py-4">
+                <div className="flex items-center gap-2">
+                  <div className="i-ph:squares-four w-6 h-6 text-bolt-elements-item-contentAccent" />
+                  <span className="text-lg font-semibold text-bolt-elements-textPrimary">bolt.diy</span>
                 </div>
+              </header>
 
-                <div className="grid gap-6 md:grid-cols-3">
-                  {onboardingSteps.map((step) => (
-                    <div
-                      key={step.title}
-                      className="flex flex-col items-center text-center p-6 rounded-xl border border-bolt-elements-borderColor/20 bg-bolt-elements-background/5 hover:bg-bolt-elements-background/10 transition-colors"
+              {/* Hero Content */}
+              <main className="relative z-10 flex flex-1 items-center justify-center px-6">
+                <div className="w-full max-w-4xl text-center space-y-8">
+                  {/* Welcome Badge */}
+                  <div className="inline-flex items-center gap-2 rounded-full border border-bolt-elements-borderColor/40 bg-bolt-elements-background/20 px-4 py-2 backdrop-blur-sm">
+                    <span className="i-ph:sparkle w-4 h-4 text-bolt-elements-item-contentAccent" />
+                    <span className="text-sm font-medium text-bolt-elements-textSecondary">Welcome to BoltDIY</span>
+                  </div>
+
+                  {/* Main Headline */}
+                  <div className="space-y-4">
+                    <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-bolt-elements-textPrimary leading-tight">
+                      Collaborate on features with your{' '}
+                      <span className="bg-gradient-to-r from-bolt-elements-item-contentAccent to-purple-400 bg-clip-text text-transparent">
+                        entire team
+                      </span>
+                    </h1>
+                    <p className="text-lg sm:text-xl text-bolt-elements-textSecondary max-w-2xl mx-auto leading-relaxed">
+                      Sign in to sync your chats, manage teams, and keep every feature assignment in one place.
+                    </p>
+                  </div>
+
+                  {/* Primary CTA */}
+                  <div className="flex flex-col items-center gap-6">
+                    <Button
+                      variant="cta"
+                      size="lg"
+                      className="px-8 py-4 text-base font-semibold h-auto min-w-[200px] justify-between shadow-lg hover:shadow-xl transition-all duration-300"
+                      onClick={() => setShowLoginDialog(true)}
                     >
-                      <div className="flex items-center justify-center w-12 h-12 rounded-full bg-bolt-elements-item-backgroundAccent/20 mb-4">
-                        <span className={`${step.icon} text-xl text-bolt-elements-item-contentAccent`} />
-                      </div>
-                      <h3 className="text-lg font-semibold text-bolt-elements-textPrimary mb-2">{step.title}</h3>
-                      <p className="text-sm text-bolt-elements-textSecondary leading-relaxed">{step.description}</p>
+                      <span className="flex items-center gap-3">
+                        <span className="i-ph:sign-in w-5 h-5" />
+                        <span>Sign In</span>
+                      </span>
+                      <span className="i-ph:arrow-right w-5 h-5" />
+                    </Button>
+
+                    {/* Continue as Guest */}
+                    <Button
+                      variant="ghost"
+                      className="group flex items-center gap-2 text-bolt-elements-textSecondary hover:!text-bolt-elements-borderColorActive transition-colors"
+                      onClick={handleContinueAsGuest}
+                    >
+                      <span className="i-ph:user w-4 h-4" />
+                      <span>Continue as guest</span>
+                      <span className="i-ph:arrow-right w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                    </Button>
+                  </div>
+
+                  {/* Always Visible Onboarding Section */}
+                  <div className="mt-16 rounded-2xl border border-bolt-elements-borderColor/30 bg-bolt-elements-background/10 backdrop-blur-sm p-8 max-w-4xl mx-auto">
+                    <div className="text-center mb-8">
+                      <h2 className="text-2xl font-semibold text-bolt-elements-textPrimary mb-2">
+                        Getting started is simple
+                      </h2>
+                      <p className="text-bolt-elements-textSecondary">
+                        Follow these steps to unlock collaborate project management.
+                      </p>
                     </div>
-                  ))}
+
+                    <div className="grid gap-6 md:grid-cols-3">
+                      {onboardingSteps.map((step) => (
+                        <div
+                          key={step.title}
+                          className="flex flex-col items-center text-center p-6 rounded-xl border border-bolt-elements-borderColor/20 bg-bolt-elements-background/5 hover:bg-bolt-elements-background/10 transition-colors"
+                        >
+                          <div className="flex items-center justify-center w-12 h-12 rounded-full bg-bolt-elements-item-backgroundAccent/20 mb-4">
+                            <span className={`${step.icon} text-xl text-bolt-elements-item-contentAccent`} />
+                          </div>
+                          <h3 className="text-lg font-semibold text-bolt-elements-textPrimary mb-2">{step.title}</h3>
+                          <p className="text-sm text-bolt-elements-textSecondary leading-relaxed">{step.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </main>
+
+              <LoginDialog isOpen={showLoginDialog} onClose={() => setShowLoginDialog(false)} />
             </div>
-          </main>
+          );
+        }
 
-          <LoginDialog isOpen={showLoginDialog} onClose={() => setShowLoginDialog(false)} />
-        </div>
-      ) : (
+        return (
 
-        // Regular app with sidebar and chat
-        <div className="relative flex h-full w-full flex-col bg-bolt-elements-background-depth-1">
-          <BackgroundRays />
-          <Header />
-          <ClientOnly fallback={<BaseChat />}>{() => <Chat />}</ClientOnly>
-          <LoginDialog isOpen={showLoginDialog} onClose={() => setShowLoginDialog(false)} />
-        </div>
-      )}
+          // Regular app with sidebar and chat
+          <div className="relative flex h-full w-full flex-col bg-bolt-elements-background-depth-1">
+            <BackgroundRays />
+            <Header />
+            <ClientOnly fallback={<BaseChat />}>{() => <Chat />}</ClientOnly>
+            <LoginDialog isOpen={showLoginDialog} onClose={() => setShowLoginDialog(false)} />
+          </div>
+        );
+      })()}
     </>
   );
 }

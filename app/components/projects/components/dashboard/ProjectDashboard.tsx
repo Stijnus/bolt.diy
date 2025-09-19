@@ -2,15 +2,15 @@ import { useCallback, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, Plus, Folder, Zap, CheckCircle, Save, ArrowLeft } from 'lucide-react';
 import { Button } from '~/components/ui/Button';
-import { EmptyProjectsList } from './EmptyStates';
-import { ProjectCard } from './ProjectCard';
-import { ProjectView } from './ProjectView';
+import { EmptyProjectsList } from '~/components/projects/components/ui/EmptyStates';
+import { ProjectCard } from '~/components/projects/components/cards/ProjectCard';
+import { ProjectView } from '~/components/projects/components/views/ProjectView';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
-import { AddProjectDialog } from './AddProjectDialog';
-import { useProjectHistory } from '~/lib/persistence/useProjectHistory';
+import { AddProjectDialog } from '~/components/projects/components/dialogs/AddProjectDialog';
+import { useProjectHistory } from '~/components/projects/hooks/useProjectHistory';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { useStore } from '@nanostores/react';
-import type { Project } from './types';
+import type { Project } from '~/components/projects/types';
 
 export const ProjectDashboard = () => {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);

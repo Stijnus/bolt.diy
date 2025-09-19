@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import type { Feature, FeatureStatus, Project } from './types';
+import type { Feature, FeatureStatus, Project } from '~/components/projects/types';
 import { getOrCreateWorkflow } from '~/lib/services/workflowService';
 
 interface KanbanBoardProps {

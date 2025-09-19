@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PlugZap, Save, Trash2, RefreshCcw, Send } from 'lucide-react';
-import type { Project } from './types';
+import type { Project } from '~/components/projects/types';
 import {
   listProjectIntegrations,
   saveIntegration,

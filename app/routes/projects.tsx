@@ -3,7 +3,7 @@ import { Header } from '~/components/header/Header';
 import { ClientOnly } from 'remix-utils/client-only';
 import { Menu } from '~/components/sidebar/Menu.client';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { ProjectDashboard } from '~/components/projects/ProjectDashboard';
+import { ProjectDashboard } from '~/components/projects/components/dashboard/ProjectDashboard';
 import { cssTransition, ToastContainer } from 'react-toastify';
 
 const toastAnimation = cssTransition({

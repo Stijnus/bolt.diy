@@ -4,7 +4,7 @@ import { X, Send, MessageSquare } from 'lucide-react';
 import { Dialog, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
 import { Button } from '~/components/ui/Button';
 import { Input } from '~/components/ui/Input';
-import type { Feature, Project } from './types';
+import type { Feature, Project } from '~/components/projects/types';
 import { createComment, getComments, type CommentRow, removeComment } from '~/lib/services/commentService';
 import { toast } from 'react-toastify';
 

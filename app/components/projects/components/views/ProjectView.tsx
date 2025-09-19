@@ -1,32 +1,40 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from '@remix-run/react';
+import { useStore } from '@nanostores/react';
 import { RotateCcw, GitBranch, Zap, BarChart3, Plus, ArrowLeft } from 'lucide-react';
+import { isAuthenticated, currentUser } from '~/lib/stores/auth';
+import { TeamService } from '~/lib/services/teamService';
+import { hasPermission, type TeamMember } from '~/components/projects/types';
 import { Button } from '~/components/ui/Button';
 import { Tabs, TabsList, TabsTrigger } from '~/components/ui/Tabs';
-import { Breadcrumb } from './Breadcrumb';
-import { FeatureCard } from './FeatureCard';
-import { NewFeatureDialog } from './NewFeatureDialog';
+import { Breadcrumb } from '~/components/projects/components/ui/Breadcrumb';
+import { FeatureCard } from '~/components/projects/components/cards/FeatureCard';
+import { NewFeatureDialog } from '~/components/projects/components/dialogs/NewFeatureDialog';
 import { ProjectChats } from './ProjectChats';
-import { CommentsDialog } from './CommentsDialog';
-import { ActivityFeed } from './ActivityFeed';
-import { ReportsPanel } from './ReportsPanel';
-import { IntegrationsPanel } from './IntegrationsPanel';
+import { CommentsDialog } from '~/components/projects/components/dialogs/CommentsDialog';
+import { ActivityFeed } from '~/components/projects/components/panels/ActivityFeed';
+import { ReportsPanel } from '~/components/projects/components/dashboard/ReportsPanel';
+import { IntegrationsPanel } from '~/components/projects/components/panels/IntegrationsPanel';
 import { KanbanBoard } from './KanbanBoard';
-import { AddPRDialog } from './AddPRDialog';
+import { AddPRDialog } from '~/components/projects/components/dialogs/AddPRDialog';
 import { toast } from 'react-toastify';
-import type { Project, Feature, NewFeature } from './types';
+import type { Project, Feature, NewFeature } from '~/components/projects/types';
 import type { ChatHistoryItem } from '~/lib/persistence/useChatHistory';
 
 interface ProjectViewProps {
   project: Project;
   onBack: () => void;
   onRefresh: (gitUrl: string) => void;
-  onAddFeature: (projectId: string, feature: NewFeature) => void;
+  onAddFeature: (projectId: string, feature: NewFeature) => Promise<void>;
   onUpdateFeatureStatus: (projectId: string, featureId: string, status: Feature['status']) => void;
   onStartFeatureTimer?: (projectId: string, featureId: string) => void;
   onStopFeatureTimer?: (projectId: string, featureId: string) => void;
-  onStartWorking?: (projectId: string, featureId: string) => void;
+  onStartWorking?: (
+    projectId: string,
+    featureId: string,
+    onSetupComplete?: () => void | Promise<void>,
+  ) => Promise<void>;
   getProjectChats: (projectId: string) => Promise<ChatHistoryItem[]>;
 }
 
@@ -47,8 +55,60 @@ export const ProjectView = ({
   const [commentsFeature, setCommentsFeature] = useState<Feature | null>(null);
   const [prOpen, setPrOpen] = useState(false);
   const [prFeature, setPrFeature] = useState<Feature | null>(null);
+  const [chatLoadingFeature, setChatLoadingFeature] = useState<string | null>(null);
+  const [startWorkingFeature, setStartWorkingFeature] = useState<string | null>(null);
+  const [userTeamMember, setUserTeamMember] = useState<TeamMember | null>(null);
+  const [permissionsLoading, setPermissionsLoading] = useState(true);
   const navigate = useNavigate();
+  const authed = useStore(isAuthenticated);
+  const user = useStore(currentUser);
   const isWebcontainer = project.source === 'webcontainer' || project.gitUrl.startsWith('webcontainer://');
+
+  // Check user permissions for this project
+  useEffect(() => {
+    const checkPermissions = async () => {
+      if (!user?.id || !project.teamId) {
+        setPermissionsLoading(false);
+        return;
+      }
+
+      try {
+        const teamMember = await TeamService.getTeamMember(project.teamId, user.id);
+        setUserTeamMember(teamMember);
+      } catch (error) {
+        console.error('Failed to check team permissions:', error);
+        toast.warn('Unable to verify permissions. Some features may be limited.', {
+          autoClose: 3000,
+        });
+        setUserTeamMember(null);
+      } finally {
+        setPermissionsLoading(false);
+      }
+    };
+
+    checkPermissions();
+  }, [user?.id, project.teamId]);
+
+  // Helper function to check if user can start chats
+  const canStartChats = () => {
+    // Project owner can always start chats
+    if (user?.id === project.ownerId) {
+      return true;
+    }
+
+    // If no team, only owner can start chats
+    if (!project.teamId) {
+      return false;
+    }
+
+    // Check team permissions
+    if (userTeamMember) {
+      return hasPermission(userTeamMember, 'start_chats');
+    }
+
+    // Loading or no permission
+    return false;
+  };
 
   const handleRefresh = () => {
     if (isWebcontainer) {
@@ -80,19 +140,87 @@ export const ProjectView = ({
     }
   };
 
-  const handleStartWorking = (featureId: string) => {
-    if (onStartWorking) {
-      onStartWorking(project.id, featureId);
+  const handleStartWorking = async (featureId: string) => {
+    if (!onStartWorking) {
+      return;
+    }
+
+    // Check if user can start chats (for the combined workflow)
+    const canChat = canStartChats();
+
+    setStartWorkingFeature(featureId);
+
+    try {
+      // Start working with optional chat opening callback
+      await onStartWorking(
+        project.id,
+        featureId,
+        canChat
+          ? async () => {
+              // Open chat after successful environment setup
+              try {
+                await handleOpenChat(featureId);
+              } catch (chatError) {
+                console.error('Failed to open chat after environment setup:', chatError);
+
+                // This error is already handled in the callback error handling in useProjectHistory
+                throw chatError;
+              }
+            }
+          : undefined,
+      );
+    } catch (error) {
+      console.error('Error starting work:', error);
+
+      // Provide more specific error messages
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      let userMessage = 'Failed to start working on feature';
+
+      if (errorMessage.includes('git') || errorMessage.includes('clone') || errorMessage.includes('branch')) {
+        userMessage = 'Failed to set up Git environment. Please check your repository access.';
+      } else if (errorMessage.includes('permission') || errorMessage.includes('auth')) {
+        userMessage = 'Permission denied. Please check your access rights.';
+      } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+        userMessage = 'Network error. Please check your connection and try again.';
+      }
+
+      toast.error(
+        <div>
+          <div>{userMessage}</div>
+          <div className="text-xs mt-1 opacity-75">Error: {errorMessage}</div>
+        </div>,
+        { autoClose: 6000 },
+      );
+    } finally {
+      setStartWorkingFeature(null);
     }
   };
 
   const handleOpenChat = async (featureId: string) => {
+    // Check permissions first
+    if (!canStartChats()) {
+      const message =
+        user?.id === project.ownerId
+          ? 'Unable to verify chat permissions. Please try again.'
+          : project.teamId
+            ? 'You need "start_chats" permission to open feature chats in this team project.'
+            : 'Only the project owner can start chats for this project.';
+
+      toast.error(message, { autoClose: 5000 });
+      throw new Error(`Chat permission denied: ${message}`);
+    }
+
+    // Set loading state for visual feedback
+    setChatLoadingFeature(featureId);
+
     try {
       // Find the feature to get its details
       const feature = project.features?.find((f) => f.id === featureId);
 
       if (!feature) {
         toast.error('Feature not found');
+        setChatLoadingFeature(null);
+
         return;
       }
 
@@ -112,13 +240,38 @@ export const ProjectView = ({
       // Store the metadata in sessionStorage to apply once chat is created
       sessionStorage.setItem('pendingChatMetadata', JSON.stringify(chatMetadata));
 
-      // Navigate to new chat
-      navigate('/', { replace: false });
+      // Navigate to appropriate chat route based on authentication
+      const chatRoute = authed ? '/chat' : '/';
+      navigate(chatRoute, { replace: false });
 
       toast.success(`Starting new chat for feature: ${feature.name}`);
+
+      // Clear loading state after navigation
+      setTimeout(() => setChatLoadingFeature(null), 1000);
     } catch (error) {
       console.error('Error creating feature chat:', error);
-      toast.error('Failed to create feature chat');
+
+      // Provide more specific error messages
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      let userMessage = 'Failed to start feature chat';
+
+      if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+        userMessage = 'Network error. Please check your connection and try again.';
+      } else if (errorMessage.includes('permission') || errorMessage.includes('auth')) {
+        userMessage = 'Authentication error. Please refresh the page and try again.';
+      } else if (errorMessage.includes('not found')) {
+        userMessage = 'Feature or project not found. Please refresh the page.';
+      }
+
+      toast.error(
+        <div>
+          <div>{userMessage}</div>
+          <div className="text-xs mt-1 opacity-75">Error: {errorMessage}</div>
+        </div>,
+        { autoClose: 6000 },
+      );
+
+      setChatLoadingFeature(null);
     }
   };
 
@@ -285,6 +438,10 @@ export const ProjectView = ({
                   onStartTimer={handleStartTimer}
                   onStopTimer={handleStopTimer}
                   onStartWorking={handleStartWorking}
+                  chatLoading={chatLoadingFeature === feature.id}
+                  canStartChat={canStartChats()}
+                  permissionsLoading={permissionsLoading}
+                  startWorkingLoading={startWorkingFeature === feature.id}
                 />
               ))}
             </div>

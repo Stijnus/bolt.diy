@@ -6,7 +6,7 @@ import { Button } from '~/components/ui/Button';
 import { Input } from '~/components/ui/Input';
 import { Label } from '~/components/ui/Label';
 import { workbenchStore } from '~/lib/stores/workbench';
-import type { Project } from './types';
+import type { Project } from '~/components/projects/types';
 
 type ProjectSource = 'github-url' | 'gitlab-url' | 'git-url' | 'webcontainer' | 'github-template' | 'gitlab-template';
 

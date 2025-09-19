@@ -33,7 +33,7 @@ import { ChatBox } from './ChatBox';
 import type { DesignScheme } from '~/types/design-scheme';
 import type { ElementInfo } from '~/components/workbench/Inspector';
 import LlmErrorAlert from './LLMApiAlert';
-import { ProjectChatContext } from '~/components/projects/ProjectChatContext';
+import { ProjectChatContext } from '~/components/projects/components/ui/ProjectChatContext';
 import { chatMetadata } from '~/lib/persistence';
 
 const TEXTAREA_MIN_HEIGHT = 76;

@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { FileDown, Filter } from 'lucide-react';
 import { Button } from '~/components/ui/Button';
 import { Label } from '~/components/ui/Label';
-import type { FeatureStatus, FeaturePriority, Project } from './types';
+import type { FeatureStatus, FeaturePriority, Project } from '~/components/projects/types';
 import { buildProjectReport, type ReportFilters } from '~/lib/services/reportingService';
 import { rowsToCSV, downloadCSV } from '~/utils/csv';
 

@@ -40,6 +40,27 @@ async function enhancerAction({ context, request }: ActionFunctionArgs) {
   const apiKeys = getApiKeysFromCookie(cookieHeader);
   const providerSettings = getProviderSettingsFromCookie(cookieHeader);
 
+  // Validate API key for the specified provider
+  if (!apiKeys || typeof apiKeys !== 'object') {
+    throw new Response('No API keys configured. Please set up your LLM provider API keys in the settings.', {
+      status: 401,
+      statusText: 'Unauthorized',
+    });
+  }
+
+  // Check if the provider has an API key configured
+  const providerApiKey = apiKeys[providerName];
+
+  if (!providerApiKey || providerApiKey.trim() === '') {
+    throw new Response(
+      `No API key configured for provider "${providerName}". Please add your ${providerName} API key in the settings.`,
+      {
+        status: 401,
+        statusText: 'Unauthorized',
+      },
+    );
+  }
+
   try {
     const result = await streamText({
       messages: [
@@ -110,6 +131,11 @@ async function enhancerAction({ context, request }: ActionFunctionArgs) {
       }
     })();
 
+    // Validate that we have a valid stream
+    if (!result.textStream) {
+      throw new Error('Failed to get response stream from LLM provider');
+    }
+
     // Return the text stream directly since it's already text data
     return new Response(result.textStream, {
       status: 200,
@@ -117,19 +143,53 @@ async function enhancerAction({ context, request }: ActionFunctionArgs) {
         'Content-Type': 'text/event-stream',
         Connection: 'keep-alive',
         'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no', // Disable proxy buffering
       },
     });
   } catch (error: unknown) {
-    console.log(error);
+    console.error('Enhancer API error:', error);
 
-    if (error instanceof Error && error.message?.includes('API key')) {
-      throw new Response('Invalid or missing API key', {
-        status: 401,
-        statusText: 'Unauthorized',
+    if (error instanceof Error) {
+      const errorMessage = error.message;
+
+      // Handle specific error types with helpful messages
+      if (errorMessage.includes('API key') || errorMessage.includes('auth')) {
+        throw new Response(`Authentication failed: ${errorMessage}`, {
+          status: 401,
+          statusText: 'Unauthorized',
+        });
+      }
+
+      if (errorMessage.includes('rate limit') || errorMessage.includes('429')) {
+        throw new Response('Rate limit exceeded. Please try again in a few minutes.', {
+          status: 429,
+          statusText: 'Too Many Requests',
+        });
+      }
+
+      if (errorMessage.includes('timeout') || errorMessage.includes('network')) {
+        throw new Response('Request timeout or network error. Please try again.', {
+          status: 408,
+          statusText: 'Request Timeout',
+        });
+      }
+
+      if (errorMessage.includes('quota') || errorMessage.includes('billing')) {
+        throw new Response('Provider quota exceeded or billing issue. Please check your account.', {
+          status: 402,
+          statusText: 'Payment Required',
+        });
+      }
+
+      // Generic error with message
+      throw new Response(`Enhancement failed: ${errorMessage}`, {
+        status: 500,
+        statusText: 'Internal Server Error',
       });
     }
 
-    throw new Response(null, {
+    // Unknown error type
+    throw new Response('An unexpected error occurred. Please try again.', {
       status: 500,
       statusText: 'Internal Server Error',
     });

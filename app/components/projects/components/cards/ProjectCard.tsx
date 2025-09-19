@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { RotateCcw, Trash2, GitBranch, Zap } from 'lucide-react';
-import type { Project } from './types';
+import type { Project } from '~/components/projects/types';
 
 interface ProjectCardProps {
   project: Project;

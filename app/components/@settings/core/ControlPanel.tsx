@@ -61,11 +61,7 @@ export const ControlPanel = ({ open, onClose, initialTab }: ControlPanelProps) =
 
   // Set initial tab when dialog opens (moved after hooks)
   useEffect(() => {
-    console.log('ControlPanel useEffect - open:', open, 'initialTab:', initialTab);
-
     if (open && initialTab) {
-      console.log('Setting initial tab state for:', initialTab);
-
       // Use the same logic as handleTabClick but inline
       setLoadingTab(initialTab);
       setActiveTab(initialTab);
@@ -90,14 +86,12 @@ export const ControlPanel = ({ open, onClose, initialTab }: ControlPanelProps) =
 
       // Clear loading state after a delay
       setTimeout(() => setLoadingTab(null), 500);
-    } else if (open && !initialTab) {
-      console.log('Dialog opened without initialTab');
     } else if (!open) {
       // Reset when dialog closes
       setActiveTab(null);
       setLoadingTab(null);
     }
-  }, [open, initialTab, acknowledgeAllFeatures, markAllAsRead, acknowledgeIssue]);
+  }, [open, initialTab]); // Removed function dependencies to prevent excessive re-renders
 
   // Memoize the base tab configurations to avoid recalculation
   const baseTabConfig = useMemo(() => {

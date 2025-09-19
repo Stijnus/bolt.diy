@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Clock, History, GitBranch, Play, StopCircle, CheckCircle2 } from 'lucide-react';
-import type { Project } from './types';
+import type { Project } from '~/components/projects/types';
 import { listActivitiesByScope, type Activity } from '~/lib/services/activityService';
 
 interface ActivityFeedProps {
