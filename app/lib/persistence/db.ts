@@ -630,8 +630,40 @@ export async function deleteFeatureById(db: IDBDatabase, projectId: string, id: 
   });
 }
 
-export async function updateProjectBranches(db: IDBDatabase, projectId: string, branches: Branch[]) {
-  const project = await getProjectById(db, projectId);
+export async function getProjectByGitUrl(db: IDBDatabase, gitUrl: string): Promise<Project | undefined> {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction('projects', 'readonly');
+    const store = transaction.objectStore('projects');
+
+    try {
+      const index = store.index('gitUrl');
+      const request = index.get(gitUrl);
+
+      request.onsuccess = () => resolve((request.result as Project | undefined) ?? undefined);
+      request.onerror = () => reject(request.error);
+    } catch (error) {
+      reject(error as DOMException);
+    }
+  });
+}
+
+export async function updateProjectBranches(db: IDBDatabase, projectKey: string, branches: Branch[]) {
+  let project: Project | undefined;
+
+  try {
+    project = await getProjectById(db, projectKey);
+  } catch {}
+
+  if (!project) {
+    try {
+      project = await getProjectByGitUrl(db, projectKey);
+    } catch {}
+  }
+
+  if (!project) {
+    throw new Error(`Project not found for key "${projectKey}"`);
+  }
+
   return new Promise<void>((resolve, reject) => {
     const transaction = db.transaction('projects', 'readwrite');
     const store = transaction.objectStore('projects');
