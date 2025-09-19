@@ -108,9 +108,8 @@ export default function Index() {
       {(() => {
         if (!authLoading && !authed && !hasChosenGuest) {
           return (
-
-            // Full-screen landing page
             <div className="relative flex h-screen w-full flex-col bg-bolt-elements-background-depth-1 overhead-hidden">
+              {/* Full-screen landing page */}
               <BackgroundRays />
 
               {/* Minimal Heade */}
@@ -205,9 +204,8 @@ export default function Index() {
         }
 
         return (
-
-          // Regular app with sidebar and chat
           <div className="relative flex h-full w-full flex-col bg-bolt-elements-background-depth-1">
+            {/* Regular app with sidebar and chat */}
             <BackgroundRays />
             <Header />
             <ClientOnly fallback={<BaseChat />}>{() => <Chat />}</ClientOnly>

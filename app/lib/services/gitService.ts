@@ -8,6 +8,24 @@ import type { Branch } from '~/components/projects/types';
 
 const gitHttpOptions = { http, corsProxy: '/api/git-proxy' } as const;
 
+export class GitRepositoryNotFoundError extends Error {
+  constructor(
+    message: string = 'The Git repository for this project could not be found. Please reconnect the project to a valid Git repository or remove Git-specific actions.',
+  ) {
+    super(message);
+    this.name = 'GitRepositoryNotFoundError';
+  }
+}
+
+const hasGitMetadata = async (fs: PromiseFsClient, dir: string) => {
+  try {
+    await fs.promises.stat(`${dir}/.git`);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export interface GitService {
   createBranch(projectGitUrl: string, branch: string, from?: string): Promise<Branch>;
   switchBranch(projectGitUrl: string, branch: string): Promise<string>;
@@ -430,6 +448,12 @@ export const gitService: GitService = {
 
     try {
       const { fs, dir } = await this.ensureRepoInWebContainer(projectGitUrl);
+      const repositoryReady = await hasGitMetadata(fs, dir);
+
+      if (!repositoryReady) {
+        throw new GitRepositoryNotFoundError();
+      }
+
       const authOptions = getGitAuthOptions(projectGitUrl);
 
       try {
@@ -495,6 +519,18 @@ export const gitService: GitService = {
       return branchMetadata;
     } catch (error) {
       console.error('Error creating git branch:', error);
+
+      if (error instanceof GitRepositoryNotFoundError) {
+        throw error;
+      }
+
+      const errnoError = error as NodeJS.ErrnoException | undefined;
+      const message = error instanceof Error ? error.message : String(error ?? '');
+      const errorCode = errnoError?.code || (error as { code?: string })?.code;
+
+      if (errorCode === 'ENOENT' || errorCode === 'NotFoundError' || message.includes('ENOENT')) {
+        throw new GitRepositoryNotFoundError();
+      }
 
       if (error instanceof Error) {
         throw error;

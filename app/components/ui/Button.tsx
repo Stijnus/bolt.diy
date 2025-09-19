@@ -107,11 +107,14 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const composedClassName = classNames(buttonVariants({ variant, size, block }), className);
 
     if (asChild && React.isValidElement(children)) {
-      return React.cloneElement(children, {
-        className: classNames(composedClassName, (children.props as { className?: string }).className),
-        ref,
-        ...props,
-      });
+      const childElement = children as React.ReactElement<Record<string, unknown>>;
+      const existingClassName = (childElement.props as { className?: string })?.className;
+
+      return React.cloneElement(childElement, {
+        ...(props as Record<string, unknown>),
+        className: classNames(composedClassName, existingClassName),
+        ref: ref as React.Ref<unknown>,
+      } as Partial<Record<string, unknown>> & React.Attributes);
     }
 
     return (
