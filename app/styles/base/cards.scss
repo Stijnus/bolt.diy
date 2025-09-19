@@ -1,0 +1,95 @@
+/* Unified Card System - Based on ProjectDashboard Pattern */
+
+/* Base card styles */
+.card-base {
+  border-radius: var(--bolt-elements-card-border-radius);
+  padding: 1.5rem;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  transition: var(--bolt-elements-card-transition);
+
+  &:hover {
+    box-shadow:
+      0 10px 15px -3px rgb(0 0 0 / 0.1),
+      0 4px 6px -2px rgb(0 0 0 / 0.05);
+    transform: scale(var(--bolt-elements-card-hover-scale));
+  }
+}
+
+/* Card theme variants */
+.card-blue {
+  @extend .card-base;
+  background: var(--bolt-elements-card-blue-background);
+  border: 1px solid var(--bolt-elements-card-blue-border);
+
+  &:hover {
+    box-shadow:
+      0 10px 15px -3px var(--bolt-elements-card-blue-shadow),
+      0 4px 6px -2px var(--bolt-elements-card-blue-shadow);
+  }
+}
+
+.card-purple {
+  @extend .card-base;
+  background: var(--bolt-elements-card-purple-background);
+  border: 1px solid var(--bolt-elements-card-purple-border);
+
+  &:hover {
+    box-shadow:
+      0 10px 15px -3px var(--bolt-elements-card-purple-shadow),
+      0 4px 6px -2px var(--bolt-elements-card-purple-shadow);
+  }
+}
+
+.card-green {
+  @extend .card-base;
+  background: var(--bolt-elements-card-green-background);
+  border: 1px solid var(--bolt-elements-card-green-border);
+
+  &:hover {
+    box-shadow:
+      0 10px 15px -3px var(--bolt-elements-card-green-shadow),
+      0 4px 6px -2px var(--bolt-elements-card-green-shadow);
+  }
+}
+
+.card-neutral {
+  @extend .card-base;
+  background: var(--bolt-elements-card-neutral-background);
+  border: 1px solid var(--bolt-elements-card-neutral-border);
+
+  &:hover {
+    box-shadow:
+      0 10px 15px -3px var(--bolt-elements-card-neutral-shadow),
+      0 4px 6px -2px var(--bolt-elements-card-neutral-shadow);
+  }
+}
+
+/* Icon containers */
+.icon-container-base {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-container-blue {
+  @extend .icon-container-base;
+  background-color: var(--bolt-elements-card-blue-icon-background);
+}
+
+.icon-container-purple {
+  @extend .icon-container-base;
+  background-color: var(--bolt-elements-card-purple-icon-background);
+}
+
+.icon-container-green {
+  @extend .icon-container-base;
+  background-color: var(--bolt-elements-card-green-icon-background);
+}
+
+.icon-container-neutral {
+  @extend .icon-container-base;
+  background-color: var(--bolt-elements-card-neutral-icon-background);
+}

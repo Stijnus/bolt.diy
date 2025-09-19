@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { classNames } from '~/utils/classNames';
-import { Dialog, DialogRoot, DialogClose, DialogTitle, DialogButton } from '~/components/ui/Dialog';
+import { Dialog, DialogRoot, DialogClose, DialogTitle } from '~/components/ui/Dialog';
+import { Button } from '~/components/ui/Button';
 import { IconButton } from '~/components/ui/IconButton';
 import { useMCPStore } from '~/lib/stores/mcp';
 import McpServerList from '~/components/@settings/tabs/mcp/McpServerList';
@@ -116,7 +117,7 @@ export function McpTools() {
               <div className="flex justify-end gap-2 mt-6">
                 <div className="flex gap-2">
                   <DialogClose asChild>
-                    <DialogButton type="secondary">Close</DialogButton>
+                    <Button variant="outline">Close</Button>
                   </DialogClose>
                 </div>
               </div>

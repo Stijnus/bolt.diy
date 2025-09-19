@@ -5,7 +5,7 @@ import { useAnimate } from 'framer-motion';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { cssTransition, toast, ToastContainer } from 'react-toastify';
 import { useMessageParser, usePromptEnhancer, useShortcuts } from '~/lib/hooks';
-import { description, useChatHistory } from '~/lib/persistence';
+import { chatId, description, useChatHistory } from '~/lib/persistence';
 import { chatStore } from '~/lib/stores/chat';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROMPT_COOKIE_KEY, PROVIDER_LIST } from '~/utils/constants';
@@ -17,6 +17,7 @@ import { debounce } from '~/utils/debounce';
 import { useSettings } from '~/lib/hooks/useSettings';
 import type { ProviderInfo } from '~/types/model';
 import { useSearchParams } from '@remix-run/react';
+import { useGit } from '~/lib/hooks/useGit';
 import { createSampler } from '~/utils/sampler';
 import { getTemplates, selectStarterTemplate } from '~/utils/selectStarterTemplate';
 import { logStore } from '~/lib/stores/logs';
@@ -149,6 +150,7 @@ export const ChatImpl = memo(
     const [chatMode, setChatMode] = useState<'discuss' | 'build'>('build');
     const [selectedElement, setSelectedElement] = useState<ElementInfo | null>(null);
     const mcpSettings = useMCPStore((state) => state.settings);
+    const { gitClone, ready: gitReady } = useGit();
 
     const {
       messages,
@@ -232,6 +234,93 @@ export const ChatImpl = memo(
     useEffect(() => {
       chatStore.setKey('started', initialMessages.length > 0);
     }, []);
+
+    // Handle project import from metadata - enhanced with proper coordination
+    useEffect(() => {
+      // Check for pending chat metadata and ensure git is ready
+      const pendingMetadata = sessionStorage.getItem('pendingChatMetadata');
+
+      if (pendingMetadata && initialMessages.length === 0 && !chatId.get() && gitReady) {
+        try {
+          const metadata = JSON.parse(pendingMetadata);
+
+          // Don't remove from sessionStorage yet - let useChatHistory handle persistence
+
+          if (metadata.gitUrl) {
+            // Import the project from Git URL with optional branch
+            const gitUrlWithBranch = metadata.gitBranch ? `${metadata.gitUrl}#${metadata.gitBranch}` : metadata.gitUrl;
+
+            // Clone the repository into the workbench
+            gitClone(gitUrlWithBranch)
+              .then(async (_result) => {
+                workbenchStore.showWorkbench.set(true);
+                toast.success(`Project loaded from ${metadata.gitBranch || 'main'} branch`);
+
+                // Wait a moment for files to be loaded into the store
+                setTimeout(async () => {
+                  const currentFiles = workbenchStore.files.get();
+                  const fileList = Object.keys(currentFiles).slice(0, 20); // Limit to first 20 files for context
+
+                  // Create comprehensive project context
+                  const projectContext = [
+                    `## Project Context`,
+                    `**Repository:** ${metadata.gitUrl}`,
+                    metadata.projectName ? `**Project:** ${metadata.projectName}` : '',
+                    metadata.projectDescription ? `**Description:** ${metadata.projectDescription}` : '',
+                    metadata.gitBranch ? `**Branch:** ${metadata.gitBranch}` : '',
+                    '',
+                    metadata.featureId ? `## Current Feature` : '',
+                    metadata.featureName ? `**Feature:** ${metadata.featureName}` : '',
+                    metadata.featureDescription ? `**Description:** ${metadata.featureDescription}` : '',
+                    metadata.featureStatus ? `**Status:** ${metadata.featureStatus}` : '',
+                    metadata.featureId ? '' : '',
+                    `## Project Structure`,
+                    fileList.length > 0
+                      ? `Key files loaded:\n${fileList.map((f) => `- ${f}`).join('\n')}`
+                      : 'Loading project files...',
+                    fileList.length === 20 ? '\n*(showing first 20 files)*' : '',
+                    '',
+                    metadata.featureId
+                      ? `## Task Focus\nI'm here to help you work on the "${metadata.featureName}" feature. I have full context about this project's codebase and can help you implement, debug, test, or enhance this specific feature.`
+                      : `## Ready to Help\nI have full context about this project's codebase and can help you with development tasks, debugging, feature implementation, or code analysis.`,
+                    '',
+                    `What would you like to work on?`,
+                  ]
+                    .filter(Boolean)
+                    .join('\n');
+
+                  const welcomeMessage = {
+                    id: `welcome-${Date.now()}`,
+                    role: 'assistant' as const,
+                    content: projectContext,
+                    annotations: ['project-context'],
+                  };
+
+                  setMessages([welcomeMessage]);
+
+                  /*
+                   * Store the project context message and ensure metadata persistence
+                   * This will trigger storeMessageHistory which will handle the metadata
+                   */
+                }, 1000);
+              })
+              .catch((error) => {
+                console.error('Failed to import project:', error);
+                toast.error(`Failed to import project: ${error.message}`);
+
+                // Remove pending metadata on failure to prevent retry loops
+                sessionStorage.removeItem('pendingChatMetadata');
+              });
+          } else {
+            // If no git URL, just ensure metadata is handled for future persistence
+            console.log('Chat metadata available but no git URL to import');
+          }
+        } catch (error) {
+          console.error('Error processing pending chat metadata:', error);
+          sessionStorage.removeItem('pendingChatMetadata'); // Clean up on error
+        }
+      }
+    }, [initialMessages.length, gitClone, setMessages, chatId, gitReady]);
 
     useEffect(() => {
       processSampledMessages({
@@ -446,65 +535,83 @@ export const ChatImpl = memo(
         setFakeLoading(true);
 
         if (autoSelectTemplate) {
-          const { template, title } = await selectStarterTemplate({
-            message: finalMessageContent,
-            model,
-            provider,
-          });
+          // Check if project already has important files - skip template selection for existing projects
+          const existingProjectFiles = Object.keys(files).some(
+            (filePath) =>
+              filePath.includes('package.json') ||
+              filePath.includes('app/') ||
+              filePath.includes('src/') ||
+              filePath.includes('vite.config') ||
+              filePath.includes('remix.config') ||
+              filePath.includes('next.config') ||
+              filePath.includes('tsconfig.json'),
+          );
 
-          if (template !== 'blank') {
-            const temResp = await getTemplates(template, title).catch((e) => {
-              if (e.message.includes('rate limit')) {
-                toast.warning('Rate limit exceeded. Skipping starter template\n Continuing with blank template');
-              } else {
-                toast.warning('Failed to import starter template\n Continuing with blank template');
-              }
+          if (existingProjectFiles) {
+            console.log('Existing project detected, skipping template selection');
 
-              return null;
+            // Skip template selection for existing projects
+          } else {
+            const { template, title } = await selectStarterTemplate({
+              message: finalMessageContent,
+              model,
+              provider,
             });
 
-            if (temResp) {
-              const { assistantMessage, userMessage } = temResp;
-              const userMessageText = `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${finalMessageContent}`;
+            if (template !== 'blank') {
+              const temResp = await getTemplates(template, title).catch((e) => {
+                if (e.message.includes('rate limit')) {
+                  toast.warning('Rate limit exceeded. Skipping starter template\n Continuing with blank template');
+                } else {
+                  toast.warning('Failed to import starter template\n Continuing with blank template');
+                }
 
-              setMessages([
-                {
-                  id: `1-${new Date().getTime()}`,
-                  role: 'user',
-                  content: userMessageText,
-                  parts: createMessageParts(userMessageText, imageDataList),
-                },
-                {
-                  id: `2-${new Date().getTime()}`,
-                  role: 'assistant',
-                  content: assistantMessage,
-                },
-                {
-                  id: `3-${new Date().getTime()}`,
-                  role: 'user',
-                  content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${userMessage}`,
-                  annotations: ['hidden'],
-                },
-              ]);
+                return null;
+              });
 
-              const reloadOptions =
-                uploadedFiles.length > 0
-                  ? { experimental_attachments: await filesToAttachments(uploadedFiles) }
-                  : undefined;
+              if (temResp) {
+                const { assistantMessage, userMessage } = temResp;
+                const userMessageText = `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${finalMessageContent}`;
 
-              reload(reloadOptions);
-              setInput('');
-              Cookies.remove(PROMPT_COOKIE_KEY);
+                setMessages([
+                  {
+                    id: `1-${new Date().getTime()}`,
+                    role: 'user',
+                    content: userMessageText,
+                    parts: createMessageParts(userMessageText, imageDataList),
+                  },
+                  {
+                    id: `2-${new Date().getTime()}`,
+                    role: 'assistant',
+                    content: assistantMessage,
+                  },
+                  {
+                    id: `3-${new Date().getTime()}`,
+                    role: 'user',
+                    content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${userMessage}`,
+                    annotations: ['hidden'],
+                  },
+                ]);
 
-              setUploadedFiles([]);
-              setImageDataList([]);
+                const reloadOptions =
+                  uploadedFiles.length > 0
+                    ? { experimental_attachments: await filesToAttachments(uploadedFiles) }
+                    : undefined;
 
-              resetEnhancer();
+                reload(reloadOptions);
+                setInput('');
+                Cookies.remove(PROMPT_COOKIE_KEY);
 
-              textareaRef.current?.blur();
-              setFakeLoading(false);
+                setUploadedFiles([]);
+                setImageDataList([]);
 
-              return;
+                resetEnhancer();
+
+                textareaRef.current?.blur();
+                setFakeLoading(false);
+
+                return;
+              }
             }
           }
         }

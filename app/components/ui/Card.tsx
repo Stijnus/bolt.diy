@@ -1,19 +1,32 @@
 import { forwardRef } from 'react';
+import { cva, type VariantProps } from 'class-variance-authority';
 import { classNames } from '~/utils/classNames';
 
-export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {}
+const cardVariants = cva('text-bolt-elements-textPrimary shadow-sm transition-all duration-300', {
+  variants: {
+    variant: {
+      default: 'rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-background-depth-1',
+      blue: 'card-blue',
+      purple: 'card-purple',
+      green: 'card-green',
+      neutral: 'card-neutral',
+    },
+    size: {
+      default: 'p-6',
+      sm: 'p-4',
+      lg: 'p-8',
+    },
+  },
+  defaultVariants: {
+    variant: 'default',
+    size: 'default',
+  },
+});
 
-const Card = forwardRef<HTMLDivElement, CardProps>(({ className, ...props }, ref) => {
-  return (
-    <div
-      ref={ref}
-      className={classNames(
-        'rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 text-bolt-elements-textPrimary shadow-sm',
-        className,
-      )}
-      {...props}
-    />
-  );
+export interface CardProps extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof cardVariants> {}
+
+const Card = forwardRef<HTMLDivElement, CardProps>(({ className, variant, size, ...props }, ref) => {
+  return <div ref={ref} className={classNames(cardVariants({ variant, size }), className)} {...props} />;
 });
 Card.displayName = 'Card';
 
@@ -52,4 +65,19 @@ const CardFooter = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
 ));
 CardFooter.displayName = 'CardFooter';
 
-export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent };
+const IconContainer = forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement> & { variant?: 'blue' | 'purple' | 'green' | 'neutral' }
+>(({ className, variant = 'blue', ...props }, ref) => {
+  const variantClasses = {
+    blue: 'icon-container-blue',
+    purple: 'icon-container-purple',
+    green: 'icon-container-green',
+    neutral: 'icon-container-neutral',
+  };
+
+  return <div ref={ref} className={classNames(variantClasses[variant], className)} {...props} />;
+});
+IconContainer.displayName = 'IconContainer';
+
+export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent, IconContainer };

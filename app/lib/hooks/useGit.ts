@@ -74,6 +74,103 @@ export function useGit() {
         headers.Authorization = `Basic ${Buffer.from(`${auth.username}:${auth.password}`).toString('base64')}`;
       }
 
+      const authHandlers = {
+        onAuth: (requestUrl: string) => {
+          let login = lookupSavedPassword(requestUrl);
+
+          if (login) {
+            headers.Authorization = `Basic ${Buffer.from(`${login.username}:${login.password}`).toString('base64')}`;
+            console.log('Using saved authentication for', requestUrl);
+
+            return login;
+          }
+
+          console.log('Repository requires authentication:', requestUrl);
+
+          if (confirm('This repository requires authentication. Would you like to enter your GitHub credentials?')) {
+            login = {
+              username: prompt('Enter username') || '',
+              password: prompt('Enter password or personal access token') || '',
+            };
+
+            headers.Authorization = `Basic ${Buffer.from(`${login.username}:${login.password}`).toString('base64')}`;
+
+            return login;
+          }
+
+          return { cancel: true };
+        },
+        onAuthFailure: (requestUrl: string) => {
+          console.error(`Authentication failed for ${requestUrl}`);
+          toast.error(
+            `Authentication failed for ${requestUrl.split('/')[2]}. Please check your credentials and try again.`,
+          );
+          throw new Error(
+            `Authentication failed for ${requestUrl.split('/')[2]}. Please check your credentials and try again.`,
+          );
+        },
+        onAuthSuccess: (requestUrl: string, login: GitAuth) => {
+          console.log(`Authentication successful for ${requestUrl}`);
+          headers.Authorization = `Basic ${Buffer.from(`${login.username}:${login.password}`).toString('base64')}`;
+          saveGitAuth(requestUrl, login);
+        },
+      } as const;
+
+      const ensureBranch = async (targetBranch?: string) => {
+        if (!targetBranch) {
+          return;
+        }
+
+        try {
+          await git.fetch({
+            fs,
+            http,
+            dir: webcontainer.workdir,
+            remote: 'origin',
+            ref: targetBranch,
+            depth: 1,
+            singleBranch: true,
+            corsProxy: '/api/git-proxy',
+            headers,
+            ...authHandlers,
+          });
+        } catch (fetchError) {
+          console.warn(`Fetching branch '${targetBranch}' failed`, fetchError);
+        }
+
+        try {
+          await git.checkout({ fs, dir: webcontainer.workdir, ref: targetBranch });
+          return;
+        } catch (checkoutError) {
+          console.warn(`Checkout to branch '${targetBranch}' failed, attempting to create locally`, checkoutError);
+        }
+
+        try {
+          await git.branch({
+            fs,
+            dir: webcontainer.workdir,
+            ref: targetBranch,
+            checkout: true,
+          });
+          console.log(`Created local branch '${targetBranch}' from remote origin/${targetBranch}`);
+
+          return;
+        } catch (branchFromRemoteError) {
+          console.warn(
+            `Failed to create branch '${targetBranch}' from remote origin/${targetBranch}`,
+            branchFromRemoteError,
+          );
+        }
+
+        try {
+          await git.branch({ fs, dir: webcontainer.workdir, ref: targetBranch, checkout: true });
+          console.log(`Created local branch '${targetBranch}' from current HEAD`);
+        } catch (branchError) {
+          console.error(`Failed to create local branch '${targetBranch}'`, branchError);
+          throw branchError;
+        }
+      };
+
       try {
         // Add a small delay before retrying to allow for network recovery
         if (retryCount > 0) {
@@ -88,46 +185,15 @@ export function useGit() {
           url: baseUrl,
           depth: 1,
           singleBranch: true,
-          ref: branch,
           corsProxy: '/api/git-proxy',
           headers,
           onProgress: (event) => {
             console.log('Git clone progress:', event);
           },
-          onAuth: (baseUrl) => {
-            let auth = lookupSavedPassword(baseUrl);
-
-            if (auth) {
-              console.log('Using saved authentication for', baseUrl);
-              return auth;
-            }
-
-            console.log('Repository requires authentication:', baseUrl);
-
-            if (confirm('This repository requires authentication. Would you like to enter your GitHub credentials?')) {
-              auth = {
-                username: prompt('Enter username') || '',
-                password: prompt('Enter password or personal access token') || '',
-              };
-              return auth;
-            } else {
-              return { cancel: true };
-            }
-          },
-          onAuthFailure: (baseUrl, _auth) => {
-            console.error(`Authentication failed for ${baseUrl}`);
-            toast.error(
-              `Authentication failed for ${baseUrl.split('/')[2]}. Please check your credentials and try again.`,
-            );
-            throw new Error(
-              `Authentication failed for ${baseUrl.split('/')[2]}. Please check your credentials and try again.`,
-            );
-          },
-          onAuthSuccess: (baseUrl, auth) => {
-            console.log(`Authentication successful for ${baseUrl}`);
-            saveGitAuth(baseUrl, auth);
-          },
+          ...authHandlers,
         });
+
+        await ensureBranch(branch);
 
         const data: Record<string, { data: any; encoding?: string }> = {};
 

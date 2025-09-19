@@ -10,59 +10,33 @@ import {
   isFetchingStats,
   updateVercelConnection,
   fetchVercelStats,
-  autoConnectVercel,
+  initializeVercelConnection,
 } from '~/lib/stores/vercel';
 
 export default function VercelConnection() {
-  console.log('VercelConnection component mounted');
-
   const connection = useStore(vercelConnection);
   const connecting = useStore(isConnecting);
   const fetchingStats = useStore(isFetchingStats);
   const [isProjectsExpanded, setIsProjectsExpanded] = useState(false);
   const hasInitialized = useRef(false);
 
-  console.log('VercelConnection initial state:', {
-    connection: {
-      user: connection.user,
-      token: connection.token ? '[TOKEN_EXISTS]' : '[NO_TOKEN]',
-    },
-    envToken: import.meta.env?.VITE_VERCEL_ACCESS_TOKEN ? '[ENV_TOKEN_EXISTS]' : '[NO_ENV_TOKEN]',
-  });
-
   useEffect(() => {
     // Prevent multiple initializations
     if (hasInitialized.current) {
-      console.log('Vercel: Already initialized, skipping');
       return;
     }
 
     const initializeConnection = async () => {
-      console.log('Vercel initializeConnection:', {
-        user: connection.user,
-        token: connection.token ? '[TOKEN_EXISTS]' : '[NO_TOKEN]',
-        envToken: import.meta.env?.VITE_VERCEL_ACCESS_TOKEN ? '[ENV_TOKEN_EXISTS]' : '[NO_ENV_TOKEN]',
-      });
-
       hasInitialized.current = true;
 
-      // Auto-connect using environment variable if no existing connection but token exists
-      if (!connection.user && connection.token && import.meta.env?.VITE_VERCEL_ACCESS_TOKEN) {
-        console.log('Vercel: Attempting auto-connection');
+      try {
+        const result = await initializeVercelConnection();
 
-        const result = await autoConnectVercel();
-
-        if (result.success) {
+        if (result.success && connection.user) {
           toast.success('Connected to Vercel automatically');
-        } else {
-          console.error('Vercel auto-connection failed:', result.error);
         }
-      } else if (connection.user && connection.token) {
-        // Fetch stats for existing connection
-        console.log('Vercel: Fetching stats for existing connection');
-        await fetchVercelStats(connection.token);
-      } else {
-        console.log('Vercel: No auto-connection conditions met');
+      } catch (error) {
+        console.error('Vercel initialization failed:', error);
       }
     };
 
@@ -108,11 +82,9 @@ export default function VercelConnection() {
     toast.success('Disconnected from Vercel');
   };
 
-  console.log('connection', connection);
-
   return (
     <motion.div
-      className="bg-[#FFFFFF] dark:bg-[#0A0A0A] rounded-lg border border-[#E5E5E5] dark:border-[#1A1A1A]"
+      className="bg-bolt-elements-background-depth-1 rounded-lg border border-bolt-elements-borderColor"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3 }}
@@ -143,8 +115,8 @@ export default function VercelConnection() {
                 placeholder="Enter your Vercel personal access token"
                 className={classNames(
                   'w-full px-3 py-2 rounded-lg text-sm',
-                  'bg-[#F8F8F8] dark:bg-[#1A1A1A]',
-                  'border border-[#E5E5E5] dark:border-[#333333]',
+                  'bg-bolt-elements-background-depth-2',
+                  'border border-bolt-elements-borderColor',
                   'text-bolt-elements-textPrimary placeholder-bolt-elements-textTertiary',
                   'focus:outline-none focus:ring-1 focus:ring-bolt-elements-borderColorActive',
                   'disabled:opacity-50',
@@ -169,12 +141,6 @@ export default function VercelConnection() {
                     </code>{' '}
                     in your .env.local for automatic connection.
                   </p>
-                </div>
-                {/* Debug info - remove this later */}
-                <div className="mt-2 text-xs text-gray-500">
-                  <p>Debug: Token present: {connection.token ? '✅' : '❌'}</p>
-                  <p>Debug: User present: {connection.user ? '✅' : '❌'}</p>
-                  <p>Debug: Env token: {import.meta.env?.VITE_VERCEL_ACCESS_TOKEN ? '✅' : '❌'}</p>
                 </div>
               </div>
             </div>
@@ -203,24 +169,6 @@ export default function VercelConnection() {
                   </>
                 )}
               </button>
-
-              {/* Debug button - remove this later */}
-              <button
-                onClick={async () => {
-                  console.log('Manual auto-connect test');
-
-                  const result = await autoConnectVercel();
-
-                  if (result.success) {
-                    toast.success('Manual auto-connect successful');
-                  } else {
-                    toast.error(`Manual auto-connect failed: ${result.error}`);
-                  }
-                }}
-                className="px-3 py-2 rounded-lg text-xs bg-blue-500 text-white hover:bg-blue-600"
-              >
-                Test Auto-Connect
-              </button>
             </div>
           </div>
         ) : (
@@ -245,7 +193,7 @@ export default function VercelConnection() {
               </div>
             </div>
 
-            <div className="flex items-center gap-4 p-4 bg-[#F8F8F8] dark:bg-[#1A1A1A] rounded-lg">
+            <div className="flex items-center gap-4 p-4 bg-bolt-elements-background-depth-2 rounded-lg">
               {/* Debug output */}
               <pre className="hidden">{JSON.stringify(connection.user, null, 2)}</pre>
 

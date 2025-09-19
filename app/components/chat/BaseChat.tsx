@@ -33,6 +33,8 @@ import { ChatBox } from './ChatBox';
 import type { DesignScheme } from '~/types/design-scheme';
 import type { ElementInfo } from '~/components/workbench/Inspector';
 import LlmErrorAlert from './LLMApiAlert';
+import { ProjectChatContext } from '~/components/projects/ProjectChatContext';
+import { chatMetadata } from '~/lib/persistence';
 
 const TEXTAREA_MIN_HEIGHT = 76;
 
@@ -144,6 +146,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const [progressAnnotations, setProgressAnnotations] = useState<ProgressAnnotation[]>([]);
     const expoUrl = useStore(expoUrlAtom);
     const [qrModalOpen, setQrModalOpen] = useState(false);
+    const metadata = useStore(chatMetadata);
 
     useEffect(() => {
       if (expoUrl) {
@@ -366,6 +369,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
               initial="smooth"
             >
               <StickToBottom.Content className="flex flex-col gap-4 relative ">
+                {chatStarted && metadata && <ProjectChatContext metadata={metadata} />}
                 <ClientOnly>
                   {() => {
                     return chatStarted ? (

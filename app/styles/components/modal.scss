@@ -1,0 +1,35 @@
+/* Modal styles */
+.modal-overlay {
+  background-color: var(--bolt-elements-modal-overlay);
+}
+
+.modal-content {
+  background-color: var(--bolt-elements-modal-background);
+  border: 1px solid var(--bolt-elements-borderColor);
+  color: var(--bolt-elements-textPrimary);
+}
+
+/* Form input focus styles - only override focus styles that can't be handled by UnoCSS */
+input[type='text']:focus,
+input[type='url']:focus,
+input[type='email']:focus,
+input[type='number']:focus,
+input[type='password']:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--bolt-elements-borderColorActive) !important;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(var(--bolt-elements-borderColorActive), 0.2);
+}
+
+/* Icon button styles - only use !important where absolutely necessary */
+.icon-button {
+  background-color: transparent;
+  color: var(--bolt-elements-textSecondary);
+  border: 1px solid var(--bolt-elements-borderColor);
+
+  &:hover {
+    background-color: var(--bolt-elements-item-backgroundActive);
+    color: var(--bolt-elements-textPrimary);
+  }
+}

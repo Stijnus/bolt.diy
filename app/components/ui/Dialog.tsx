@@ -1,41 +1,15 @@
 import * as RadixDialog from '@radix-ui/react-dialog';
 import { motion, type Variants } from 'framer-motion';
 import React, { memo, type ReactNode, useState, useEffect } from 'react';
+import { X, Loader2 } from 'lucide-react';
 import { classNames } from '~/utils/classNames';
 import { cubicEasingFn } from '~/utils/easings';
-import { IconButton } from './IconButton';
 import { Button } from './Button';
 import { FixedSizeList } from 'react-window';
 import { Checkbox } from './Checkbox';
 import { Label } from './Label';
 
 export { Close as DialogClose, Root as DialogRoot } from '@radix-ui/react-dialog';
-
-interface DialogButtonProps {
-  type: 'primary' | 'secondary' | 'danger';
-  children: ReactNode;
-  onClick?: (event: React.MouseEvent) => void;
-  disabled?: boolean;
-}
-
-export const DialogButton = memo(({ type, children, onClick, disabled }: DialogButtonProps) => {
-  return (
-    <button
-      className={classNames(
-        'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors',
-        type === 'primary'
-          ? 'bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-500 dark:hover:bg-purple-600'
-          : type === 'secondary'
-            ? 'bg-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-            : 'bg-transparent text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10',
-      )}
-      onClick={onClick}
-      disabled={disabled}
-    >
-      {children}
-    </button>
-  );
-});
 
 export const DialogTitle = memo(({ className, children, ...props }: RadixDialog.DialogTitleProps) => {
   return (
@@ -105,7 +79,7 @@ export const Dialog = memo(({ children, className, showCloseButton = true, onClo
     <RadixDialog.Portal>
       <RadixDialog.Overlay asChild>
         <motion.div
-          className={classNames('fixed inset-0 z-[9999] bg-black/70 dark:bg-black/80 backdrop-blur-sm')}
+          className={classNames('fixed inset-0 z-[9999] modal-overlay backdrop-blur-sm')}
           initial="closed"
           animate="open"
           exit="closed"
@@ -116,7 +90,7 @@ export const Dialog = memo(({ children, className, showCloseButton = true, onClo
       <RadixDialog.Content asChild>
         <motion.div
           className={classNames(
-            'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-gray-950 rounded-lg shadow-xl border border-bolt-elements-borderColor z-[9999] w-[520px] focus:outline-none',
+            'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 modal-content rounded-lg shadow-xl border border-bolt-elements-borderColor z-[9999] w-[640px] focus:outline-none',
             className,
           )}
           initial="closed"
@@ -128,10 +102,9 @@ export const Dialog = memo(({ children, className, showCloseButton = true, onClo
             {children}
             {showCloseButton && (
               <RadixDialog.Close asChild onClick={onClose}>
-                <IconButton
-                  icon="i-ph:x"
-                  className="absolute top-3 right-3 text-bolt-elements-textTertiary hover:text-bolt-elements-textSecondary"
-                />
+                <button className="absolute top-3 right-3 p-2 bg-transparent text-bolt-elements-textTertiary hover:text-bolt-elements-textSecondary transition-colors rounded-lg">
+                  <X className="w-5 h-5" />
+                </button>
               </RadixDialog.Close>
             )}
           </div>
@@ -208,28 +181,21 @@ export function ConfirmationDialog({
   return (
     <RadixDialog.Root open={isOpen} onOpenChange={onClose}>
       <Dialog showCloseButton={false}>
-        <div className="p-6 bg-white dark:bg-gray-950 relative z-10">
+        <div className="relative z-10" style={{ padding: 'var(--bolt-elements-component-padding-lg)' }}>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription className="mb-4">{description}</DialogDescription>
-          <div className="flex justify-end space-x-2">
+          <DialogDescription style={{ marginBottom: 'var(--bolt-elements-spacing-lg)' }}>
+            {description}
+          </DialogDescription>
+          <div className="flex justify-end" style={{ gap: 'var(--bolt-elements-spacing-sm)' }}>
             <Button variant="outline" onClick={onClose} disabled={isLoading}>
               {cancelLabel}
             </Button>
-            <Button
-              variant={variant}
-              onClick={onConfirm}
-              disabled={isLoading}
-              className={
-                variant === 'destructive'
-                  ? 'bg-red-500 text-white hover:bg-red-600'
-                  : 'bg-bolt-elements-item-backgroundAccent text-bolt-elements-item-contentAccent hover:bg-bolt-elements-button-primary-backgroundHover'
-              }
-            >
+            <Button variant={variant} onClick={onConfirm} disabled={isLoading}>
               {isLoading ? (
-                <>
-                  <div className="i-ph-spinner-gap-bold animate-spin w-4 h-4 mr-2" />
+                <div className="flex items-center" style={{ gap: 'var(--bolt-elements-spacing-sm)' }}>
+                  <Loader2 className="w-4 h-4 animate-spin" />
                   {confirmLabel}
-                </>
+                </div>
               ) : (
                 confirmLabel
               )}
@@ -382,24 +348,29 @@ export function SelectionDialog({
   return (
     <RadixDialog.Root open={isOpen} onOpenChange={onClose}>
       <Dialog showCloseButton={false}>
-        <div className="p-6 bg-white dark:bg-gray-950 relative z-10">
+        <div className="relative z-10" style={{ padding: 'var(--bolt-elements-component-padding-lg)' }}>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription className="mt-2 mb-4">
+          <DialogDescription
+            style={{
+              marginTop: 'var(--bolt-elements-spacing-sm)',
+              marginBottom: 'var(--bolt-elements-spacing-lg)',
+            }}
+          >
             Select the items you want to include and click{' '}
             <span className="text-bolt-elements-item-contentAccent font-medium">{confirmLabel}</span>.
           </DialogDescription>
 
-          <div className="py-4">
-            <div className="flex items-center justify-between mb-4">
+          <div
+            style={{ paddingTop: 'var(--bolt-elements-spacing-lg)', paddingBottom: 'var(--bolt-elements-spacing-lg)' }}
+          >
+            <div
+              className="flex items-center justify-between"
+              style={{ marginBottom: 'var(--bolt-elements-spacing-lg)' }}
+            >
               <span className="text-sm font-medium text-bolt-elements-textSecondary">
                 {selectedItems.length} of {items.length} selected
               </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleSelectAll}
-                className="text-xs h-8 px-2 text-bolt-elements-textPrimary hover:text-bolt-elements-item-contentAccent hover:bg-bolt-elements-item-backgroundAccent bg-bolt-elements-bg-depth-2 dark:bg-transparent"
-              >
+              <Button variant="ghost" size="sm" onClick={handleSelectAll} className="text-xs h-8 px-2">
                 {selectAll ? 'Deselect All' : 'Select All'}
               </Button>
             </div>
@@ -426,19 +397,11 @@ export function SelectionDialog({
             </div>
           </div>
 
-          <div className="flex justify-between mt-6">
-            <Button
-              variant="outline"
-              onClick={onClose}
-              className="border-bolt-elements-borderColor text-bolt-elements-textPrimary hover:bg-bolt-elements-item-backgroundActive"
-            >
+          <div className="flex justify-between" style={{ marginTop: 'var(--bolt-elements-spacing-xl)' }}>
+            <Button variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button
-              onClick={handleConfirm}
-              disabled={selectedItems.length === 0}
-              className="bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50 disabled:pointer-events-none"
-            >
+            <Button variant="primary" onClick={handleConfirm} disabled={selectedItems.length === 0}>
               {confirmLabel}
             </Button>
           </div>

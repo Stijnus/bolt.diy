@@ -411,7 +411,7 @@ export default function LocalProvidersTab() {
                           variant="outline"
                           size="sm"
                           className="bg-gradient-to-r from-purple-500/8 to-purple-600/8 hover:from-purple-500/15 hover:to-purple-600/15 border-purple-500/25 hover:border-purple-500/40 transition-all duration-300 gap-2 group shadow-sm hover:shadow-md font-medium"
-                          _asChild
+                          asChild
                         >
                           <a
                             href="https://ollama.com/library"
@@ -483,7 +483,7 @@ export default function LocalProvidersTab() {
                           variant="outline"
                           size="sm"
                           className="bg-gradient-to-r from-blue-500/8 to-blue-600/8 hover:from-blue-500/15 hover:to-blue-600/15 border-blue-500/25 hover:border-blue-500/40 transition-all duration-300 gap-2 group shadow-sm hover:shadow-md font-medium"
-                          _asChild
+                          asChild
                         >
                           <a
                             href="https://lmstudio.ai/"

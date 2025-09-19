@@ -71,9 +71,7 @@ export function GradientCard({
       className={classNames(
         'p-5 rounded-xl bg-gradient-to-br',
         gradientClass,
-        borderEffect
-          ? 'border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark hover:border-purple-500/40'
-          : '',
+        borderEffect ? 'border border-bolt-elements-borderColor hover:border-bolt-elements-borderColorActive' : '',
         'transition-all duration-300 shadow-sm',
         hoverEffect ? 'hover:shadow-md' : '',
         className,

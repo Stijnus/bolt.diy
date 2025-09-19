@@ -167,8 +167,63 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
         </div>
       )}
       <div
-        className={classNames('relative shadow-xs border border-bolt-elements-borderColor backdrop-blur rounded-lg')}
+        className={classNames(
+          'relative shadow-xs border border-bolt-elements-borderColor backdrop-blur rounded-lg overflow-hidden',
+          'bg-gradient-to-r from-bolt-elements-background/50 to-bolt-elements-background-depth-1/50',
+          'group',
+        )}
+        onMouseMove={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+
+          // Update the CSS custom properties for the cursor position
+          e.currentTarget.style.setProperty('--x', `${x}px`);
+          e.currentTarget.style.setProperty('--y', `${y}px`);
+        }}
+        style={
+          {
+            '--x': '0px',
+            '--y': '0px',
+          } as React.CSSProperties
+        }
       >
+        {/* Gradient border that follows mouse */}
+        <div
+          className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+          style={{
+            background: `
+              conic-gradient(
+                from 0deg at var(--x) var(--y),
+                transparent 0deg,
+                rgba(156, 125, 255, 0.8) 90deg,
+                transparent 180deg,
+                rgba(156, 125, 255, 0.8) 270deg,
+                transparent 360deg
+              )
+            `,
+            mask: 'linear-gradient(white, white) content-box, linear-gradient(white, white)',
+            maskComposite: 'subtract',
+            WebkitMask: 'linear-gradient(white, white) content-box, linear-gradient(white, white)',
+            WebkitMaskComposite: 'subtract',
+            padding: '2px',
+          }}
+        >
+          <div className="w-full h-full bg-transparent rounded-lg"></div>
+        </div>
+
+        {/* Radial glow at cursor position */}
+        <div
+          className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+          style={{
+            background: `radial-gradient(80px circle at var(--x) var(--y), rgba(156, 125, 255, 0.4), transparent 70%)`,
+            mask: 'linear-gradient(white, white) content-box, linear-gradient(white, white)',
+            maskComposite: 'subtract',
+            WebkitMask: 'linear-gradient(white, white) content-box, linear-gradient(white, white)',
+            WebkitMaskComposite: 'subtract',
+            padding: '1px',
+          }}
+        />
         <textarea
           ref={props.textareaRef}
           className={classNames(

@@ -9,6 +9,8 @@ export * from './Collapsible';
 export * from './Dialog';
 export * from './IconButton';
 export * from './Input';
+export * from './Textarea';
+export * from './Select';
 export * from './Label';
 export * from './ScrollArea';
 export * from './Switch';

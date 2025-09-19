@@ -52,7 +52,12 @@ export function Breadcrumbs({
 
     if (item.href && !isLast) {
       return (
-        <motion.a href={item.href} className="hover:underline" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+        <motion.a
+          href={item.href}
+          className="hover:underline bg-transparent"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
           {content}
         </motion.a>
       );
@@ -63,7 +68,7 @@ export function Breadcrumbs({
         <motion.button
           type="button"
           onClick={item.onClick}
-          className="hover:underline"
+          className="hover:underline bg-transparent"
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >

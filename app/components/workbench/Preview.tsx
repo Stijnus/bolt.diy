@@ -451,7 +451,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                   justify-content: center;
                   align-items: center;
                   height: 100vh;
-                  background: #f0f0f0;
+                  background: var(--bolt-elements-bg-depth-2);
                   overflow: hidden;
                   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
                 }
@@ -467,7 +467,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                   right: 0;
                   text-align: center;
                   font-size: 14px;
-                  color: #333;
+                  color: var(--bolt-elements-textPrimary);
                 }
                 
                 .device-frame {
@@ -488,7 +488,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                   transform: ${notchTransform};
                   width: ${notchWidth};
                   height: ${notchHeight};
-                  background: #333;
+                  background: var(--bolt-elements-textSecondary);
                   border-radius: 4px;
                   z-index: 2;
                 }
@@ -502,7 +502,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                   transform: ${homeTransform};
                   width: ${homeWidth};
                   height: ${homeHeight};
-                  background: #333;
+                  background: var(--bolt-elements-textSecondary);
                   border-radius: 50%;
                   z-index: 2;
                 }
@@ -511,7 +511,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                   border: none;
                   width: ${width}px;
                   height: ${height}px;
-                  background: white;
+                  background: var(--bolt-elements-bg-depth-1);
                   display: block;
                 }
               </style>
@@ -589,16 +589,14 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
     };
   }, [isDeviceModeOn, showDeviceFrameInPreview, getDeviceScale, isLandscape, selectedWindowSize]);
 
-  // Function to get the frame color based on dark mode
+  // Function to get the frame color based on theme
   const getFrameColor = useCallback(() => {
-    // Check if the document has a dark class or data-theme="dark"
-    const isDarkMode =
-      document.documentElement.classList.contains('dark') ||
-      document.documentElement.getAttribute('data-theme') === 'dark' ||
-      window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-    // Return a darker color for light mode, lighter color for dark mode
-    return isDarkMode ? '#555' : '#111';
+    /*
+     * CRITICAL FIX: Use CSS variable for theme-aware frame color instead of hardcoded values
+     * This prevents white backgrounds in dark mode and ensures proper theme consistency
+     * Previously used hardcoded #555/#111 which caused dark mode issues
+     */
+    return 'var(--bolt-elements-bg-depth-3)';
   }, []);
 
   // Effect to handle color scheme changes
@@ -763,10 +761,18 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
             {isWindowSizeDropdownOpen && (
               <>
                 <div className="fixed inset-0 z-50" onClick={() => setIsWindowSizeDropdownOpen(false)} />
-                <div className="absolute right-0 top-full mt-2 z-50 min-w-[240px] max-h-[400px] overflow-y-auto bg-white dark:bg-black rounded-xl shadow-2xl border border-[#E5E7EB] dark:border-[rgba(255,255,255,0.1)] overflow-hidden">
-                  <div className="p-3 border-b border-[#E5E7EB] dark:border-[rgba(255,255,255,0.1)]">
+                <div
+                  className="absolute right-0 top-full mt-2 z-50 min-w-[240px] max-h-[400px] overflow-y-auto rounded-xl shadow-2xl border overflow-hidden"
+                  style={{
+                    background: 'var(--bolt-elements-modal-background)',
+                    borderColor: 'var(--bolt-elements-borderColor)',
+                  }}
+                >
+                  <div className="p-3 border-b" style={{ borderColor: 'var(--bolt-elements-borderColor)' }}>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-[#111827] dark:text-gray-300">Window Options</span>
+                      <span className="text-sm font-medium" style={{ color: 'var(--bolt-elements-textPrimary)' }}>
+                        Window Options
+                      </span>
                     </div>
                     <div className="flex flex-col gap-2">
                       <button
@@ -812,36 +818,44 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-bolt-elements-textTertiary">Show Device Frame</span>
                         <button
-                          className={`w-10 h-5 rounded-full transition-colors duration-200 ${
-                            showDeviceFrame ? 'bg-[#6D28D9]' : 'bg-gray-300 dark:bg-gray-700'
-                          } relative`}
+                          className="w-10 h-5 rounded-full transition-colors duration-200 relative"
+                          style={{
+                            background: showDeviceFrame
+                              ? 'var(--bolt-elements-item-contentAccent)'
+                              : 'var(--bolt-elements-bg-depth-3)',
+                          }}
                           onClick={(e) => {
                             e.stopPropagation();
                             setShowDeviceFrame(!showDeviceFrame);
                           }}
                         >
                           <span
-                            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200 ${
+                            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full transition-transform duration-200 ${
                               showDeviceFrame ? 'transform translate-x-5' : ''
                             }`}
+                            style={{ background: 'var(--bolt-elements-bg-depth-1)' }}
                           />
                         </button>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-bolt-elements-textTertiary">Landscape Mode</span>
                         <button
-                          className={`w-10 h-5 rounded-full transition-colors duration-200 ${
-                            isLandscape ? 'bg-[#6D28D9]' : 'bg-gray-300 dark:bg-gray-700'
-                          } relative`}
+                          className="w-10 h-5 rounded-full transition-colors duration-200 relative"
+                          style={{
+                            background: isLandscape
+                              ? 'var(--bolt-elements-item-contentAccent)'
+                              : 'var(--bolt-elements-bg-depth-3)',
+                          }}
                           onClick={(e) => {
                             e.stopPropagation();
                             setIsLandscape(!isLandscape);
                           }}
                         >
                           <span
-                            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200 ${
+                            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full transition-transform duration-200 ${
                               isLandscape ? 'transform translate-x-5' : ''
                             }`}
+                            style={{ background: 'var(--bolt-elements-bg-depth-1)' }}
                           />
                         </button>
                       </div>
@@ -850,7 +864,18 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                   {WINDOW_SIZES.map((size) => (
                     <button
                       key={size.name}
-                      className="w-full px-4 py-3.5 text-left text-[#111827] dark:text-gray-300 text-sm whitespace-nowrap flex items-center gap-3 group hover:bg-[#F5EEFF] dark:hover:bg-gray-900 bg-white dark:bg-black"
+                      className="w-full px-4 py-3.5 text-left text-sm whitespace-nowrap flex items-center gap-3 group"
+                      style={{
+                        color: 'var(--bolt-elements-textPrimary)',
+                        background: 'var(--bolt-elements-modal-background)',
+                        transition: 'background-color 0.2s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'var(--bolt-elements-item-backgroundActive)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'var(--bolt-elements-modal-background)';
+                      }}
                       onClick={() => {
                         setSelectedWindowSize(size);
                         setIsWindowSizeDropdownOpen(false);
@@ -858,13 +883,20 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                       }}
                     >
                       <div
-                        className={`${size.icon} w-5 h-5 text-[#6B7280] dark:text-gray-400 group-hover:text-[#6D28D9] dark:group-hover:text-[#6D28D9] transition-colors duration-200`}
+                        className={`${size.icon} w-5 h-5 transition-colors duration-200`}
+                        style={{ color: 'var(--bolt-elements-textSecondary)' }}
                       />
                       <div className="flex-grow flex flex-col">
-                        <span className="font-medium group-hover:text-[#6D28D9] dark:group-hover:text-[#6D28D9] transition-colors duration-200">
+                        <span
+                          className="font-medium transition-colors duration-200"
+                          style={{ color: 'var(--bolt-elements-textPrimary)' }}
+                        >
                           {size.name}
                         </span>
-                        <span className="text-xs text-[#6B7280] dark:text-gray-400 group-hover:text-[#6D28D9] dark:group-hover:text-[#6D28D9] transition-colors duration-200">
+                        <span
+                          className="text-xs transition-colors duration-200"
+                          style={{ color: 'var(--bolt-elements-textTertiary)' }}
+                        >
                           {isLandscape && (size.frameType === 'mobile' || size.frameType === 'tablet')
                             ? `${size.height} × ${size.width}`
                             : `${size.width} × ${size.height}`}
@@ -872,7 +904,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                         </span>
                       </div>
                       {selectedWindowSize.name === size.name && (
-                        <div className="text-[#6D28D9] dark:text-[#6D28D9]">
+                        <div style={{ color: 'var(--bolt-elements-item-contentAccent)' }}>
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
                             width="16"
@@ -957,7 +989,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                         transform: isLandscape ? 'translateY(-50%)' : 'translateX(-50%)',
                         width: isLandscape ? '8px' : selectedWindowSize.frameType === 'mobile' ? '60px' : '80px',
                         height: isLandscape ? (selectedWindowSize.frameType === 'mobile' ? '60px' : '80px') : '8px',
-                        background: '#333',
+                        background: 'var(--bolt-elements-textSecondary)',
                         borderRadius: '4px',
                         zIndex: 2,
                       }}
@@ -972,7 +1004,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                         transform: isLandscape ? 'translateY(50%)' : 'translateX(50%)',
                         width: isLandscape ? '4px' : '40px',
                         height: isLandscape ? '40px' : '4px',
-                        background: '#333',
+                        background: 'var(--bolt-elements-textSecondary)',
                         borderRadius: '50%',
                         zIndex: 2,
                       }}
@@ -985,7 +1017,12 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                         border: 'none',
                         width: isLandscape ? `${selectedWindowSize.height}px` : `${selectedWindowSize.width}px`,
                         height: isLandscape ? `${selectedWindowSize.width}px` : `${selectedWindowSize.height}px`,
-                        background: 'white',
+
+                        /*
+                         * CRITICAL FIX: Use theme-aware background instead of hardcoded 'white'
+                         * This prevents white backgrounds in dark mode - a high-priority recurring issue
+                         */
+                        background: 'var(--bolt-elements-bg-depth-1)',
                         display: 'block',
                       }}
                       src={iframeUrl}

@@ -258,7 +258,7 @@ ${value.content}
   return {
     ready: !mixedId || ready,
     initialMessages,
-    updateChatMestaData: async (metadata: IChatMetadata) => {
+    updateChatMetadata: async (metadata: IChatMetadata) => {
       const id = chatId.get();
 
       if (!db || !id) {
@@ -276,6 +276,31 @@ ${value.content}
     storeMessageHistory: async (messages: Message[]) => {
       if (!db || messages.length === 0) {
         return;
+      }
+
+      // Check for pending chat metadata and apply it
+      const pendingMetadata = sessionStorage.getItem('pendingChatMetadata');
+
+      if (pendingMetadata && !chatMetadata.get()) {
+        try {
+          const metadata = JSON.parse(pendingMetadata);
+
+          // Store metadata for application
+          chatMetadata.set(metadata);
+
+          /*
+           * Remove from sessionStorage once we've successfully stored it
+           * This prevents duplicate processing and ensures clean state
+           */
+          sessionStorage.removeItem('pendingChatMetadata');
+
+          console.log('Applied pending chat metadata:', metadata);
+        } catch (error) {
+          console.error('Error applying pending chat metadata:', error);
+
+          // Remove invalid metadata to prevent retry loops
+          sessionStorage.removeItem('pendingChatMetadata');
+        }
       }
 
       const { firstArtifact } = workbenchStore;

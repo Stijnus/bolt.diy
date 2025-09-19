@@ -128,7 +128,7 @@ function SetupGuide({ onBack }: { onBack: () => void }) {
                     variant="outline"
                     size="sm"
                     className="w-full bg-gradient-to-r from-purple-500/10 to-purple-600/10 hover:from-purple-500/20 hover:to-purple-600/20 border-purple-500/30 hover:border-purple-500/50 transition-all duration-300 gap-2 group shadow-sm hover:shadow-lg hover:shadow-purple-500/20 font-medium"
-                    _asChild
+                    asChild
                   >
                     <a
                       href="https://ollama.com/download/mac"
@@ -151,7 +151,7 @@ function SetupGuide({ onBack }: { onBack: () => void }) {
                     variant="outline"
                     size="sm"
                     className="w-full bg-gradient-to-r from-purple-500/10 to-purple-600/10 hover:from-purple-500/20 hover:to-purple-600/20 border-purple-500/30 hover:border-purple-500/50 transition-all duration-300 gap-2 group shadow-sm hover:shadow-lg hover:shadow-purple-500/20 font-medium"
-                    _asChild
+                    asChild
                   >
                     <a
                       href="https://ollama.com/download/windows"
@@ -376,7 +376,7 @@ function SetupGuide({ onBack }: { onBack: () => void }) {
                 variant="outline"
                 size="sm"
                 className="bg-gradient-to-r from-blue-500/10 to-blue-600/10 hover:from-blue-500/20 hover:to-blue-600/20 border-blue-500/30 hover:border-blue-500/50 transition-all duration-300 gap-2 group shadow-sm hover:shadow-lg hover:shadow-blue-500/20 font-medium"
-                _asChild
+                asChild
               >
                 <a
                   href="https://lmstudio.ai/"

@@ -421,10 +421,10 @@ export const ModelSelector = ({
         <div
           className={classNames(
             'w-full p-2 rounded-lg border border-bolt-elements-borderColor',
-            'bg-bolt-elements-prompt-background text-bolt-elements-textPrimary',
-            'focus-within:outline-none focus-within:ring-2 focus-within:ring-bolt-elements-focus',
+            'bg-bolt-elements-background-depth-2 text-bolt-elements-textPrimary',
+            'focus-within:outline-none focus-within:ring-2 focus-within:ring-bolt-elements-borderColor',
             'transition-all cursor-pointer',
-            isProviderDropdownOpen ? 'ring-2 ring-bolt-elements-focus' : undefined,
+            isProviderDropdownOpen ? 'ring-2 ring-bolt-elements-borderColor' : undefined,
           )}
           onClick={() => setIsProviderDropdownOpen(!isProviderDropdownOpen)}
           onKeyDown={(e) => {
@@ -452,7 +452,7 @@ export const ModelSelector = ({
 
         {isProviderDropdownOpen && (
           <div
-            className="absolute z-20 w-full mt-1 py-1 rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-background-depth-2 shadow-lg"
+            className="absolute z-20 w-full mt-1 py-1 rounded-lg border border-bolt-elements-borderColor bg-white dark:bg-gray-900 shadow-xl"
             role="listbox"
             id="provider-listbox"
           >
@@ -466,9 +466,9 @@ export const ModelSelector = ({
                   placeholder="Search providers... (⌘K to clear)"
                   className={classNames(
                     'w-full pl-8 pr-8 py-1.5 rounded-md text-sm',
-                    'bg-bolt-elements-background-depth-2 border border-bolt-elements-borderColor',
+                    'bg-bolt-elements-background-depth-3 border border-bolt-elements-borderColor',
                     'text-bolt-elements-textPrimary placeholder:text-bolt-elements-textTertiary',
-                    'focus:outline-none focus:ring-2 focus:ring-bolt-elements-focus',
+                    'focus:outline-none focus:ring-1 focus:ring-bolt-elements-borderColor',
                     'transition-all',
                   )}
                   onClick={(e) => e.stopPropagation()}
@@ -536,9 +536,9 @@ export const ModelSelector = ({
                       'text-bolt-elements-textPrimary',
                       'outline-none',
                       provider?.name === providerOption.name || focusedProviderIndex === index
-                        ? 'bg-bolt-elements-background-depth-2'
+                        ? 'bg-bolt-elements-background-depth-3'
                         : undefined,
-                      focusedProviderIndex === index ? 'ring-1 ring-inset ring-bolt-elements-focus' : undefined,
+                      focusedProviderIndex === index ? 'ring-1 ring-inset ring-bolt-elements-borderColor' : undefined,
                     )}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -577,10 +577,10 @@ export const ModelSelector = ({
         <div
           className={classNames(
             'w-full p-2 rounded-lg border border-bolt-elements-borderColor',
-            'bg-bolt-elements-prompt-background text-bolt-elements-textPrimary',
-            'focus-within:outline-none focus-within:ring-2 focus-within:ring-bolt-elements-focus',
+            'bg-bolt-elements-background-depth-2 text-bolt-elements-textPrimary',
+            'focus-within:outline-none focus-within:ring-2 focus-within:ring-bolt-elements-borderColor',
             'transition-all cursor-pointer',
-            isModelDropdownOpen ? 'ring-2 ring-bolt-elements-focus' : undefined,
+            isModelDropdownOpen ? 'ring-2 ring-bolt-elements-borderColor' : undefined,
           )}
           onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
           onKeyDown={(e) => {
@@ -608,7 +608,7 @@ export const ModelSelector = ({
 
         {isModelDropdownOpen && (
           <div
-            className="absolute z-10 w-full mt-1 py-1 rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-background-depth-2 shadow-lg"
+            className="absolute z-10 w-full mt-1 py-1 rounded-lg border border-bolt-elements-borderColor bg-white dark:bg-gray-900 shadow-xl"
             role="listbox"
             id="model-listbox"
           >
@@ -626,8 +626,8 @@ export const ModelSelector = ({
                       'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-all',
                       'hover:bg-bolt-elements-background-depth-3',
                       showFreeModelsOnly
-                        ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
-                        : 'bg-bolt-elements-background-depth-3 text-bolt-elements-textSecondary border border-bolt-elements-borderColor',
+                        ? 'bg-bolt-elements-background-depth-3 text-bolt-elements-textPrimary border border-bolt-elements-borderColorActive'
+                        : 'bg-bolt-elements-background-depth-3 text-bolt-elements-textSecondary border border-bolt-elements-borderColor hover:border-bolt-elements-borderColorActive',
                     )}
                   >
                     <span className="i-ph:gift text-xs" />
@@ -659,9 +659,9 @@ export const ModelSelector = ({
                   placeholder="Search models... (⌘K to clear)"
                   className={classNames(
                     'w-full pl-8 pr-8 py-1.5 rounded-md text-sm',
-                    'bg-bolt-elements-background-depth-2 border border-bolt-elements-borderColor',
+                    'bg-bolt-elements-background-depth-3 border border-bolt-elements-borderColor',
                     'text-bolt-elements-textPrimary placeholder:text-bolt-elements-textTertiary',
-                    'focus:outline-none focus:ring-2 focus:ring-bolt-elements-focus',
+                    'focus:outline-none focus:ring-1 focus:ring-bolt-elements-borderColor',
                     'transition-all',
                   )}
                   onClick={(e) => e.stopPropagation()}
@@ -743,9 +743,9 @@ export const ModelSelector = ({
                       'text-bolt-elements-textPrimary',
                       'outline-none',
                       model === modelOption.name || focusedModelIndex === index
-                        ? 'bg-bolt-elements-background-depth-2'
+                        ? 'bg-bolt-elements-background-depth-3'
                         : undefined,
-                      focusedModelIndex === index ? 'ring-1 ring-inset ring-bolt-elements-focus' : undefined,
+                      focusedModelIndex === index ? 'ring-1 ring-inset ring-bolt-elements-borderColor' : undefined,
                     )}
                     onClick={(e) => {
                       e.stopPropagation();

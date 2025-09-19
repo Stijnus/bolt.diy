@@ -28,9 +28,15 @@
 
   /* Selection */
 
-  --cm-selection-backgroundColorFocused: var(--bolt-elements-editor-selection-backgroundColor, #42b4ff);
+  --cm-selection-backgroundColorFocused: var(
+    --bolt-elements-editor-selection-backgroundColor,
+    var(--bolt-elements-editor-selection-backgroundColorFocused)
+  );
   --cm-selection-backgroundOpacityFocused: var(--bolt-elements-editor-selection-backgroundOpacity, 0.3);
-  --cm-selection-backgroundColorBlured: var(--bolt-elements-editor-selection-inactiveBackgroundColor, #c9e9ff);
+  --cm-selection-backgroundColorBlured: var(
+    --bolt-elements-editor-selection-inactiveBackgroundColor,
+    var(--bolt-elements-editor-selection-inactiveBackgroundColor)
+  );
   --cm-selection-backgroundOpacityBlured: var(--bolt-elements-editor-selection-inactiveBackgroundOpacity, 0.3);
 
   /* Panels */

@@ -60,7 +60,7 @@ const BASE_COLORS = {
     900: '#14532D',
     950: '#052E16',
   },
-  orange: {
+  yellow: {
     50: '#FFFAEB',
     100: '#FEEFC7',
     200: '#FEDF89',
@@ -71,6 +71,19 @@ const BASE_COLORS = {
     700: '#B54708',
     800: '#93370D',
     900: '#792E0D',
+  },
+  blue: {
+    50: '#EFF6FF',
+    100: '#DBEAFE',
+    200: '#BFDBFE',
+    300: '#93C5FD',
+    400: '#60A5FA',
+    500: '#3B82F6',
+    600: '#2563EB',
+    700: '#1D4ED8',
+    800: '#1E40AF',
+    900: '#1E3A8A',
+    950: '#172554',
   },
   red: {
     50: '#FEF2F2',
@@ -93,6 +106,9 @@ const COLOR_PRIMITIVES = {
     white: generateAlphaPalette(BASE_COLORS.white),
     gray: generateAlphaPalette(BASE_COLORS.gray[900]),
     red: generateAlphaPalette(BASE_COLORS.red[500]),
+    green: generateAlphaPalette(BASE_COLORS.green[500]),
+    yellow: generateAlphaPalette(BASE_COLORS.yellow[500]),
+    blue: generateAlphaPalette(BASE_COLORS.blue[500]),
     accent: generateAlphaPalette(BASE_COLORS.accent[500]),
   },
 };
@@ -104,6 +120,20 @@ export default defineConfig({
     'transition-theme': 'transition-[background-color,border-color,color] duration-150 bolt-ease-cubic-bezier',
     kdb: 'bg-bolt-elements-code-background text-bolt-elements-code-text py-1 px-1.5 rounded-md',
     'max-w-chat': 'max-w-[var(--chat-max-width)]',
+
+    // Card shortcuts based on ProjectDashboard pattern
+    'card-base': 'rounded-xl p-6 shadow-sm hover:shadow-lg transition-all duration-300',
+    'card-blue': 'card-base bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 hover:shadow-blue-500/20',
+    'card-purple': 'card-base bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 hover:shadow-purple-500/20',
+    'card-green': 'card-base bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/20 hover:shadow-green-500/20',
+    'card-neutral': 'card-base bg-gradient-to-r from-gray-500/5 to-gray-500/10 border border-gray-500/20 hover:shadow-gray-500/20',
+
+    // Icon container shortcuts
+    'icon-container-base': 'w-10 h-10 rounded-lg flex items-center justify-center',
+    'icon-container-blue': 'icon-container-base bg-blue-500/20',
+    'icon-container-purple': 'icon-container-base bg-purple-500/20',
+    'icon-container-green': 'icon-container-base bg-green-500/20',
+    'icon-container-neutral': 'icon-container-base bg-gray-500/20',
   },
   rules: [
     /**
@@ -119,17 +149,25 @@ export default defineConfig({
         elements: {
           borderColor: 'var(--bolt-elements-borderColor)',
           borderColorActive: 'var(--bolt-elements-borderColorActive)',
-          background: {
-            depth: {
-              1: 'var(--bolt-elements-bg-depth-1)',
-              2: 'var(--bolt-elements-bg-depth-2)',
-              3: 'var(--bolt-elements-bg-depth-3)',
-              4: 'var(--bolt-elements-bg-depth-4)',
-            },
-          },
+          focus: 'var(--bolt-elements-focus)',
+          background: 'var(--bolt-elements-background)',
+          'background-depth-1': 'var(--bolt-elements-bg-depth-1)',
+          'background-depth-2': 'var(--bolt-elements-bg-depth-2)',
+          'background-depth-3': 'var(--bolt-elements-bg-depth-3)',
+          'background-depth-4': 'var(--bolt-elements-bg-depth-4)',
           textPrimary: 'var(--bolt-elements-textPrimary)',
           textSecondary: 'var(--bolt-elements-textSecondary)',
           textTertiary: 'var(--bolt-elements-textTertiary)',
+          modal: {
+            background: 'var(--bolt-elements-modal-background)',
+            overlay: 'var(--bolt-elements-modal-overlay)',
+          },
+          input: {
+            background: 'var(--bolt-elements-input-background)',
+            border: 'var(--bolt-elements-input-border)',
+            text: 'var(--bolt-elements-input-text)',
+            placeholder: 'var(--bolt-elements-input-placeholder)',
+          },
           code: {
             background: 'var(--bolt-elements-code-background)',
             text: 'var(--bolt-elements-code-text)',
@@ -149,6 +187,7 @@ export default defineConfig({
               background: 'var(--bolt-elements-button-danger-background)',
               backgroundHover: 'var(--bolt-elements-button-danger-backgroundHover)',
               text: 'var(--bolt-elements-button-danger-text)',
+              border: 'var(--bolt-elements-button-danger-border)',
             },
           },
           item: {
@@ -224,6 +263,62 @@ export default defineConfig({
           cta: {
             background: 'var(--bolt-elements-cta-background)',
             text: 'var(--bolt-elements-cta-text)',
+          },
+          status: {
+            success: {
+              background: 'var(--bolt-elements-status-success-background)',
+              text: 'var(--bolt-elements-status-success-text)',
+              border: 'var(--bolt-elements-status-success-border)',
+            },
+            warning: {
+              background: 'var(--bolt-elements-status-warning-background)',
+              text: 'var(--bolt-elements-status-warning-text)',
+              border: 'var(--bolt-elements-status-warning-border)',
+            },
+            error: {
+              background: 'var(--bolt-elements-status-error-background)',
+              text: 'var(--bolt-elements-status-error-text)',
+              border: 'var(--bolt-elements-status-error-border)',
+            },
+            info: {
+              background: 'var(--bolt-elements-status-info-background)',
+              text: 'var(--bolt-elements-status-info-text)',
+              border: 'var(--bolt-elements-status-info-border)',
+            },
+            neutral: {
+              background: 'var(--bolt-elements-status-neutral-background)',
+              text: 'var(--bolt-elements-status-neutral-text)',
+              border: 'var(--bolt-elements-status-neutral-border)',
+            },
+          },
+          card: {
+            blue: {
+              background: 'var(--bolt-elements-card-blue-background)',
+              border: 'var(--bolt-elements-card-blue-border)',
+              shadow: 'var(--bolt-elements-card-blue-shadow)',
+              iconBackground: 'var(--bolt-elements-card-blue-icon-background)',
+            },
+            purple: {
+              background: 'var(--bolt-elements-card-purple-background)',
+              border: 'var(--bolt-elements-card-purple-border)',
+              shadow: 'var(--bolt-elements-card-purple-shadow)',
+              iconBackground: 'var(--bolt-elements-card-purple-icon-background)',
+            },
+            green: {
+              background: 'var(--bolt-elements-card-green-background)',
+              border: 'var(--bolt-elements-card-green-border)',
+              shadow: 'var(--bolt-elements-card-green-shadow)',
+              iconBackground: 'var(--bolt-elements-card-green-icon-background)',
+            },
+            neutral: {
+              background: 'var(--bolt-elements-card-neutral-background)',
+              border: 'var(--bolt-elements-card-neutral-border)',
+              shadow: 'var(--bolt-elements-card-neutral-shadow)',
+              iconBackground: 'var(--bolt-elements-card-neutral-icon-background)',
+            },
+            transition: 'var(--bolt-elements-card-transition)',
+            hoverScale: 'var(--bolt-elements-card-hover-scale)',
+            borderRadius: 'var(--bolt-elements-card-border-radius)',
           },
         },
       },

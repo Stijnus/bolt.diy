@@ -136,7 +136,7 @@ export function BranchSelector({
           exit={{ opacity: 0, scale: 0.95 }}
           transition={{ duration: 0.2 }}
           className={classNames(
-            'bg-white dark:bg-gray-950 rounded-xl shadow-xl border border-bolt-elements-borderColor max-w-md w-full max-h-[80vh] flex flex-col',
+            'bg-bolt-elements-background rounded-xl shadow-xl border border-bolt-elements-borderColor max-w-md w-full max-h-[80vh] flex flex-col',
             className,
           )}
         >
@@ -205,7 +205,7 @@ export function BranchSelector({
                           className={classNames(
                             'w-full text-left p-3 rounded-lg transition-all duration-200 border',
                             selectedBranch === branch.name
-                              ? 'bg-blue-50 border-blue-200 text-blue-900 dark:bg-blue-950 dark:border-blue-800 dark:text-blue-100'
+                              ? 'bg-blue-50 border-blue-200 text-blue-900'
                               : 'bg-bolt-elements-background-depth-1 border-transparent hover:bg-bolt-elements-background-depth-2',
                           )}
                         >

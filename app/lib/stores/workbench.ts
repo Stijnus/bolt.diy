@@ -579,11 +579,8 @@ export class WorkbenchStore {
         this.currentView.set('code');
       }
 
-      const doc = this.#editorStore.documents.get()[fullPath];
-
-      if (!doc) {
-        await artifact.runner.runAction(data, isStreaming);
-      }
+      // Always forward file actions to runner so filesystem reflects streaming updates
+      await artifact.runner.runAction(data, isStreaming);
 
       this.#editorStore.updateFile(fullPath, data.action.content);
 
@@ -595,6 +592,9 @@ export class WorkbenchStore {
         await artifact.runner.runAction(data);
         this.resetAllFileModifications();
       }
+
+      // Flush any pending streaming-tracked file changes at end of non-streaming action
+      await artifact.runner.flushPendingFileChanges();
     } else {
       await artifact.runner.runAction(data);
     }
@@ -678,6 +678,51 @@ export class WorkbenchStore {
     return syncedFiles;
   }
 
+  async createProjectFromWebContainer(nameOverride?: string) {
+    const files = this.files.get();
+    const desc = description.get();
+
+    if (Object.keys(files).length === 0) {
+      throw new Error('No files in WebContainer to save as project');
+    }
+
+    const projectId = `webcontainer-${Date.now()}`;
+    const projectName = nameOverride?.trim() || desc || 'Current Workspace Snapshot';
+    const gitUrl = `webcontainer://${projectId}`;
+    const now = new Date().toISOString();
+
+    return {
+      id: projectId,
+      name: projectName,
+      gitUrl,
+      description: desc,
+      source: 'webcontainer' as const,
+      features: [],
+      branches: [{ name: 'main', author: 'bolt.diy', updated: now, commitHash: 'initial', isActive: true }],
+      createdAt: now,
+      ownerId: 'local-user',
+      collaborators: [],
+      analytics: {
+        totalCommits: 1,
+        totalHoursTracked: 0,
+        averageFeatureCompletionTime: 0,
+        completionRate: 0,
+        activeDevelopers: ['bolt.diy'],
+        lastActivityDate: now,
+        velocityTrend: [],
+      },
+      settings: {
+        defaultPriority: 'medium' as const,
+        autoTimeTracking: true,
+        notifications: {
+          deadlineAlerts: true,
+          statusUpdates: true,
+          weeklyReports: false,
+        },
+      },
+    };
+  }
+
   async pushToRepository(
     provider: 'github' | 'gitlab',
     repoName: string,
@@ -685,7 +730,7 @@ export class WorkbenchStore {
     username?: string,
     token?: string,
     isPrivate: boolean = false,
-    branchName: string = 'main',
+    _branchName: string = 'main',
   ) {
     try {
       const isGitHub = provider === 'github';
@@ -881,53 +926,33 @@ export class WorkbenchStore {
         const { GitLabApiService: gitLabApiServiceClass } = await import('~/lib/services/gitlabApiService');
         const gitLabApiService = new gitLabApiServiceClass(authToken, 'https://gitlab.com');
 
-        // Check or create repo
-        let repo = await gitLabApiService.getProject(owner, repoName);
-
-        if (!repo) {
-          repo = await gitLabApiService.createProject(repoName, isPrivate);
-          await new Promise((r) => setTimeout(r, 2000)); // Wait for repo initialization
-        }
-
-        // Check if branch exists, create if not
-        const branchRes = await gitLabApiService.getFile(repo.id, 'README.md', branchName).catch(() => null);
-
-        if (!branchRes || !branchRes.ok) {
-          // Create branch from default
-          await gitLabApiService.createBranch(repo.id, branchName, repo.default_branch);
-          await new Promise((r) => setTimeout(r, 1000));
-        }
-
-        const actions = Object.entries(files).reduce(
+        // Prepare files for upload
+        const filesToUpload = Object.entries(files).reduce(
           (acc, [filePath, dirent]) => {
             if (dirent?.type === 'file' && dirent.content) {
-              acc.push({
-                action: 'create',
-                file_path: extractRelativePath(filePath),
-                content: dirent.content,
-              });
+              acc[extractRelativePath(filePath)] = dirent.content;
             }
 
             return acc;
           },
-          [] as { action: 'create' | 'update'; file_path: string; content: string }[],
+          {} as Record<string, string>,
         );
 
-        // Check which files exist and update action accordingly
-        for (const action of actions) {
-          const fileCheck = await gitLabApiService.getFile(repo.id, action.file_path, branchName);
+        // Check if project exists
+        let repo = await gitLabApiService.getProject(owner, repoName);
 
-          if (fileCheck.ok) {
-            action.action = 'update';
+        if (!repo) {
+          // Create new project with files
+          repo = await gitLabApiService.createProjectWithFiles(repoName, isPrivate, filesToUpload);
+        } else {
+          // Update existing project with files
+          await gitLabApiService.updateProjectWithFiles(repo.id, filesToUpload);
+
+          // Update visibility if needed
+          if ((repo.visibility === 'private') !== isPrivate) {
+            await gitLabApiService.updateProjectVisibility(repo.id, isPrivate ? 'private' : 'public');
           }
         }
-
-        // Commit all files
-        await gitLabApiService.commitFiles(repo.id, {
-          branch: branchName,
-          commit_message: commitMessage || 'Commit multiple files',
-          actions,
-        });
 
         return repo.web_url;
       }

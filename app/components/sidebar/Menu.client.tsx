@@ -1,19 +1,24 @@
 import { motion, type Variants } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { toast } from 'react-toastify';
-import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
+import { Link } from '@remix-run/react';
+import { useStore } from '@nanostores/react';
+import { Dialog, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
 import { ThemeSwitch } from '~/components/ui/ThemeSwitch';
 import { ControlPanel } from '~/components/@settings/core/ControlPanel';
-import { SettingsButton, HelpButton } from '~/components/ui/SettingsButton';
+import { ArrowRight, Folder, HelpCircle, LogOut, Plus, Users } from 'lucide-react';
+import { SettingsButton } from '~/components/ui/SettingsButton';
 import { Button } from '~/components/ui/Button';
+import { LoginDialog } from '~/components/auth/LoginDialog';
+import { UserSummary } from '~/components/ui/UserSummary';
+import { AvatarDropdown } from '~/components/@settings/core/AvatarDropdown';
 import { db, deleteById, getAll, chatId, type ChatHistoryItem, useChatHistory } from '~/lib/persistence';
 import { cubicEasingFn } from '~/utils/easings';
 import { HistoryItem } from './HistoryItem';
 import { binDates } from './date-binning';
 import { useSearchFilter } from '~/lib/hooks/useSearchFilter';
 import { classNames } from '~/utils/classNames';
-import { useStore } from '@nanostores/react';
-import { profileStore } from '~/lib/stores/profile';
+import { isAuthenticated, currentUser, logout } from '~/lib/stores/auth';
+import { showError, showInfo, showSuccess, showWarning } from '~/lib/utils/toast';
 
 const menuVariants = {
   closed: {
@@ -53,7 +58,7 @@ function CurrentDateTime() {
   }, []);
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800/50">
+    <div className="flex items-center gap-2 px-4 py-2 text-sm text-bolt-elements-textSecondary border-b border-bolt-elements-borderColor/50">
       <div className="h-4 w-4 i-ph:clock opacity-80" />
       <div className="flex gap-2">
         <span>{dateTime.toLocaleDateString()}</span>
@@ -66,13 +71,35 @@ function CurrentDateTime() {
 export const Menu = () => {
   const { duplicateCurrentChat, exportChat } = useChatHistory();
   const menuRef = useRef<HTMLDivElement>(null);
+  const authenticated = useStore(isAuthenticated);
+  const user = useStore(currentUser);
   const [list, setList] = useState<ChatHistoryItem[]>([]);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!authenticated);
   const [dialogContent, setDialogContent] = useState<DialogContent>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const profile = useStore(profileStore);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<string | undefined>();
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
+  const navigationLinks = [
+    { to: '/projects', label: 'Projects', icon: Folder },
+    { to: '/teams', label: 'Teams', icon: Users },
+    {
+      href: 'https://stackblitz-labs.github.io/bolt.diy/',
+      label: 'Help & Documentation',
+      icon: HelpCircle,
+    },
+  ];
+
+  const handleLogoutClick = async () => {
+    try {
+      await logout();
+      showSuccess('Signed out');
+    } catch (error) {
+      console.error('Failed to sign out:', error);
+      showError('Failed to sign out');
+    }
+  };
 
   const { filteredItems: filteredList, handleSearchChange } = useSearchFilter({
     items: list,
@@ -84,7 +111,7 @@ export const Menu = () => {
       getAll(db)
         .then((list) => list.filter((item) => item.urlId && item.description))
         .then(setList)
-        .catch((error) => toast.error(error.message));
+        .catch((error) => showError(error.message));
     }
   }, []);
 
@@ -120,10 +147,7 @@ export const Menu = () => {
 
       deleteChat(item.id)
         .then(() => {
-          toast.success('Chat deleted successfully', {
-            position: 'bottom-right',
-            autoClose: 3000,
-          });
+          showSuccess('Chat deleted successfully');
 
           // Always refresh the list
           loadEntries();
@@ -136,10 +160,7 @@ export const Menu = () => {
         })
         .catch((error) => {
           console.error('Failed to delete chat:', error);
-          toast.error('Failed to delete conversation', {
-            position: 'bottom-right',
-            autoClose: 3000,
-          });
+          showError('Failed to delete conversation');
 
           // Still try to reload entries in case data has changed
           loadEntries();
@@ -179,9 +200,9 @@ export const Menu = () => {
 
       // Show appropriate toast message
       if (errors.length === 0) {
-        toast.success(`${deletedCount} chat${deletedCount === 1 ? '' : 's'} deleted successfully`);
+        showSuccess(`${deletedCount} chat${deletedCount === 1 ? '' : 's'} deleted successfully`);
       } else {
-        toast.warning(`Deleted ${deletedCount} of ${itemsToDeleteIds.length} chats. ${errors.length} failed.`, {
+        showWarning(`Deleted ${deletedCount} of ${itemsToDeleteIds.length} chats. ${errors.length} failed.`, {
           autoClose: 5000,
         });
       }
@@ -226,14 +247,14 @@ export const Menu = () => {
 
   const handleBulkDeleteClick = useCallback(() => {
     if (selectedItems.length === 0) {
-      toast.info('Select at least one chat to delete');
+      showInfo('Select at least one chat to delete');
       return;
     }
 
     const selectedChats = list.filter((item) => selectedItems.includes(item.id));
 
     if (selectedChats.length === 0) {
-      toast.error('Could not find selected chats');
+      showError('Could not find selected chats');
       return;
     }
 
@@ -260,6 +281,14 @@ export const Menu = () => {
       }
     });
   }, [filteredList]); // Depends only on filteredList
+
+  useEffect(() => {
+    if (!authenticated) {
+      setOpen(true);
+    } else {
+      setShowLoginDialog(false);
+    }
+  }, [authenticated]);
 
   useEffect(() => {
     if (open) {
@@ -315,6 +344,7 @@ export const Menu = () => {
 
   const handleSettingsClose = () => {
     setIsSettingsOpen(false);
+    setSettingsInitialTab(undefined);
   };
 
   const setDialogContentWithLogging = useCallback((content: DialogContent) => {
@@ -332,63 +362,124 @@ export const Menu = () => {
         style={{ width: '340px' }}
         className={classNames(
           'flex selection-accent flex-col side-menu fixed top-0 h-full rounded-r-2xl',
-          'bg-white dark:bg-gray-950 border-r border-bolt-elements-borderColor',
+          'bg-bolt-elements-background border-r border-bolt-elements-borderColor',
           'shadow-sm text-sm',
           isSettingsOpen ? 'z-40' : 'z-sidebar',
         )}
       >
-        <div className="h-12 flex items-center justify-between px-4 border-b border-gray-100 dark:border-gray-800/50 bg-gray-50/50 dark:bg-gray-900/50 rounded-tr-2xl">
-          <div className="text-gray-900 dark:text-white font-medium"></div>
-          <div className="flex items-center gap-3">
-            <HelpButton onClick={() => window.open('https://stackblitz-labs.github.io/bolt.diy/', '_blank')} />
-            <span className="font-medium text-sm text-gray-900 dark:text-white truncate">
-              {profile?.username || 'Guest User'}
-            </span>
-            <div className="flex items-center justify-center w-[32px] h-[32px] overflow-hidden bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-500 rounded-full shrink-0">
-              {profile?.avatar ? (
-                <img
-                  src={profile.avatar}
-                  alt={profile?.username || 'User'}
-                  className="w-full h-full object-cover"
-                  loading="eager"
-                  decoding="sync"
-                />
-              ) : (
-                <div className="i-ph:user-fill text-lg" />
-              )}
-            </div>
-          </div>
+        <div className="h-12 flex items-center justify-between px-4 border-b border-bolt-elements-borderColor/50 bg-bolt-elements-background-depth-1 rounded-tr-2xl">
+          <Link
+            to="/"
+            className="flex items-center gap-2 text-sm font-medium text-bolt-elements-textPrimary hover:text-bolt-elements-item-contentAccent transition-colors"
+          >
+            <span className="i-ph:squares-four w-4 h-4" />
+            Workspace
+          </Link>
         </div>
         <CurrentDateTime />
         <div className="flex-1 flex flex-col h-full w-full overflow-hidden">
-          <div className="p-4 space-y-3">
+          <div className="p-4 space-y-4">
             <div className="flex gap-2">
-              <a
-                href="/"
-                className="flex-1 flex gap-2 items-center bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-500/20 rounded-lg px-4 py-2 transition-colors"
-              >
-                <span className="inline-block i-ph:plus-circle h-4 w-4" />
-                <span className="text-sm font-medium">Start new chat</span>
-              </a>
-              <button
+              <Button asChild variant="cta" size="lg" className="flex-1 px-5 justify-between">
+                <Link to="/" className="flex items-center justify-between w-full gap-3">
+                  <span className="flex items-center gap-2">
+                    <Plus className="w-4 h-4" />
+                    <span className="text-sm font-semibold">Start new chat</span>
+                  </span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </Button>
+              <Button
                 onClick={toggleSelectionMode}
-                className={classNames(
-                  'flex gap-1 items-center rounded-lg px-3 py-2 transition-colors',
-                  selectionMode
-                    ? 'bg-purple-600 dark:bg-purple-500 text-white border border-purple-700 dark:border-purple-600'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700',
-                )}
+                variant={selectionMode ? 'primary' : 'sidebar-action'}
+                size="lg"
+                className="px-4 aspect-square"
                 aria-label={selectionMode ? 'Exit selection mode' : 'Enter selection mode'}
               >
                 <span className={selectionMode ? 'i-ph:x h-4 w-4' : 'i-ph:check-square h-4 w-4'} />
-              </button>
+              </Button>
+            </div>
+            {!authenticated && (
+              <div className="rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-background-depth-2 px-4 py-3 shadow-sm">
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-bolt-elements-textPrimary">Welcome to BoltDIY</p>
+                    <p className="text-xs text-bolt-elements-textSecondary">
+                      Sign in to save chats, manage your teams, and sync work across sessions.
+                    </p>
+                  </div>
+                  <Button
+                    variant="cta"
+                    size="lg"
+                    className="w-full px-5 justify-between"
+                    onClick={() => setShowLoginDialog(true)}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="i-ph:sign-in w-4 h-4" />
+                      <span className="text-sm font-semibold">Sign In</span>
+                    </span>
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+            {authenticated && user && (
+              <div className="rounded-lg border border-bolt-elements-borderColor bg-transparent px-4 py-3">
+                <div className="flex items-start justify-between gap-4">
+                  <UserSummary user={user} showEmail showUsername orientation="vertical" showAvatar={false} />
+                  <AvatarDropdown
+                    onSelectTab={(tab) => {
+                      console.log('AvatarDropdown tab selected:', tab);
+                      setSettingsInitialTab(tab);
+                      setIsSettingsOpen(true);
+                      setOpen(false);
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-bolt-elements-textSecondary">
+                Navigation
+              </p>
+              <nav className="space-y-2">
+                {navigationLinks.map((item) => {
+                  const Icon = item.icon;
+                  const buttonContent = (
+                    <Button variant="sidebar-nav" size="lg" className="w-full justify-between px-4 py-3">
+                      <span className="flex items-center gap-3 text-sm font-medium relative z-10">
+                        {Icon ? (
+                          <Icon className="w-4 h-4 transition-transform duration-200 group-hover:scale-110" />
+                        ) : null}
+                        {item.label}
+                      </span>
+                      <ArrowRight className="w-4 h-4 opacity-60 group-hover:opacity-100 transition-all duration-200 group-hover:translate-x-0.5 relative z-10" />
+                    </Button>
+                  );
+
+                  if ('to' in item && item.to) {
+                    return (
+                      <Link key={item.label} to={item.to} className="block">
+                        {buttonContent}
+                      </Link>
+                    );
+                  }
+
+                  return (
+                    <a key={item.label} href={item.href!} target="_blank" rel="noreferrer" className="block">
+                      {buttonContent}
+                    </a>
+                  );
+                })}
+              </nav>
             </div>
             <div className="relative w-full">
               <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                <span className="i-ph:magnifying-glass h-4 w-4 text-gray-400 dark:text-gray-500" />
+                <span className="i-ph:magnifying-glass h-4 w-4 text-bolt-elements-textTertiary" />
               </div>
               <input
-                className="w-full bg-gray-50 dark:bg-gray-900 relative pl-9 pr-3 py-2 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500/50 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-500 border border-gray-200 dark:border-gray-800"
+                className="w-full bg-transparent relative pl-9 pr-3 py-2 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500/50 text-sm text-bolt-elements-textPrimary placeholder-bolt-elements-textTertiary border border-bolt-elements-borderColor/40 hover:border-bolt-elements-borderColor focus:border-bolt-elements-borderColorActive/50 transition-colors duration-200"
                 type="search"
                 placeholder="Search chats..."
                 onChange={handleSearchChange}
@@ -396,34 +487,46 @@ export const Menu = () => {
               />
             </div>
           </div>
-          <div className="flex items-center justify-between text-sm px-4 py-2">
-            <div className="font-medium text-gray-600 dark:text-gray-400">Your Chats</div>
-            {selectionMode && (
+          <div className="px-4 py-3">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={selectAll}>
-                  {selectedItems.length === filteredList.length ? 'Deselect all' : 'Select all'}
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleBulkDeleteClick}
-                  disabled={selectedItems.length === 0}
-                >
-                  Delete selected
-                </Button>
+                <div className="flex items-center justify-center w-6 h-6 rounded-md bg-bolt-elements-background-depth-2/50 border border-bolt-elements-borderColor/30">
+                  <span className="i-ph:clock-counter-clockwise w-3.5 h-3.5 text-bolt-elements-textSecondary" />
+                </div>
+                <span className="text-xs font-semibold uppercase tracking-wide text-bolt-elements-textSecondary">
+                  Chat History
+                </span>
               </div>
-            )}
+              {selectionMode && (
+                <div className="flex items-center gap-1.5">
+                  <Button variant="sidebar-action" size="sm" className="px-2 py-1 text-xs h-7" onClick={selectAll}>
+                    <span className="i-ph:check-circle w-3 h-3 mr-1" />
+                    {selectedItems.length === filteredList.length ? 'None' : 'All'}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="px-2 py-1 text-xs h-7"
+                    onClick={handleBulkDeleteClick}
+                    disabled={selectedItems.length === 0}
+                  >
+                    <span className="i-ph:trash w-3 h-3 mr-1" />
+                    Delete
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex-1 overflow-auto px-3 pb-3">
             {filteredList.length === 0 && (
-              <div className="px-4 text-gray-500 dark:text-gray-400 text-sm">
+              <div className="px-4 text-bolt-elements-textSecondary text-sm">
                 {list.length === 0 ? 'No previous conversations' : 'No matches found'}
               </div>
             )}
             <DialogRoot open={dialogContent !== null}>
               {binDates(filteredList).map(({ category, items }) => (
                 <div key={category} className="mt-2 first:mt-0 space-y-1">
-                  <div className="text-xs font-medium text-gray-500 dark:text-gray-400 sticky top-0 z-1 bg-white dark:bg-gray-950 px-4 py-1">
+                  <div className="text-xs font-medium text-bolt-elements-textSecondary sticky top-0 z-1 bg-bolt-elements-background px-4 py-1">
                     {category}
                   </div>
                   <div className="space-y-0.5 pr-1">
@@ -450,24 +553,24 @@ export const Menu = () => {
               <Dialog onBackdrop={closeDialog} onClose={closeDialog}>
                 {dialogContent?.type === 'delete' && (
                   <>
-                    <div className="p-6 bg-white dark:bg-gray-950">
-                      <DialogTitle className="text-gray-900 dark:text-white">Delete Chat?</DialogTitle>
-                      <DialogDescription className="mt-2 text-gray-600 dark:text-gray-400">
+                    <div className="p-6 bg-bolt-elements-background">
+                      <DialogTitle className="text-bolt-elements-textPrimary">Delete Chat?</DialogTitle>
+                      <DialogDescription className="mt-2 text-bolt-elements-textSecondary">
                         <p>
                           You are about to delete{' '}
-                          <span className="font-medium text-gray-900 dark:text-white">
+                          <span className="font-medium text-bolt-elements-textPrimary">
                             {dialogContent.item.description}
                           </span>
                         </p>
                         <p className="mt-2">Are you sure you want to delete this chat?</p>
                       </DialogDescription>
                     </div>
-                    <div className="flex justify-end gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800">
-                      <DialogButton type="secondary" onClick={closeDialog}>
+                    <div className="flex justify-end gap-3 px-6 py-4 bg-bolt-elements-background-depth-2 border-t border-bolt-elements-borderColor">
+                      <Button variant="outline" onClick={closeDialog}>
                         Cancel
-                      </DialogButton>
-                      <DialogButton
-                        type="danger"
+                      </Button>
+                      <Button
+                        variant="destructive"
                         onClick={(event) => {
                           console.log('Dialog delete button clicked for item:', dialogContent.item);
                           deleteItem(event, dialogContent.item);
@@ -475,24 +578,24 @@ export const Menu = () => {
                         }}
                       >
                         Delete
-                      </DialogButton>
+                      </Button>
                     </div>
                   </>
                 )}
                 {dialogContent?.type === 'bulkDelete' && (
                   <>
-                    <div className="p-6 bg-white dark:bg-gray-950">
-                      <DialogTitle className="text-gray-900 dark:text-white">Delete Selected Chats?</DialogTitle>
-                      <DialogDescription className="mt-2 text-gray-600 dark:text-gray-400">
+                    <div className="p-6 bg-bolt-elements-background">
+                      <DialogTitle className="text-bolt-elements-textPrimary">Delete Selected Chats?</DialogTitle>
+                      <DialogDescription className="mt-2 text-bolt-elements-textSecondary">
                         <p>
                           You are about to delete {dialogContent.items.length}{' '}
                           {dialogContent.items.length === 1 ? 'chat' : 'chats'}:
                         </p>
-                        <div className="mt-2 max-h-32 overflow-auto border border-gray-100 dark:border-gray-800 rounded-md bg-gray-50 dark:bg-gray-900 p-2">
+                        <div className="mt-2 max-h-32 overflow-auto border border-bolt-elements-borderColor rounded-md bg-bolt-elements-background-depth-2 p-2">
                           <ul className="list-disc pl-5 space-y-1">
                             {dialogContent.items.map((item) => (
                               <li key={item.id} className="text-sm">
-                                <span className="font-medium text-gray-900 dark:text-white">{item.description}</span>
+                                <span className="font-medium text-bolt-elements-textPrimary">{item.description}</span>
                               </li>
                             ))}
                           </ul>
@@ -500,12 +603,12 @@ export const Menu = () => {
                         <p className="mt-3">Are you sure you want to delete these chats?</p>
                       </DialogDescription>
                     </div>
-                    <div className="flex justify-end gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800">
-                      <DialogButton type="secondary" onClick={closeDialog}>
+                    <div className="flex justify-end gap-3 px-6 py-4 bg-bolt-elements-background-depth-2 border-t border-bolt-elements-borderColor">
+                      <Button variant="outline" onClick={closeDialog}>
                         Cancel
-                      </DialogButton>
-                      <DialogButton
-                        type="danger"
+                      </Button>
+                      <Button
+                        variant="destructive"
                         onClick={() => {
                           /*
                            * Pass the current selectedItems to the delete function.
@@ -518,23 +621,35 @@ export const Menu = () => {
                         }}
                       >
                         Delete
-                      </DialogButton>
+                      </Button>
                     </div>
                   </>
                 )}
               </Dialog>
             </DialogRoot>
           </div>
-          <div className="flex items-center justify-between border-t border-gray-200 dark:border-gray-800 px-4 py-3">
+          <div className="flex items-center justify-between border-t border-bolt-elements-borderColor px-4 py-3">
             <div className="flex items-center gap-3">
               <SettingsButton onClick={handleSettingsClick} />
+              {authenticated && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleLogoutClick}
+                  className="flex items-center gap-2 text-bolt-elements-textSecondary hover:text-red-600"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </Button>
+              )}
             </div>
             <ThemeSwitch />
           </div>
         </div>
       </motion.div>
 
-      <ControlPanel open={isSettingsOpen} onClose={handleSettingsClose} />
+      <ControlPanel open={isSettingsOpen} onClose={handleSettingsClose} initialTab={settingsInitialTab as any} />
+      <LoginDialog isOpen={showLoginDialog} onClose={() => setShowLoginDialog(false)} />
     </>
   );
 };

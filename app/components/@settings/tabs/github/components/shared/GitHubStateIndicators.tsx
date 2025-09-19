@@ -216,39 +216,39 @@ export function ConnectionTestIndicator({ status, message, timestamp, className 
   const getStatusColor = () => {
     switch (status) {
       case 'success':
-        return 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-700';
+        return 'bg-bolt-elements-status-success-background border-bolt-elements-status-success-border';
       case 'error':
-        return 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-700';
+        return 'bg-bolt-elements-status-error-background border-bolt-elements-status-error-border';
       case 'testing':
-        return 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-700';
+        return 'bg-bolt-elements-status-info-background border-bolt-elements-status-info-border';
       default:
-        return 'bg-gray-50 border-gray-200 dark:bg-gray-900/20 dark:border-gray-700';
+        return 'bg-bolt-elements-status-neutral-background border-bolt-elements-status-neutral-border';
     }
   };
 
   const getStatusIcon = () => {
     switch (status) {
       case 'success':
-        return <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />;
+        return <CheckCircle className="w-5 h-5 text-bolt-elements-status-success-text" />;
       case 'error':
-        return <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />;
+        return <AlertCircle className="w-5 h-5 text-bolt-elements-status-error-text" />;
       case 'testing':
-        return <Loader2 className="w-5 h-5 animate-spin text-blue-600 dark:text-blue-400" />;
+        return <Loader2 className="w-5 h-5 animate-spin text-bolt-elements-status-info-text" />;
       default:
-        return <Info className="w-5 h-5 text-gray-600 dark:text-gray-400" />;
+        return <Info className="w-5 h-5 text-bolt-elements-status-neutral-text" />;
     }
   };
 
   const getStatusTextColor = () => {
     switch (status) {
       case 'success':
-        return 'text-green-800 dark:text-green-200';
+        return 'text-bolt-elements-status-success-text';
       case 'error':
-        return 'text-red-800 dark:text-red-200';
+        return 'text-bolt-elements-status-error-text';
       case 'testing':
-        return 'text-blue-800 dark:text-blue-200';
+        return 'text-bolt-elements-status-info-text';
       default:
-        return 'text-gray-800 dark:text-gray-200';
+        return 'text-bolt-elements-status-neutral-text';
     }
   };
 
@@ -258,7 +258,9 @@ export function ConnectionTestIndicator({ status, message, timestamp, className 
         {getStatusIcon()}
         <span className={classNames('text-sm font-medium', getStatusTextColor())}>{message || status}</span>
       </div>
-      {timestamp && <p className="text-xs text-gray-500 mt-1">{new Date(timestamp).toLocaleString()}</p>}
+      {timestamp && (
+        <p className="text-xs text-bolt-elements-textTertiary mt-1">{new Date(timestamp).toLocaleString()}</p>
+      )}
     </div>
   );
 }
