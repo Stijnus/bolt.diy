@@ -31,9 +31,43 @@ const sanitizeRepoKey = (gitUrl: string) => {
   return gitUrl.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase();
 };
 
+const lightningWorkspaceCache = new Map<string, GitWorkspace>();
+
+const syncLightningWorkspace = async (workspace: GitWorkspace, projectGitUrl: string) => {
+  const authOptions = getGitAuthOptions(projectGitUrl);
+
+  try {
+    await git.fetch({
+      fs: workspace.fs,
+      dir: workspace.dir,
+      remote: 'origin',
+      ...gitHttpOptions,
+      ...authOptions,
+    });
+
+    await git.pull({
+      fs: workspace.fs,
+      dir: workspace.dir,
+      singleBranch: false,
+      fastForwardOnly: true,
+      ...gitHttpOptions,
+      ...authOptions,
+    });
+  } catch (syncError) {
+    console.warn('Failed to synchronize lightning-fs workspace with remote:', syncError);
+  }
+};
+
 const ensureRepoInLightningFs = async (projectGitUrl: string): Promise<GitWorkspace> => {
   const repoKey = sanitizeRepoKey(projectGitUrl) || 'repo';
-  const lightningFs = new LightningFS(`git-repo:${repoKey}:${Date.now()}`, { wipe: true });
+  const cachedWorkspace = lightningWorkspaceCache.get(repoKey);
+
+  if (cachedWorkspace) {
+    await syncLightningWorkspace(cachedWorkspace, projectGitUrl);
+    return cachedWorkspace;
+  }
+
+  const lightningFs = new LightningFS(`git-repo:${repoKey}`, { wipe: false });
   const fs = lightningFs as unknown as PromiseFsClient;
   const dir = `/${repoKey}`;
 
@@ -45,21 +79,28 @@ const ensureRepoInLightningFs = async (projectGitUrl: string): Promise<GitWorksp
 
   const authOptions = getGitAuthOptions(projectGitUrl);
 
-  try {
-    await git.clone({
-      fs,
-      dir,
-      url: projectGitUrl,
-      depth: 1,
-      ...gitHttpOptions,
-      ...authOptions,
-    });
-  } catch (cloneError) {
-    console.error('Failed to clone repository into lightning-fs workspace:', cloneError);
-    throw cloneError instanceof Error ? cloneError : new Error(String(cloneError ?? ''));
-  }
+  let repoReady = await hasGitMetadata(fs, dir);
 
-  const repoReady = await hasGitMetadata(fs, dir);
+  const workspace: GitWorkspace = { fs, dir };
+
+  if (!repoReady) {
+    try {
+      await git.clone({
+        fs,
+        dir,
+        url: projectGitUrl,
+        depth: 1,
+        ...gitHttpOptions,
+        ...authOptions,
+      });
+      repoReady = await hasGitMetadata(fs, dir);
+    } catch (cloneError) {
+      console.error('Failed to clone repository into lightning-fs workspace:', cloneError);
+      throw cloneError instanceof Error ? cloneError : new Error(String(cloneError ?? ''));
+    }
+  } else {
+    await syncLightningWorkspace(workspace, projectGitUrl);
+  }
 
   if (!repoReady) {
     throw new GitRepositoryNotFoundError(
@@ -67,7 +108,9 @@ const ensureRepoInLightningFs = async (projectGitUrl: string): Promise<GitWorksp
     );
   }
 
-  return { fs, dir };
+  lightningWorkspaceCache.set(repoKey, workspace);
+
+  return workspace;
 };
 
 export interface GitService {
