@@ -113,7 +113,7 @@
     "electron-store": "^10.0.0",
     "electron-updater": "^6.3.9",
     "file-saver": "^2.0.5",
-    "framer-motion": "^11.12.0",
+    "framer-motion": "^11.18.2",
     "ignore": "^6.0.2",
     "isbot": "^4.4.0",
     "isomorphic-git": "^1.27.2",
@@ -132,11 +132,11 @@
     "react-dnd": "^16.0.1",
     "react-dnd-html5-backend": "^16.0.1",
     "react-dom": "^19.1.1",
-    "react-hotkeys-hook": "^4.6.1",
+    "react-hotkeys-hook": "^4.6.2",
     "react-icons": "^5.4.0",
-    "react-markdown": "^9.0.1",
+    "react-markdown": "^9.1.0",
     "react-qrcode-logo": "^3.0.0",
-    "react-resizable-panels": "^2.1.7",
+    "react-resizable-panels": "^2.1.9",
     "react-toastify": "^10.0.6",
     "react-window": "^1.8.11",
     "rehype-raw": "^7.0.0",
@@ -170,7 +170,7 @@
     "@types/path-browserify": "^1.0.3",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
-    "@types/react-window": "1",
+    "@types/react-window": "^1.8.8",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
@@ -201,6 +201,14 @@
   },
   "resolutions": {
     "@typescript-eslint/utils": "^8.0.0-alpha.30"
+  },
+  "pnpm": {
+    "overrides": {
+      "react": "19.1.1",
+      "react-dom": "19.1.1",
+      "@types/react": "19.1.13",
+      "@types/react-dom": "19.1.9"
+    }
   },
   "packageManager": "pnpm@9.4.0"
 }

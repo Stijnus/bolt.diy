@@ -44,6 +44,7 @@ const { projects, addProject, updateProject, deleteProject } = useSimpleProjects
 ## Database
 
 Uses IndexedDB for local storage with the following schema:
+
 - Projects stored in 'projects' object store
 - Each project has id, name, gitUrl, description, tasks, gitInfo
 - Tasks are embedded within projects for simplicity
