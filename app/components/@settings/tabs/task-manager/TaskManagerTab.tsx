@@ -857,7 +857,12 @@ const TaskManagerTab: React.FC = () => {
   // Chart rendering function
   const renderUsageGraph = React.useMemo(
     () =>
-      (data: number[], label: string, color: string, chartRef: React.RefObject<Chart<'line', number[], string>>) => {
+      (
+        data: number[],
+        label: string,
+        color: string,
+        chartRef: React.RefObject<Chart<'line', number[], string> | null>,
+      ) => {
         // Ensure we have valid data
         const validData = data.map((value) => (isNaN(value) ? 0 : value));
 

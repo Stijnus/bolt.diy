@@ -47,7 +47,7 @@ import { StickToBottom, useStickToBottomContext } from '~/lib/hooks';
 const TEXTAREA_MIN_HEIGHT = 76;
 
 interface BaseChatProps {
-  textareaRef?: React.RefObject<HTMLTextAreaElement> | undefined;
+  textareaRef?: React.RefObject<HTMLTextAreaElement | null> | undefined;
   messageRef?: RefCallback<HTMLDivElement> | undefined;
   scrollRef?: RefCallback<HTMLDivElement> | undefined;
   showChat?: boolean;
