@@ -1,21 +1,13 @@
 /**
  * Functions for managing chat data in IndexedDB
  */
-
 import type { UIMessage } from 'ai';
-import type { IChatMetadata } from './db'; // Import IChatMetadata
-
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp: number;
-}
+import type { IChatMetadata } from './db';
 
 export interface Chat {
   id: string;
   description?: string;
-  messages: Message[];
+  messages: UIMessage[];
   timestamp: string;
   urlId?: string;
   metadata?: IChatMetadata;

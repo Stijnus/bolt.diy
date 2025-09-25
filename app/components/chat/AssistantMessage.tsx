@@ -1,21 +1,12 @@
 import { memo, Fragment } from 'react';
 import { Markdown } from './Markdown';
-import type { JSONValue } from 'ai';
+import { type JSONValue, type UIMessage, type UIMessagePart, type UIDataTypes, type UITools } from 'ai';
 import Popover from '~/components/ui/Popover';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { WORK_DIR } from '~/utils/constants';
 import WithTooltip from '~/components/ui/Tooltip';
-import type { Message } from 'ai';
 import type { ProviderInfo } from '~/types/model';
-import type {
-  TextUIPart,
-  ReasoningUIPart,
-  ToolInvocationUIPart,
-  SourceUIPart,
-  FileUIPart,
-  StepStartUIPart,
-} from '@ai-sdk/ui-utils';
-import { ToolInvocations } from './ToolInvocations';
+import { ToolInvocations, normalizeToolInvocations } from './ToolInvocations';
 import type { ToolCallAnnotation } from '~/types/context';
 
 interface AssistantMessageProps {
@@ -24,14 +15,12 @@ interface AssistantMessageProps {
   messageId?: string;
   onRewind?: (messageId: string) => void;
   onFork?: (messageId: string) => void;
-  append?: (message: Message) => void;
+  append?: (message: UIMessage) => void;
   chatMode?: 'discuss' | 'build';
   setChatMode?: (mode: 'discuss' | 'build') => void;
   model?: string;
   provider?: ProviderInfo;
-  parts:
-    | (TextUIPart | ReasoningUIPart | ToolInvocationUIPart | SourceUIPart | FileUIPart | StepStartUIPart)[]
-    | undefined;
+  parts?: UIMessagePart<UIDataTypes, UITools>[];
   addToolResult: ({ toolCallId, result }: { toolCallId: string; result: any }) => void;
 }
 
@@ -91,13 +80,16 @@ export const AssistantMessage = memo(
       codeContext = filteredAnnotations.find((annotation) => annotation.type === 'codeContext')?.files;
     }
 
-    const usage: {
-      completionTokens: number;
-      promptTokens: number;
-      totalTokens: number;
-    } = filteredAnnotations.find((annotation) => annotation.type === 'usage')?.value;
+    const usage = filteredAnnotations.find((annotation) => annotation.type === 'usage')
+      ?.value as
+      | {
+          outputTokens: number;
+          inputTokens: number;
+          totalTokens: number;
+        }
+      | undefined;
 
-    const toolInvocations = parts?.filter((part) => part.type === 'tool-invocation');
+    const toolInvocations = normalizeToolInvocations(parts);
     const toolCallAnnotations = filteredAnnotations.filter(
       (annotation) => annotation.type === 'toolCall',
     ) as ToolCallAnnotation[];
@@ -148,7 +140,7 @@ export const AssistantMessage = memo(
             <div className="flex w-full items-center justify-between">
               {usage && (
                 <div>
-                  Tokens: {usage.totalTokens} (prompt: {usage.promptTokens}, completion: {usage.completionTokens})
+                  Tokens: {usage.totalTokens} (input: {usage.inputTokens}, output: {usage.outputTokens})
                 </div>
               )}
               {(onRewind || onFork) && messageId && (
@@ -179,12 +171,8 @@ export const AssistantMessage = memo(
         <Markdown append={append} chatMode={chatMode} setChatMode={setChatMode} model={model} provider={provider} html>
           {content}
         </Markdown>
-        {toolInvocations && toolInvocations.length > 0 && (
-          <ToolInvocations
-            toolInvocations={toolInvocations}
-            toolCallAnnotations={toolCallAnnotations}
-            addToolResult={addToolResult}
-          />
+        {toolInvocations.length > 0 && (
+          <ToolInvocations toolInvocations={toolInvocations} toolCallAnnotations={toolCallAnnotations} />
         )}
       </div>
     );

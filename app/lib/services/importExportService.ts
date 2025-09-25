@@ -1,11 +1,36 @@
 import Cookies from 'js-cookie';
 import { type UIMessage } from 'ai';
 import { getAllChats, deleteChat } from '~/lib/persistence/chats';
+import { getTextFromUIMessage } from '~/utils/messageConversion';
 
-interface ExtendedMessage extends Message {
-  name?: string;
-  function_call?: any;
-  timestamp?: number;
+interface ExportedChatMessage {
+  id: string;
+  role: UIMessage['role'];
+  parts: NonNullable<UIMessage['parts']>;
+  metadata?: UIMessage['metadata'];
+  text: string;
+}
+
+function cloneForExport<T>(value: T): T {
+  try {
+    // structuredClone preserves `undefined` values unlike JSON.parse/stringify.
+    return typeof structuredClone === 'function' ? structuredClone(value) : JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
+}
+
+function serializeMessageForExport(message: UIMessage): ExportedChatMessage {
+  const parts = (message.parts ? cloneForExport(message.parts) : []) as NonNullable<UIMessage['parts']>;
+  const metadata = message.metadata ? cloneForExport(message.metadata) : undefined;
+
+  return {
+    id: message.id,
+    role: message.role,
+    parts,
+    ...(metadata ? { metadata } : {}),
+    text: getTextFromUIMessage(message),
+  };
 }
 
 /**
@@ -30,14 +55,7 @@ export class ImportExportService {
       const sanitizedChats = chats.map((chat) => ({
         id: chat.id,
         description: chat.description || '',
-        messages: chat.messages.map((msg: ExtendedMessage) => ({
-          id: msg.id,
-          role: msg.role,
-          content: msg.content,
-          name: msg.name,
-          function_call: msg.function_call,
-          timestamp: msg.timestamp,
-        })),
+        messages: chat.messages.map(serializeMessageForExport),
         timestamp: chat.timestamp,
         urlId: chat.urlId || null,
         metadata: chat.metadata || null,

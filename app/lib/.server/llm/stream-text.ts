@@ -11,16 +11,8 @@ import { createFilesContext, extractPropertiesFromMessage } from './utils';
 
 export type Messages = UIMessage[];
 
-export interface StreamingOptions extends Omit<Parameters<typeof _streamText>[0], 'model'> {
-  supabaseConnection?: {
-    isConnected: boolean;
-    hasSelectedProject: boolean;
-    credentials?: {
-      anonKey?: string;
-      supabaseUrl?: string;
-    };
-  };
-}
+type StreamTextParams = Parameters<typeof _streamText>[0];
+export type StreamingOptions = Partial<Omit<StreamTextParams, 'model' | 'messages' | 'prompt'>>;
 
 const logger = createScopedLogger('stream-text');
 
@@ -36,6 +28,14 @@ export async function streamText(props: {
   contextFiles?: FileMap;
   summary?: string;
   messageSliceId?: number;
+  supabaseConnection?: {
+    isConnected: boolean;
+    hasSelectedProject: boolean;
+    credentials?: {
+      anonKey?: string;
+      supabaseUrl?: string;
+    };
+  };
 }) {
   const {
     messages,
@@ -48,6 +48,7 @@ export async function streamText(props: {
     contextOptimization,
     contextFiles,
     summary,
+    supabaseConnection,
   } = props;
   let currentModel = DEFAULT_MODEL;
   let currentProvider = DEFAULT_PROVIDER.name;
@@ -57,9 +58,12 @@ export async function streamText(props: {
       currentModel = model;
       currentProvider = provider;
 
-      return { ...message, content };
-    } else if (message.role == 'assistant') {
-      let content = message.content;
+      return {
+        ...message,
+        parts: [{ type: 'text', text: content }],
+      };
+    } else if (message.role === 'assistant') {
+      let content = message.parts?.find((part) => part.type === 'text')?.text || '';
       content = content.replace(/<div class=\\"__boltThought__\\">.*?<\/div>/s, '');
       content = content.replace(/<think>.*?<\/think>/s, '');
 
@@ -72,7 +76,10 @@ export async function streamText(props: {
       // Trim whitespace potentially left after removals
       content = content.trim();
 
-      return { ...message, content };
+      return {
+        ...message,
+        parts: [{ type: 'text', text: content }],
+      };
     }
 
     return message;
@@ -115,9 +122,9 @@ export async function streamText(props: {
       allowedHtmlElements: allowedHTMLElements,
       modificationTagName: MODIFICATIONS_TAG_NAME,
       supabase: {
-        isConnected: options?.supabaseConnection?.isConnected || false,
-        hasSelectedProject: options?.supabaseConnection?.hasSelectedProject || false,
-        credentials: options?.supabaseConnection?.credentials || undefined,
+        isConnected: supabaseConnection?.isConnected || false,
+        hasSelectedProject: supabaseConnection?.hasSelectedProject || false,
+        credentials: supabaseConnection?.credentials || undefined,
       },
     }) ?? getSystemPrompt();
 
@@ -180,18 +187,18 @@ ${lockedFilesListString}
 
   logger.info(`Sending llm call to ${provider.name} with model ${modelDetails.name}`);
 
-  // console.log(systemPrompt, processedMessages);
+  const finalMaxOutputTokens = options?.maxOutputTokens ?? dynamicMaxTokens;
 
   return await _streamText({
+    ...(options ?? {}),
     model: provider.getModelInstance({
       model: modelDetails.name,
       serverEnv,
       apiKeys,
       providerSettings,
     }),
-    system: systemPrompt,
-    maxOutputTokens: dynamicMaxTokens,
+    system: options?.system ?? systemPrompt,
+    maxOutputTokens: finalMaxOutputTokens,
     messages: convertToCoreMessages(processedMessages as any),
-    ...options,
   });
 }

@@ -89,7 +89,7 @@ export default defineConfig((config) => {
       preprocessorOptions: {
         scss: {
           api: 'modern-compiler',
-        },
+        } as Record<string, unknown>,
       },
     },
     test: {

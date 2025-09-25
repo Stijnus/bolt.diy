@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { type UIMessage } from './message-parser';
+import { StreamingMessageParser, type ActionCallback, type ArtifactCallback } from './message-parser';
 
 interface ExpectedResult {
   output: string;

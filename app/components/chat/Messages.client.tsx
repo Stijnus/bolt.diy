@@ -1,4 +1,4 @@
-import type { UIMessage } from 'ai';
+import type { JSONValue, UIDataTypes, UIMessage, UITools } from 'ai';
 import { Fragment } from 'react';
 import { classNames } from '~/utils/classNames';
 import { AssistantMessage } from './AssistantMessage';
@@ -11,17 +11,58 @@ import { useStore } from '@nanostores/react';
 import { profileStore } from '~/lib/stores/profile';
 import { forwardRef } from 'react';
 import type { ForwardedRef } from 'react';
+import type { ProviderInfo } from '~/types/model';
+
+type BoltMessage = UIMessage<unknown, UIDataTypes, UITools>;
+
+function extractAnnotations(message: BoltMessage): JSONValue[] {
+  const metadata = message.metadata;
+
+  if (!metadata || typeof metadata !== 'object') {
+    return [];
+  }
+
+  const annotations = (metadata as { annotations?: JSONValue[] }).annotations;
+
+  return Array.isArray(annotations) ? annotations : [];
+}
+
+function extractTextContent(message: BoltMessage): string {
+  const textParts = message.parts?.filter((part) => part.type === 'text');
+
+  if (!textParts || textParts.length === 0) {
+    return '';
+  }
+
+  return textParts.map((part) => part.text).join('\n\n');
+}
 
 interface MessagesProps {
   id?: string;
   className?: string;
   isStreaming?: boolean;
-  messages?: Message[];
+  messages?: BoltMessage[];
+  append?: (message: BoltMessage) => void;
+  chatMode?: 'discuss' | 'build';
+  setChatMode?: (mode: 'discuss' | 'build') => void;
+  provider?: ProviderInfo;
+  model?: string;
+  addToolResult: ({ toolCallId, result }: { toolCallId: string; result: unknown }) => void;
 }
 
 export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
   (props: MessagesProps, ref: ForwardedRef<HTMLDivElement> | undefined) => {
-    const { id, isStreaming = false, messages = [] } = props;
+    const {
+      id,
+      isStreaming = false,
+      messages = [],
+      append,
+      chatMode,
+      setChatMode,
+      provider,
+      model,
+      addToolResult,
+    } = props;
     const location = useLocation();
     const profile = useStore(profileStore);
 
@@ -49,8 +90,9 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
       <div id={id} className={props.className} ref={ref}>
         {messages.length > 0
           ? messages.map((message, index) => {
-              const { role, id: messageId, annotations } = message;
-              const content = message.parts?.find(part => part.type === 'text')?.text || '';
+              const { role, id: messageId } = message;
+              const content = extractTextContent(message);
+              const annotations = extractAnnotations(message);
               const isUserMessage = role === 'user';
               const isFirst = index === 0;
               const isLast = index === messages.length - 1;
@@ -87,14 +129,21 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
                   )}
                   <div className="grid grid-col-1 w-full">
                     {isUserMessage ? (
-                      <UserMessage content={content} />
+                      <UserMessage content={content} parts={message.parts} />
                     ) : (
                       <AssistantMessage
                         content={content}
-                        annotations={message.annotations}
+                        annotations={annotations}
                         messageId={messageId}
                         onRewind={handleRewind}
                         onFork={handleFork}
+                        append={append}
+                        chatMode={chatMode}
+                        setChatMode={setChatMode}
+                        provider={provider}
+                        model={model}
+                        parts={message.parts}
+                        addToolResult={addToolResult}
                       />
                     )}
                   </div>

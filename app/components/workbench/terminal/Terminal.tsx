@@ -120,7 +120,7 @@ export const Terminal = memo(
             }
           },
           getTerminal: () => {
-            return terminalRef.current;
+            return terminalRef.current ?? undefined;
           },
         };
       }, [readonly]);

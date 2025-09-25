@@ -32,16 +32,21 @@ export async function selectContext(props: {
       currentModel = model;
       currentProvider = provider;
 
-      return { ...message, content };
-    } else if (message.role == 'assistant') {
-      let content = message.content;
+      return {
+        ...message,
+        parts: [{ type: 'text' as const, text: content }],
+      };
+    } else if (message.role === 'assistant') {
+      const originalText = simplifyBoltActions(
+        message.parts?.find((part) => part.type === 'text')?.text || '',
+      )
+        .replace(/<div class=\\"__boltThought__\\">.*?<\/div>/s, '')
+        .replace(/<think>.*?<\/think>/s, '');
 
-      content = simplifyBoltActions(content);
-
-      content = content.replace(/<div class=\\"__boltThought__\\">.*?<\/div>/s, '');
-      content = content.replace(/<think>.*?<\/think>/s, '');
-
-      return { ...message, content };
+      return {
+        ...message,
+        parts: [{ type: 'text' as const, text: originalText }],
+      };
     }
 
     return message;
@@ -107,10 +112,8 @@ export async function selectContext(props: {
 
   const summaryText = `Here is the summary of the chat till now: ${summary}`;
 
-  const extractTextContent = (message: Message) =>
-    Array.isArray(message.content)
-      ? (message.content.find((item) => item.type === 'text')?.text as string) || ''
-      : message.content;
+  const extractTextContent = (message: UIMessage) =>
+    message.parts?.find((part) => part.type === 'text')?.text || '';
 
   const lastUserMessage = processedMessages.filter((x) => x.role == 'user').pop();
 

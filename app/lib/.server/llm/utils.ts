@@ -1,17 +1,19 @@
-import { type UIMessage } from 'ai';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODEL_REGEX, PROVIDER_REGEX } from '~/utils/constants';
 import { IGNORE_PATTERNS, type FileMap } from './constants';
 import ignore from 'ignore';
 import type { ContextAnnotation } from '~/types/context';
+import {
+  getAnnotationsFromUIMessage,
+  getTextFromUIMessage,
+  type MessageLike,
+} from '~/utils/messageConversion';
 
-export function extractPropertiesFromMessage(message: Omit<UIMessage, 'id'>): {
+export function extractPropertiesFromMessage(message: MessageLike): {
   model: string;
   provider: string;
   content: string;
 } {
-  const textContent = Array.isArray(message.content)
-    ? message.content.find((item) => item.type === 'text')?.text || ''
-    : message.content;
+  const textContent = getTextFromUIMessage(message);
 
   const modelMatch = textContent.match(MODEL_REGEX);
   const providerMatch = textContent.match(PROVIDER_REGEX);
@@ -28,18 +30,7 @@ export function extractPropertiesFromMessage(message: Omit<UIMessage, 'id'>): {
    */
   const provider = providerMatch ? providerMatch[1] : DEFAULT_PROVIDER.name;
 
-  const cleanedContent = Array.isArray(message.content)
-    ? message.content.map((item) => {
-        if (item.type === 'text') {
-          return {
-            type: 'text',
-            text: item.text?.replace(MODEL_REGEX, '').replace(PROVIDER_REGEX, ''),
-          };
-        }
-
-        return item; // Preserve image_url and other types as is
-      })
-    : textContent.replace(MODEL_REGEX, '').replace(PROVIDER_REGEX, '');
+  const cleanedContent = textContent.replace(MODEL_REGEX, '').replace(PROVIDER_REGEX, '');
 
   return { model, provider, content: cleanedContent };
 }
@@ -88,8 +79,8 @@ export function createFilesContext(files: FileMap, useRelativePath?: boolean) {
   return `<boltArtifact id="code-content" title="Code Content" >\n${fileContexts.join('\n')}\n</boltArtifact>`;
 }
 
-export function extractCurrentContext(messages: Message[]) {
-  const lastAssistantMessage = messages.filter((x) => x.role == 'assistant').slice(-1)[0];
+export function extractCurrentContext(messages: MessageLike[]) {
+  const lastAssistantMessage = messages.filter((x) => x.role === 'assistant').slice(-1)[0];
 
   if (!lastAssistantMessage) {
     return { summary: undefined, codeContext: undefined };
@@ -98,12 +89,14 @@ export function extractCurrentContext(messages: Message[]) {
   let summary: ContextAnnotation | undefined;
   let codeContext: ContextAnnotation | undefined;
 
-  if (!lastAssistantMessage.annotations?.length) {
+  const annotations = getAnnotationsFromUIMessage(lastAssistantMessage);
+
+  if (!annotations.length) {
     return { summary: undefined, codeContext: undefined };
   }
 
-  for (let i = 0; i < lastAssistantMessage.annotations.length; i++) {
-    const annotation = lastAssistantMessage.annotations[i];
+  for (let i = 0; i < annotations.length; i++) {
+    const annotation = annotations[i];
 
     if (!annotation || typeof annotation !== 'object') {
       continue;

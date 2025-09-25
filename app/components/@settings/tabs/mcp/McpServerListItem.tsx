@@ -22,8 +22,23 @@ export default function McpServerListItem({ toolName, toolSchema }: McpToolProps
     return null;
   }
 
-  const parameters = (toolSchema.parameters as ToolParameters)?.jsonSchema.properties || {};
-  const requiredParams = (toolSchema.parameters as ToolParameters)?.jsonSchema.required || [];
+  const toolWithLegacyShape = toolSchema as Tool & {
+    parameters?: ToolParameters;
+    inputSchema?: {
+      jsonSchema?: ToolParameters['jsonSchema'];
+      schema?: ToolParameters['jsonSchema'];
+    };
+  };
+
+  const legacyParameters = toolWithLegacyShape.parameters?.jsonSchema;
+  const inputSchemaParameters =
+    typeof toolWithLegacyShape.inputSchema === 'object'
+      ? toolWithLegacyShape.inputSchema?.jsonSchema ?? toolWithLegacyShape.inputSchema?.schema
+      : undefined;
+
+  const parameterSchema = legacyParameters ?? inputSchemaParameters;
+  const parameters = parameterSchema?.properties ?? {};
+  const requiredParams = parameterSchema?.required ?? [];
 
   return (
     <div className="mt-2 ml-4 p-3 rounded-md bg-bolt-elements-background-depth-2 text-xs">

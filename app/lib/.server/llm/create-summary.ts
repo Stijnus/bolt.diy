@@ -25,7 +25,7 @@ export async function createSummary(props: {
       currentModel = model;
       currentProvider = provider;
 
-      return { ...message, parts: [{ type: 'text', text: content }] };
+      return { ...message, parts: [{ type: 'text' as const, text: content }] };
     } else if (message.role == 'assistant') {
       let content = message.parts?.find(part => part.type === 'text')?.text || '';
 
@@ -33,7 +33,7 @@ export async function createSummary(props: {
       content = content.replace(/<div class=\\"__boltThought__\\">.*?<\/div>/s, '');
       content = content.replace(/<think>.*?<\/think>/s, '');
 
-      return { ...message, parts: [{ type: 'text', text: content }] };
+      return { ...message, parts: [{ type: 'text' as const, text: content }] };
     }
 
     return message;

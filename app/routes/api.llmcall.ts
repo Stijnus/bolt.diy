@@ -63,7 +63,7 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
         messages: [
           {
             role: 'user',
-            content: `${message}`,
+            parts: [{ type: 'text', text: `${message}` }],
           },
         ],
         env: context.cloudflare?.env as any,
@@ -116,7 +116,7 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
         messages: [
           {
             role: 'user',
-            content: `${message}`,
+            content: [{ type: 'text', text: `${message}` }],
           },
         ],
         model: providerInfo.getModelInstance({
@@ -125,8 +125,8 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
           apiKeys,
           providerSettings,
         }),
-        // maxTokens: dynamicMaxTokens, // TODO: AI SDK v5 - move to model configuration
         toolChoice: 'none',
+        maxOutputTokens: dynamicMaxTokens,
       });
       logger.info(`Generated response`);
 

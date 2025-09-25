@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { toast } from 'react-toastify';
 import { ImportExportService } from '~/lib/services/importExportService';
 import { useIndexedDB } from '~/lib/hooks/useIndexedDB';
-import { generateId } from 'ai';
+import { generateId, type UIMessage } from 'ai';
 
 interface UseDataOperationsProps {
   /**
@@ -598,19 +598,68 @@ export function useDataOperations({
           }
 
           // Ensure each message has required fields
-          const validatedMessages = chat.messages.map((msg: any) => {
-            if (!msg.role || !msg.content) {
-              throw new Error('Invalid message format: missing required fields');
+          const validatedMessages = chat.messages.map((msg: any): UIMessage => {
+            if (!msg || typeof msg.role !== 'string') {
+              throw new Error('Invalid message format: missing role');
+            }
+
+            const id = typeof msg.id === 'string' && msg.id.length > 0 ? msg.id : generateId();
+
+            let parts = Array.isArray(msg.parts) ? msg.parts.filter(Boolean) : undefined;
+
+            if (!parts?.length) {
+              const textContent =
+                typeof msg.text === 'string'
+                  ? msg.text
+                  : typeof msg.content === 'string'
+                    ? msg.content
+                    : Array.isArray(msg.content)
+                      ? msg.content.filter((part: any) => part?.type === 'text' && typeof part.text === 'string')
+                      : '';
+
+              if (typeof textContent === 'string') {
+                parts = [{ type: 'text', text: textContent }];
+              } else if (Array.isArray(textContent) && textContent.length) {
+                parts = textContent;
+              }
+            }
+
+            if (!parts?.length) {
+              throw new Error('Invalid message format: missing parts or content');
+            }
+
+            const sanitizedParts = parts.map((part: any) => {
+              if (part?.type === 'text') {
+                return {
+                  ...part,
+                  text: typeof part.text === 'string' ? part.text : String(part.text ?? ''),
+                };
+              }
+
+              return part;
+            });
+
+            const metadata: Record<string, unknown> =
+              msg.metadata && typeof msg.metadata === 'object' ? { ...msg.metadata } : {};
+
+            if (msg.timestamp !== undefined && metadata.timestamp === undefined) {
+              metadata.timestamp = msg.timestamp;
+            }
+
+            if (msg.name && metadata.name === undefined) {
+              metadata.name = msg.name;
+            }
+
+            if (msg.function_call && metadata.functionCall === undefined) {
+              metadata.functionCall = msg.function_call;
             }
 
             return {
-              id: msg.id || generateId(),
+              id,
               role: msg.role,
-              content: msg.content,
-              name: msg.name,
-              function_call: msg.function_call,
-              timestamp: msg.timestamp || Date.now(),
-            };
+              parts: sanitizedParts,
+              ...(Object.keys(metadata).length ? { metadata } : {}),
+            } satisfies UIMessage;
           });
 
           return {

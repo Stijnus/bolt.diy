@@ -1,8 +1,8 @@
 import { BaseProvider } from '~/lib/modules/llm/base-provider';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import type { IProviderSetting } from '~/types/model';
-import type { LanguageModelV1 } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
+import type { LanguageModel } from 'ai';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 
 export default class MoonshotProvider extends BaseProvider {
   name = 'Moonshot';
@@ -13,32 +13,32 @@ export default class MoonshotProvider extends BaseProvider {
   };
 
   staticModels: ModelInfo[] = [
-    { name: 'moonshot-v1-8k', label: 'Moonshot v1 8K', provider: 'Moonshot', maxTokenAllowed: 8000 },
-    { name: 'moonshot-v1-32k', label: 'Moonshot v1 32K', provider: 'Moonshot', maxTokenAllowed: 32000 },
-    { name: 'moonshot-v1-128k', label: 'Moonshot v1 128K', provider: 'Moonshot', maxTokenAllowed: 128000 },
-    { name: 'moonshot-v1-auto', label: 'Moonshot v1 Auto', provider: 'Moonshot', maxTokenAllowed: 128000 },
+    { name: 'moonshot-v1-8k', label: 'Moonshot v1 8K', provider: 'Moonshot', maxTokenAllowed: 8192 },
+    { name: 'moonshot-v1-32k', label: 'Moonshot v1 32K', provider: 'Moonshot', maxTokenAllowed: 32768 },
+    { name: 'moonshot-v1-128k', label: 'Moonshot v1 128K', provider: 'Moonshot', maxTokenAllowed: 8192 },
+    { name: 'moonshot-v1-auto', label: 'Moonshot v1 Auto', provider: 'Moonshot', maxTokenAllowed: 8192 },
     {
       name: 'moonshot-v1-8k-vision-preview',
       label: 'Moonshot v1 8K Vision',
       provider: 'Moonshot',
-      maxTokenAllowed: 8000,
+      maxTokenAllowed: 8192,
     },
     {
       name: 'moonshot-v1-32k-vision-preview',
       label: 'Moonshot v1 32K Vision',
       provider: 'Moonshot',
-      maxTokenAllowed: 32000,
+      maxTokenAllowed: 32768,
     },
     {
       name: 'moonshot-v1-128k-vision-preview',
       label: 'Moonshot v1 128K Vision',
       provider: 'Moonshot',
-      maxTokenAllowed: 128000,
+      maxTokenAllowed: 8192,
     },
-    { name: 'kimi-latest', label: 'Kimi Latest', provider: 'Moonshot', maxTokenAllowed: 128000 },
-    { name: 'kimi-k2-0711-preview', label: 'Kimi K2 Preview', provider: 'Moonshot', maxTokenAllowed: 128000 },
-    { name: 'kimi-k2-turbo-preview', label: 'Kimi K2 Turbo', provider: 'Moonshot', maxTokenAllowed: 128000 },
-    { name: 'kimi-thinking-preview', label: 'Kimi Thinking', provider: 'Moonshot', maxTokenAllowed: 128000 },
+    { name: 'kimi-latest', label: 'Kimi Latest', provider: 'Moonshot', maxTokenAllowed: 8192 },
+    { name: 'kimi-k2-0711-preview', label: 'Kimi K2 Preview', provider: 'Moonshot', maxTokenAllowed: 8192 },
+    { name: 'kimi-k2-turbo-preview', label: 'Kimi K2 Turbo', provider: 'Moonshot', maxTokenAllowed: 8192 },
+    { name: 'kimi-thinking-preview', label: 'Kimi Thinking', provider: 'Moonshot', maxTokenAllowed: 8192 },
   ];
 
   getModelInstance(options: {
@@ -46,7 +46,7 @@ export default class MoonshotProvider extends BaseProvider {
     serverEnv: Env;
     apiKeys?: Record<string, string>;
     providerSettings?: Record<string, IProviderSetting>;
-  }): LanguageModelV1 {
+  }): LanguageModel {
     const { model, serverEnv, apiKeys, providerSettings } = options;
 
     const { apiKey } = this.getProviderBaseUrlAndKey({
@@ -61,11 +61,12 @@ export default class MoonshotProvider extends BaseProvider {
       throw new Error(`Missing API key for ${this.name} provider`);
     }
 
-    const openai = createOpenAI({
+    const moonshot = createOpenAICompatible({
+      name: 'moonshot',
       baseURL: 'https://api.moonshot.ai/v1',
       apiKey,
     });
 
-    return openai(model);
+    return moonshot(model);
   }
 }

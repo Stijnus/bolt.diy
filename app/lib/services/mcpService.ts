@@ -1,21 +1,17 @@
 import {
-  experimental_createMCPClient,
-  type ToolSet,
-  type Message,
-  type DataStreamWriter,
   convertToCoreMessages,
-  formatDataStreamPart,
+  experimental_createMCPClient,
+  getToolOrDynamicToolName,
+  isToolOrDynamicToolUIPart,
+  type ToolSet,
+  type UIMessage,
+  type UIMessageStreamWriter,
 } from 'ai';
 import { Experimental_StdioMCPTransport } from 'ai/mcp-stdio';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { z } from 'zod';
 import type { ToolCallAnnotation } from '~/types/context';
-import {
-  TOOL_EXECUTION_APPROVAL,
-  TOOL_EXECUTION_DENIED,
-  TOOL_EXECUTION_ERROR,
-  TOOL_NO_EXECUTE_FUNCTION,
-} from '~/utils/constants';
+import { TOOL_EXECUTION_ERROR, TOOL_NO_EXECUTE_FUNCTION } from '~/utils/constants';
 import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('mcp-service');
@@ -355,7 +351,7 @@ export class MCPService {
     return toolName in this._tools;
   }
 
-  processToolCall(toolCall: ToolCall, dataStream: DataStreamWriter): void {
+  processToolCall(toolCall: ToolCall, dataStream: UIMessageStreamWriter<UIMessage>): void {
     const { toolCallId, toolName } = toolCall;
 
     if (this.isValidToolName(toolName)) {
@@ -363,18 +359,28 @@ export class MCPService {
       const serverName = this._toolNamesToServerNames.get(toolName);
 
       if (serverName) {
-        dataStream.writeMessageAnnotation({
-          type: 'toolCall',
-          toolCallId,
-          serverName,
-          toolName,
-          toolDescription: description,
-        } satisfies ToolCallAnnotation);
+        dataStream.write({
+          type: 'message-metadata',
+          messageMetadata: {
+            annotations: [
+              {
+                type: 'toolCall',
+                toolCallId,
+                serverName,
+                toolName,
+                toolDescription: description,
+              } satisfies ToolCallAnnotation,
+            ],
+          },
+        } as any);
       }
     }
   }
 
-  async processToolInvocations(messages: Message[], dataStream: DataStreamWriter): Promise<Message[]> {
+  async processToolInvocations(
+    messages: UIMessage[],
+    dataStream: UIMessageStreamWriter<UIMessage>,
+  ): Promise<UIMessage[]> {
     const lastMessage = messages[messages.length - 1];
     const parts = lastMessage.parts;
 
@@ -384,62 +390,90 @@ export class MCPService {
 
     const processedParts = await Promise.all(
       parts.map(async (part) => {
-        // Only process tool invocations parts
-        if (part.type !== 'tool-invocation') {
+        if (!isToolOrDynamicToolUIPart(part)) {
           return part;
         }
 
-        const { toolInvocation } = part;
-        const { toolName, toolCallId } = toolInvocation;
+        const toolName = getToolOrDynamicToolName(part);
+        const toolCallId = part.toolCallId;
 
-        // return part as-is if tool does not exist, or if it's not a tool call result
-        if (!this.isValidToolName(toolName) || toolInvocation.state !== 'result') {
+        if (!this.isValidToolName(toolName)) {
           return part;
         }
 
-        let result;
+        const toolInstance = this._tools[toolName];
 
-        if (toolInvocation.result === TOOL_EXECUTION_APPROVAL.APPROVE) {
-          const toolInstance = this._tools[toolName];
+        if (!toolInstance || typeof toolInstance.execute !== 'function') {
+          const errorText = TOOL_NO_EXECUTE_FUNCTION;
 
-          if (toolInstance && typeof toolInstance.execute === 'function') {
-            logger.debug(`calling tool "${toolName}" with args: ${JSON.stringify(toolInvocation.args)}`);
+          const { output: _ignoredOutput, errorText: _ignoredErrorText, ...basePart } = part as typeof part & {
+            output?: unknown;
+            errorText?: string;
+          };
 
-            try {
-              result = await toolInstance.execute(toolInvocation.args, {
-                messages: convertToCoreMessages(messages),
-                toolCallId,
-              });
-            } catch (error) {
-              logger.error(`error while calling tool "${toolName}":`, error);
-              result = TOOL_EXECUTION_ERROR;
-            }
-          } else {
-            result = TOOL_NO_EXECUTE_FUNCTION;
-          }
-        } else if (toolInvocation.result === TOOL_EXECUTION_APPROVAL.REJECT) {
-          result = TOOL_EXECUTION_DENIED;
-        } else {
-          // For any unhandled responses, return the original part.
-          return part;
-        }
-
-        // Forward updated tool result to the client.
-        dataStream.write(
-          formatDataStreamPart('tool_result', {
+          dataStream.write({
+            type: 'tool-output-error',
             toolCallId,
-            result,
-          }),
-        );
+            errorText,
+          } as any);
 
-        // Return updated toolInvocation with the actual result.
-        return {
-          ...part,
-          toolInvocation: {
-            ...toolInvocation,
-            result,
-          },
-        };
+          return {
+            ...basePart,
+            state: 'output-error' as const,
+            errorText,
+          };
+        }
+
+        // Only execute when the tool input is available and awaiting execution.
+        if (part.state !== 'input-available') {
+          return part;
+        }
+
+        try {
+          logger.debug(`calling tool "${toolName}" with args: ${JSON.stringify(part.input)}`);
+          const result = await toolInstance.execute(part.input, {
+            messages: convertToCoreMessages(messages),
+            toolCallId,
+          });
+
+          const { errorText: _ignoredErrorText, ...basePart } = part as typeof part & {
+            errorText?: string;
+          };
+
+          dataStream.write({
+            type: 'tool-output-available',
+            toolCallId,
+            output: result,
+            providerExecuted: true,
+          } as any);
+
+          return {
+            ...basePart,
+            state: 'output-available' as const,
+            output: result,
+            providerExecuted: true,
+          };
+        } catch (error) {
+          logger.error(`error while calling tool "${toolName}":`, error);
+          const errorText = TOOL_EXECUTION_ERROR;
+
+          const { output: _ignoredOutput, errorText: _ignoredErrorText, ...basePart } = part as typeof part & {
+            output?: unknown;
+            errorText?: string;
+          };
+
+          dataStream.write({
+            type: 'tool-output-error',
+            toolCallId,
+            errorText,
+          } as any);
+
+          return {
+            ...basePart,
+            state: 'output-error' as const,
+            errorText,
+          };
+        }
       }),
     );
 

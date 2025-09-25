@@ -65,7 +65,7 @@ export async function getAll(db: IDBDatabase): Promise<ChatHistoryItem[]> {
 export async function setMessages(
   db: IDBDatabase,
   id: string,
-  messages: Message[],
+  messages: UIMessage[],
   urlId?: string,
   description?: string,
   timestamp?: string,
@@ -255,7 +255,7 @@ export async function duplicateChat(db: IDBDatabase, id: string): Promise<string
 export async function createChatFromMessages(
   db: IDBDatabase,
   description: string,
-  messages: Message[],
+  messages: UIMessage[],
   metadata?: IChatMetadata,
 ): Promise<string> {
   const newId = await getNextId(db);

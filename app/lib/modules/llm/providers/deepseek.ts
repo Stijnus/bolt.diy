@@ -18,13 +18,13 @@ export default class DeepseekProvider extends BaseProvider {
       name: 'deepseek-chat',
       label: 'DeepSeek V3.1 Chat (Latest)',
       provider: 'Deepseek',
-      maxTokenAllowed: 128000
+      maxTokenAllowed: 8192,
     },
     {
       name: 'deepseek-reasoner',
       label: 'DeepSeek V3.1 Reasoner (Thinking Mode)',
       provider: 'Deepseek',
-      maxTokenAllowed: 128000
+      maxTokenAllowed: 8192,
     },
 
     // DeepSeek-Coder-V2 - Specialized coding model (338 languages)
@@ -32,13 +32,13 @@ export default class DeepseekProvider extends BaseProvider {
       name: 'deepseek-coder-v2',
       label: 'DeepSeek Coder V2 (338 Languages)',
       provider: 'Deepseek',
-      maxTokenAllowed: 128000
+      maxTokenAllowed: 8192,
     },
     {
       name: 'deepseek-coder',
       label: 'DeepSeek Coder (Legacy)',
       provider: 'Deepseek',
-      maxTokenAllowed: 32000
+      maxTokenAllowed: 8192,
     },
   ];
 
