@@ -5,7 +5,7 @@ interface PanelHeaderButtonProps {
   className?: string;
   disabledClassName?: string;
   disabled?: boolean;
-  children: string | JSX.Element | Array<JSX.Element | string>;
+  children: string | React.ReactElement | Array<React.ReactElement | string>;
   onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
 }
 
