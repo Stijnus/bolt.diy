@@ -37,9 +37,7 @@ export async function selectContext(props: {
         parts: [{ type: 'text' as const, text: content }],
       };
     } else if (message.role === 'assistant') {
-      const originalText = simplifyBoltActions(
-        message.parts?.find((part) => part.type === 'text')?.text || '',
-      )
+      const originalText = simplifyBoltActions(message.parts?.find((part) => part.type === 'text')?.text || '')
         .replace(/<div class=\\"__boltThought__\\">.*?<\/div>/s, '')
         .replace(/<think>.*?<\/think>/s, '');
 
@@ -112,8 +110,7 @@ export async function selectContext(props: {
 
   const summaryText = `Here is the summary of the chat till now: ${summary}`;
 
-  const extractTextContent = (message: UIMessage) =>
-    message.parts?.find((part) => part.type === 'text')?.text || '';
+  const extractTextContent = (message: UIMessage) => message.parts?.find((part) => part.type === 'text')?.text || '';
 
   const lastUserMessage = processedMessages.filter((x) => x.role == 'user').pop();
 

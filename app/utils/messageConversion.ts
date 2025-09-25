@@ -35,11 +35,12 @@ export function convertMessageToUIMessage(message: ReactMessage): UIMessage {
  * Convert UIMessage to Message format for @ai-sdk/react
  */
 export function convertUIMessageToMessage(message: UIMessage): ReactMessage {
-  const textContent = message.parts?.find(part => part.type === 'text')?.text || '';
+  const textContent = message.parts?.find((part) => part.type === 'text')?.text || '';
   const createdAt =
     typeof message.metadata === 'object' && message.metadata && 'createdAt' in (message.metadata as any)
       ? ((message.metadata as { createdAt?: Date }).createdAt ?? undefined)
       : undefined;
+
   return {
     id: message.id,
     role: message.role,

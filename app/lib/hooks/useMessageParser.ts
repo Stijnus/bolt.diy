@@ -49,8 +49,7 @@ const messageParser = new EnhancedStreamingMessageParser({
     },
   },
 });
-const extractTextContent = (message: UIMessage) =>
-  message.parts?.find((part) => part.type === 'text')?.text || '';
+const extractTextContent = (message: UIMessage) => message.parts?.find((part) => part.type === 'text')?.text || '';
 
 export function useMessageParser() {
   const [parsedMessages, setParsedMessages] = useState<{ [key: number]: string }>({});

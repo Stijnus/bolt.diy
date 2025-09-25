@@ -18,25 +18,25 @@ export default class CerebrasProvider extends BaseProvider {
       name: 'llama3.1-8b',
       label: 'Llama 3.1 8B (Ultra Fast)',
       provider: 'Cerebras',
-      maxTokenAllowed: 32000
+      maxTokenAllowed: 32000,
     },
     {
       name: 'llama3.1-70b',
       label: 'Llama 3.1 70B (Ultra Fast)',
       provider: 'Cerebras',
-      maxTokenAllowed: 32000
+      maxTokenAllowed: 32000,
     },
     {
       name: 'llama3.2-1b',
       label: 'Llama 3.2 1B (Fastest)',
       provider: 'Cerebras',
-      maxTokenAllowed: 32000
+      maxTokenAllowed: 32000,
     },
     {
       name: 'llama3.2-3b',
       label: 'Llama 3.2 3B (Fast)',
       provider: 'Cerebras',
-      maxTokenAllowed: 32000
+      maxTokenAllowed: 32000,
     },
   ];
 
@@ -67,10 +67,7 @@ export default class CerebrasProvider extends BaseProvider {
     const staticModelIds = this.staticModels.map((m) => m.name);
 
     const data = res.data.filter(
-      (model: any) =>
-        model.object === 'model' &&
-        model.id.startsWith('llama') &&
-        !staticModelIds.includes(model.id),
+      (model: any) => model.object === 'model' && model.id.startsWith('llama') && !staticModelIds.includes(model.id),
     );
 
     return data.map((m: any) => ({

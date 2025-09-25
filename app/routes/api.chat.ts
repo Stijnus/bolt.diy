@@ -1,7 +1,6 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
-import { createUIMessageStream, createUIMessageStreamResponse, type JSONValue, type UIMessage } from 'ai';
-import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS, type FileMap } from '~/lib/.server/llm/constants';
-import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
+import { createUIMessageStream, createUIMessageStreamResponse, type JSONValue } from 'ai';
+import { type FileMap } from '~/lib/.server/llm/constants';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
 import type { IProviderSetting } from '~/types/model';
 import { createScopedLogger } from '~/utils/logger';
@@ -9,7 +8,6 @@ import { getFilePaths, selectContext } from '~/lib/.server/llm/select-context';
 import type { ContextAnnotation, ProgressAnnotation } from '~/types/context';
 import { WORK_DIR } from '~/utils/constants';
 import { createSummary } from '~/lib/.server/llm/create-summary';
-import { extractPropertiesFromMessage } from '~/lib/.server/llm/utils';
 
 export async function action(args: ActionFunctionArgs) {
   return chatAction(args);

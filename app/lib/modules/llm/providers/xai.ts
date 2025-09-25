@@ -18,7 +18,7 @@ export default class XAIProvider extends BaseProvider {
       name: 'grok-4',
       label: 'Grok 4 (Most Intelligent)',
       provider: 'xAI',
-      maxTokenAllowed: 128000
+      maxTokenAllowed: 128000,
     },
 
     // Grok Code Fast 1 - Specialized for coding (70.8% SWE-bench)
@@ -26,7 +26,7 @@ export default class XAIProvider extends BaseProvider {
       name: 'grok-code-fast-1',
       label: 'Grok Code Fast 1 (Coding Specialist)',
       provider: 'xAI',
-      maxTokenAllowed: 256000
+      maxTokenAllowed: 256000,
     },
 
     // Grok 3 - Large context model
@@ -34,13 +34,13 @@ export default class XAIProvider extends BaseProvider {
       name: 'grok-3',
       label: 'Grok 3 (1M Context)',
       provider: 'xAI',
-      maxTokenAllowed: 1000000
+      maxTokenAllowed: 1000000,
     },
     {
       name: 'grok-3-beta',
       label: 'Grok 3 Beta',
       provider: 'xAI',
-      maxTokenAllowed: 1000000
+      maxTokenAllowed: 1000000,
     },
   ];
 

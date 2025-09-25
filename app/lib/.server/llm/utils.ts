@@ -2,11 +2,7 @@ import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODEL_REGEX, PROVIDER_REGEX } from '~/
 import { IGNORE_PATTERNS, type FileMap } from './constants';
 import ignore from 'ignore';
 import type { ContextAnnotation } from '~/types/context';
-import {
-  getAnnotationsFromUIMessage,
-  getTextFromUIMessage,
-  type MessageLike,
-} from '~/utils/messageConversion';
+import { getAnnotationsFromUIMessage, getTextFromUIMessage, type MessageLike } from '~/utils/messageConversion';
 
 export function extractPropertiesFromMessage(message: MessageLike): {
   model: string;

@@ -33,7 +33,7 @@ export default function McpServerListItem({ toolName, toolSchema }: McpToolProps
   const legacyParameters = toolWithLegacyShape.parameters?.jsonSchema;
   const inputSchemaParameters =
     typeof toolWithLegacyShape.inputSchema === 'object'
-      ? toolWithLegacyShape.inputSchema?.jsonSchema ?? toolWithLegacyShape.inputSchema?.schema
+      ? (toolWithLegacyShape.inputSchema?.jsonSchema ?? toolWithLegacyShape.inputSchema?.schema)
       : undefined;
 
   const parameterSchema = legacyParameters ?? inputSchemaParameters;

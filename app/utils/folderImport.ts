@@ -36,7 +36,10 @@ export const createChatFromFolder = async (
 
   const filesMessage: UIMessage = {
     role: 'assistant',
-    parts: [{ type: 'text', text: `I've imported the contents of the "${folderName}" folder.${binaryFilesMessage}
+    parts: [
+      {
+        type: 'text',
+        text: `I've imported the contents of the "${folderName}" folder.${binaryFilesMessage}
 
 <boltArtifact id="imported-files" title="Imported Files" type="bundled" >
 ${fileArtifacts
@@ -46,7 +49,9 @@ ${escapeBoltTags(file.content)}
 </boltAction>`,
   )
   .join('\n\n')}
-</boltArtifact>` }],
+</boltArtifact>`,
+      },
+    ],
     id: generateId(),
   };
 

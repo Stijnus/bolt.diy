@@ -406,7 +406,11 @@ export class MCPService {
         if (!toolInstance || typeof toolInstance.execute !== 'function') {
           const errorText = TOOL_NO_EXECUTE_FUNCTION;
 
-          const { output: _ignoredOutput, errorText: _ignoredErrorText, ...basePart } = part as typeof part & {
+          const {
+            output: _ignoredOutput,
+            errorText: _ignoredErrorText,
+            ...basePart
+          } = part as typeof part & {
             output?: unknown;
             errorText?: string;
           };
@@ -431,6 +435,7 @@ export class MCPService {
 
         try {
           logger.debug(`calling tool "${toolName}" with args: ${JSON.stringify(part.input)}`);
+
           const result = await toolInstance.execute(part.input, {
             messages: convertToCoreMessages(messages),
             toolCallId,
@@ -455,9 +460,14 @@ export class MCPService {
           };
         } catch (error) {
           logger.error(`error while calling tool "${toolName}":`, error);
+
           const errorText = TOOL_EXECUTION_ERROR;
 
-          const { output: _ignoredOutput, errorText: _ignoredErrorText, ...basePart } = part as typeof part & {
+          const {
+            output: _ignoredOutput,
+            errorText: _ignoredErrorText,
+            ...basePart
+          } = part as typeof part & {
             output?: unknown;
             errorText?: string;
           };

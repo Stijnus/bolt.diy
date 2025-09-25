@@ -18,13 +18,13 @@ export default class GroqProvider extends BaseProvider {
       name: 'llama-4-scout',
       label: 'Llama 4 Scout (Multimodal MoE)',
       provider: 'Groq',
-      maxTokenAllowed: 128000
+      maxTokenAllowed: 128000,
     },
     {
       name: 'llama-4-maverick',
       label: 'Llama 4 Maverick (Advanced)',
       provider: 'Groq',
-      maxTokenAllowed: 128000
+      maxTokenAllowed: 128000,
     },
 
     // Llama-3-Groq-Tool-Use models - Specialized for tool use
@@ -32,13 +32,13 @@ export default class GroqProvider extends BaseProvider {
       name: 'llama-3-groq-70b-tool-use',
       label: 'Llama 3 Groq 70B Tool Use',
       provider: 'Groq',
-      maxTokenAllowed: 64000
+      maxTokenAllowed: 64000,
     },
     {
       name: 'llama-3-groq-8b-tool-use',
       label: 'Llama 3 Groq 8B Tool Use',
       provider: 'Groq',
-      maxTokenAllowed: 64000
+      maxTokenAllowed: 64000,
     },
 
     // Latest Llama models maintained for compatibility
@@ -46,19 +46,19 @@ export default class GroqProvider extends BaseProvider {
       name: 'llama-3.3-70b-versatile',
       label: 'Llama 3.3 70B Versatile',
       provider: 'Groq',
-      maxTokenAllowed: 32000
+      maxTokenAllowed: 32000,
     },
     {
       name: 'llama-3.2-90b-vision-preview',
       label: 'Llama 3.2 90B Vision',
       provider: 'Groq',
-      maxTokenAllowed: 32000
+      maxTokenAllowed: 32000,
     },
     {
       name: 'deepseek-r1-distill-llama-70b',
       label: 'DeepSeek R1 Distill Llama 70B',
       provider: 'Groq',
-      maxTokenAllowed: 131072
+      maxTokenAllowed: 131072,
     },
   ];
 

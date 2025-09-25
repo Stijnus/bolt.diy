@@ -130,7 +130,10 @@ export function useChatHistory() {
                   role: 'assistant',
 
                   // Combine followup message and the artifact with files and command actions
-                  parts: [{ type: 'text', text: `Bolt Restored your chat from a snapshot. You can revert this message to load the full chat history.
+                  parts: [
+                    {
+                      type: 'text',
+                      text: `Bolt Restored your chat from a snapshot. You can revert this message to load the full chat history.
                   <boltArtifact id="restored-project-setup" title="Restored Project & Setup" type="bundled">
                   ${Object.entries(snapshot?.files || {})
                     .map(([key, value]) => {
@@ -147,19 +150,23 @@ ${value.content}
                     .join('\n')}
                   ${commandActionsString}
                   </boltArtifact>
-                  ` }], // Added commandActionsString, followupMessage, updated id and title
-                  metadata: { annotations: [
-                    'no-store',
-                    ...(summary
-                      ? [
-                          {
-                            chatId: storedMessages.messages[snapshotIndex].id,
-                            type: 'chatSummary',
-                            summary,
-                          } satisfies ContextAnnotation,
-                        ]
-                      : []),
-                  ] },
+                  `,
+                    },
+                  ], // Added commandActionsString, followupMessage, updated id and title
+                  metadata: {
+                    annotations: [
+                      'no-store',
+                      ...(summary
+                        ? [
+                            {
+                              chatId: storedMessages.messages[snapshotIndex].id,
+                              type: 'chatSummary',
+                              summary,
+                            } satisfies ContextAnnotation,
+                          ]
+                        : []),
+                    ],
+                  },
                 },
 
                 // Remove the separate user and assistant messages for commands

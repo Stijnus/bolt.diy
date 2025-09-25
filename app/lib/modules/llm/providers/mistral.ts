@@ -18,13 +18,13 @@ export default class MistralProvider extends BaseProvider {
       name: 'codestral-25.01',
       label: 'Codestral 25.01 (#1 Copilot Arena)',
       provider: 'Mistral',
-      maxTokenAllowed: 256000
+      maxTokenAllowed: 256000,
     },
     {
       name: 'codestral-latest',
       label: 'Codestral Latest',
       provider: 'Mistral',
-      maxTokenAllowed: 256000
+      maxTokenAllowed: 256000,
     },
 
     // Mistral Large Latest - General purpose flagship
@@ -32,7 +32,7 @@ export default class MistralProvider extends BaseProvider {
       name: 'mistral-large-latest',
       label: 'Mistral Large Latest',
       provider: 'Mistral',
-      maxTokenAllowed: 128000
+      maxTokenAllowed: 128000,
     },
 
     // Specialized models maintained for compatibility
@@ -40,19 +40,19 @@ export default class MistralProvider extends BaseProvider {
       name: 'open-mixtral-8x22b',
       label: 'Mixtral 8x22B',
       provider: 'Mistral',
-      maxTokenAllowed: 64000
+      maxTokenAllowed: 64000,
     },
     {
       name: 'open-codestral-mamba',
       label: 'Codestral Mamba (Fast)',
       provider: 'Mistral',
-      maxTokenAllowed: 32000
+      maxTokenAllowed: 32000,
     },
     {
       name: 'mistral-small-latest',
       label: 'Mistral Small',
       provider: 'Mistral',
-      maxTokenAllowed: 32000
+      maxTokenAllowed: 32000,
     },
   ];
 

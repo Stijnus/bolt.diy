@@ -45,9 +45,12 @@ async function enhancerAction({ context, request }: ActionFunctionArgs) {
       messages: [
         {
           role: 'user',
-          parts: [{ type: 'text', text:
-            `[Model: ${model}]\n\n[Provider: ${providerName}]\n\n` +
-            stripIndents`
+          parts: [
+            {
+              type: 'text',
+              text:
+                `[Model: ${model}]\n\n[Provider: ${providerName}]\n\n` +
+                stripIndents`
             You are a professional prompt engineer specializing in crafting precise, effective prompts.
             Your task is to enhance prompts by making them more specific, actionable, and effective.
 
@@ -74,7 +77,9 @@ async function enhancerAction({ context, request }: ActionFunctionArgs) {
             <original_prompt>
               ${message}
             </original_prompt>
-          ` }],
+          `,
+            },
+          ],
         },
       ],
       env: context.cloudflare?.env as any,

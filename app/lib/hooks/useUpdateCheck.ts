@@ -29,6 +29,7 @@ export function useUpdateCheck(): UseUpdateCheckState {
 
   const performCheck = useCallback(async () => {
     setIsLoading(true);
+
     let result: UpdateCheckResult | null = null;
 
     try {
@@ -52,6 +53,7 @@ export function useUpdateCheck(): UseUpdateCheckState {
       if (!isMounted) {
         return;
       }
+
       await performCheck();
     };
 

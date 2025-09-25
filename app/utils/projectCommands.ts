@@ -127,10 +127,15 @@ export function createCommandsMessage(commands: ProjectCommands): UIMessage | nu
 
   return {
     role: 'assistant',
-    parts: [{ type: 'text', text: `${commands.followupMessage ? `\n\n${commands.followupMessage}` : ''}
+    parts: [
+      {
+        type: 'text',
+        text: `${commands.followupMessage ? `\n\n${commands.followupMessage}` : ''}
 <boltArtifact id="project-setup" title="Project Setup">
 ${commandString}
-</boltArtifact>` }],
+</boltArtifact>`,
+      },
+    ],
     id: generateId(),
   };
 }

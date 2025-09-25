@@ -1,14 +1,8 @@
-import {
-  getToolOrDynamicToolName,
-  isToolOrDynamicToolUIPart,
-  type DynamicToolUIPart,
-  type ToolUIPart,
-} from 'ai';
+import { getToolOrDynamicToolName, isToolOrDynamicToolUIPart, type DynamicToolUIPart, type ToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
 import { AnimatePresence, motion } from 'framer-motion';
 import { memo, useMemo, useState } from 'react';
 import { createHighlighter, type BundledLanguage, type BundledTheme, type HighlighterGeneric } from 'shiki';
-import { classNames } from '~/utils/classNames';
 import { cubicEasingFn } from '~/utils/easings';
 import { themeStore, type Theme } from '~/lib/stores/theme';
 import { useStore } from '@nanostores/react';
@@ -56,7 +50,7 @@ function JsonCodeBlock({ code, theme }: JsonCodeBlockProps) {
     } else {
       formattedCode = JSON.stringify(code, null, 2);
     }
-  } catch (error) {
+  } catch {
     formattedCode = String(code);
   }
 
@@ -103,7 +97,7 @@ export const ToolInvocations = memo(({ toolInvocations, toolCallAnnotations }: T
       </div>
       <AnimatePresence>
         {(expanded ? invocations : invocations.slice(-1)).map((invocation) => {
-    const annotation = toolCallAnnotations.find((item) => item.toolCallId === invocation.toolCallId);
+          const annotation = toolCallAnnotations.find((item) => item.toolCallId === invocation.toolCallId);
           const key = `${invocation.toolCallId}-${invocation.state}`;
 
           return (
@@ -121,9 +115,7 @@ export const ToolInvocations = memo(({ toolInvocations, toolCallAnnotations }: T
                   <span className="rounded-full bg-bolt-elements-item-backgroundAccent px-2 py-0.5">
                     {invocation.state}
                   </span>
-                  {annotation?.toolDescription && (
-                    <span className="truncate">{annotation.toolDescription}</span>
-                  )}
+                  {annotation?.toolDescription && <span className="truncate">{annotation.toolDescription}</span>}
                 </div>
                 {invocation.input !== undefined ? (
                   <div className="mt-2">
@@ -137,9 +129,7 @@ export const ToolInvocations = memo(({ toolInvocations, toolCallAnnotations }: T
                     <JsonCodeBlock code={invocation.output} theme={theme} />
                   </div>
                 ) : null}
-                {invocation.errorText ? (
-                  <div className="mt-2 text-red-500">{invocation.errorText}</div>
-                ) : null}
+                {invocation.errorText ? <div className="mt-2 text-red-500">{invocation.errorText}</div> : null}
               </div>
             </motion.div>
           );

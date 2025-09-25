@@ -122,7 +122,10 @@ export default function GitCloneButton({ importChat, className }: GitCloneButton
 
         const filesMessage: UIMessage = {
           role: 'assistant',
-          parts: [{ type: 'text', text: `Cloning the repo ${repoUrl} into ${workdir}
+          parts: [
+            {
+              type: 'text',
+              text: `Cloning the repo ${repoUrl} into ${workdir}
 ${
   skippedFiles.length > 0
     ? `\nSkipped files (${skippedFiles.length}):
@@ -139,7 +142,9 @@ ${escapeBoltTags(file.content)}
 </boltAction>`,
   )
   .join('\n')}
-</boltArtifact>` }],
+</boltArtifact>`,
+            },
+          ],
           id: generateId(),
         };
 

@@ -27,7 +27,7 @@ export async function createSummary(props: {
 
       return { ...message, parts: [{ type: 'text' as const, text: content }] };
     } else if (message.role == 'assistant') {
-      let content = message.parts?.find(part => part.type === 'text')?.text || '';
+      let content = message.parts?.find((part) => part.type === 'text')?.text || '';
 
       content = simplifyBoltActions(content);
       content = content.replace(/<div class=\\"__boltThought__\\">.*?<\/div>/s, '');
@@ -94,8 +94,7 @@ ${summary.summary}`;
 
   logger.debug('Sliced Messages:', slicedMessages.length);
 
-  const extractTextContent = (message: any) =>
-    message.parts?.find((part: any) => part.type === 'text')?.text || '';
+  const extractTextContent = (message: any) => message.parts?.find((part: any) => part.type === 'text')?.text || '';
 
   // select files from the list of code file from the project that might be useful for the current request from the user
   const resp = await generateText({

@@ -16,7 +16,6 @@ import { workbenchStore } from '~/lib/stores/workbench';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROMPT_COOKIE_KEY, PROVIDER_LIST } from '~/utils/constants';
 import { cubicEasingFn } from '~/utils/easings';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
-import { convertMessagesToUIMessages } from '~/utils/messageConversion';
 import { BaseChat } from './BaseChat';
 import Cookies from 'js-cookie';
 import { debounce } from '~/utils/debounce';
@@ -153,15 +152,7 @@ export const ChatImpl = memo(
     // AI SDK v5 - Manual input state management
     const [input, setInput] = useState(Cookies.get(PROMPT_COOKIE_KEY) || '');
 
-    const {
-      messages,
-      status,
-      sendMessage,
-      setMessages,
-      regenerate,
-      error,
-      stop,
-    } = useChat({
+    const { messages, status, sendMessage, setMessages, regenerate, error, stop } = useChat({
       transport: new DefaultChatTransport({
         api: '/api/chat',
         credentials: 'same-origin',
@@ -201,7 +192,7 @@ export const ChatImpl = memo(
             action: 'response',
             model,
             provider: provider.name,
-            messageLength: message.parts?.find(part => part.type === 'text')?.text?.length || 0,
+            messageLength: message.parts?.find((part) => part.type === 'text')?.text?.length || 0,
           });
         }
 
@@ -362,7 +353,9 @@ export const ChatImpl = memo(
                 {
                   id: `3-${new Date().getTime()}`,
                   role: 'user',
-                  parts: [{ type: 'text', text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${userMessage}` }],
+                  parts: [
+                    { type: 'text', text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${userMessage}` },
+                  ],
                 },
               ]);
               regenerate();

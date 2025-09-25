@@ -61,7 +61,7 @@ export const AssistantMessage = memo(
     model,
     provider,
     parts,
-    addToolResult,
+    addToolResult: _addToolResult,
   }: AssistantMessageProps) => {
     const filteredAnnotations = (annotations?.filter(
       (annotation: JSONValue) =>
@@ -80,8 +80,7 @@ export const AssistantMessage = memo(
       codeContext = filteredAnnotations.find((annotation) => annotation.type === 'codeContext')?.files;
     }
 
-    const usage = filteredAnnotations.find((annotation) => annotation.type === 'usage')
-      ?.value as
+    const usage = filteredAnnotations.find((annotation) => annotation.type === 'usage')?.value as
       | {
           outputTokens: number;
           inputTokens: number;

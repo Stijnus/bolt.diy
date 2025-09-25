@@ -12,8 +12,10 @@ export default class GithubProvider extends BaseProvider {
     apiTokenKey: 'GITHUB_API_KEY',
   };
 
-  // GitHub Models - Curated selection with developer-focused integration
-  // Find more models: https://github.com/marketplace?type=models
+  /*
+   * GitHub Models - Curated selection with developer-focused integration
+   * Find more models: https://github.com/marketplace?type=models
+   */
   staticModels: ModelInfo[] = [
     // OpenAI Models via GitHub
     { name: 'o1-preview', label: 'o1-preview (Reasoning)', provider: 'Github', maxTokenAllowed: 128000 },

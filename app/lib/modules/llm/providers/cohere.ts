@@ -18,7 +18,7 @@ export default class CohereProvider extends BaseProvider {
       name: 'command-a-03-2025',
       label: 'Command A 03-2025 (Best Performance)',
       provider: 'Cohere',
-      maxTokenAllowed: 256000
+      maxTokenAllowed: 256000,
     },
 
     // Command R+ 08-2024 - Enterprise-grade models with improved capabilities
@@ -26,13 +26,13 @@ export default class CohereProvider extends BaseProvider {
       name: 'command-r-plus-08-2024',
       label: 'Command R+ 08-2024 (Enterprise)',
       provider: 'Cohere',
-      maxTokenAllowed: 128000
+      maxTokenAllowed: 128000,
     },
     {
       name: 'command-r-08-2024',
       label: 'Command R 08-2024',
       provider: 'Cohere',
-      maxTokenAllowed: 128000
+      maxTokenAllowed: 128000,
     },
 
     // Legacy models maintained for compatibility
@@ -40,13 +40,13 @@ export default class CohereProvider extends BaseProvider {
       name: 'command-r-plus',
       label: 'Command R+ (Legacy)',
       provider: 'Cohere',
-      maxTokenAllowed: 64000
+      maxTokenAllowed: 64000,
     },
     {
       name: 'command-r',
       label: 'Command R (Legacy)',
       provider: 'Cohere',
-      maxTokenAllowed: 64000
+      maxTokenAllowed: 64000,
     },
 
     // Aya Expanse multilingual models
@@ -54,7 +54,7 @@ export default class CohereProvider extends BaseProvider {
       name: 'c4ai-aya-expanse-32b',
       label: 'Aya Expanse 32B (Multilingual)',
       provider: 'Cohere',
-      maxTokenAllowed: 64000
+      maxTokenAllowed: 64000,
     },
   ];
 
