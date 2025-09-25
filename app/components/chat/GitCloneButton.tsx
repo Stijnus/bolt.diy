@@ -1,8 +1,8 @@
 import ignore from 'ignore';
 import { useGit } from '~/lib/hooks/useGit';
-import type { Message } from 'ai';
-import { detectProjectCommands, createCommandsMessage, escapeBoltTags } from '~/utils/projectCommands';
+import type { UIMessage } from 'ai';
 import { generateId } from '~/utils/fileUtils';
+import { detectProjectCommands, createCommandsMessage, escapeBoltTags } from '~/utils/projectCommands';
 import { useState } from 'react';
 import { toast } from 'react-toastify';
 import { LoadingOverlay } from '~/components/ui/LoadingOverlay';
@@ -44,7 +44,7 @@ const MAX_TOTAL_SIZE = 500 * 1024; // 500KB total limit
 
 interface GitCloneButtonProps {
   className?: string;
-  importChat?: (description: string, messages: Message[], metadata?: IChatMetadata) => Promise<void>;
+  importChat?: (description: string, messages: UIMessage[], metadata?: IChatMetadata) => Promise<void>;
 }
 
 export default function GitCloneButton({ importChat, className }: GitCloneButtonProps) {
@@ -120,9 +120,9 @@ export default function GitCloneButton({ importChat, className }: GitCloneButton
         const commands = await detectProjectCommands(fileContents);
         const commandsMessage = createCommandsMessage(commands);
 
-        const filesMessage: Message = {
+        const filesMessage: UIMessage = {
           role: 'assistant',
-          content: `Cloning the repo ${repoUrl} into ${workdir}
+          parts: [{ type: 'text', text: `Cloning the repo ${repoUrl} into ${workdir}
 ${
   skippedFiles.length > 0
     ? `\nSkipped files (${skippedFiles.length}):
@@ -139,9 +139,8 @@ ${escapeBoltTags(file.content)}
 </boltAction>`,
   )
   .join('\n')}
-</boltArtifact>`,
+</boltArtifact>` }],
           id: generateId(),
-          createdAt: new Date(),
         };
 
         const messages = [filesMessage];

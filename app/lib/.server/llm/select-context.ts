@@ -1,4 +1,4 @@
-import { generateText, type CoreTool, type GenerateTextResult, type Message } from 'ai';
+import { generateText, type GenerateTextResult, type UIMessage } from 'ai';
 import ignore from 'ignore';
 import type { IProviderSetting } from '~/types/model';
 import { IGNORE_PATTERNS, type FileMap } from './constants';
@@ -13,7 +13,7 @@ const ig = ignore().add(IGNORE_PATTERNS);
 const logger = createScopedLogger('select-context');
 
 export async function selectContext(props: {
-  messages: Message[];
+  messages: UIMessage[];
   env?: Env;
   apiKeys?: Record<string, string>;
   files: FileMap;
@@ -21,7 +21,7 @@ export async function selectContext(props: {
   promptId?: string;
   contextOptimization?: boolean;
   summary: string;
-  onFinish?: (resp: GenerateTextResult<Record<string, CoreTool<any, any>>, never>) => void;
+  onFinish?: (resp: GenerateTextResult<any, any>) => void;
 }) {
   const { messages, env: serverEnv, apiKeys, files, providerSettings, summary, onFinish } = props;
   let currentModel = DEFAULT_MODEL;

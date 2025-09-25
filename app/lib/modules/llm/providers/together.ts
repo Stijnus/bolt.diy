@@ -1,7 +1,7 @@
 import { BaseProvider, getOpenAILikeModel } from '~/lib/modules/llm/base-provider';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import type { IProviderSetting } from '~/types/model';
-import type { LanguageModelV1 } from 'ai';
+import type { LanguageModel } from 'ai';
 
 export default class TogetherProvider extends BaseProvider {
   name = 'Together';
@@ -13,25 +13,50 @@ export default class TogetherProvider extends BaseProvider {
   };
 
   staticModels: ModelInfo[] = [
-    /*
-     * Essential fallback models - only the most stable/reliable ones
-     * Llama 3.2 90B Vision: 128k context, multimodal capabilities
-     */
+    // Llama 4 Series (2025) - Multimodal MoE models
     {
-      name: 'meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo',
-      label: 'Llama 3.2 90B Vision',
+      name: 'meta-llama/Llama-4-Scout',
+      label: 'Llama 4 Scout (Multimodal MoE)',
       provider: 'Together',
       maxTokenAllowed: 128000,
-      maxCompletionTokens: 8192,
+    },
+    {
+      name: 'meta-llama/Llama-4-Maverick',
+      label: 'Llama 4 Maverick (Advanced)',
+      provider: 'Together',
+      maxTokenAllowed: 128000,
     },
 
-    // Mixtral 8x7B: 32k context, strong performance
+    // Llama 3.3 Series - Latest stable models
     {
-      name: 'mistralai/Mixtral-8x7B-Instruct-v0.1',
-      label: 'Mixtral 8x7B Instruct',
+      name: 'meta-llama/Llama-3.3-70B-Instruct',
+      label: 'Llama 3.3 70B Instruct (Multilingual)',
+      provider: 'Together',
+      maxTokenAllowed: 128000,
+    },
+
+    // Top coding models available on Together
+    {
+      name: 'Qwen/Qwen2.5-Coder-32B-Instruct',
+      label: 'Qwen 2.5 Coder 32B (Code Specialist)',
       provider: 'Together',
       maxTokenAllowed: 32000,
-      maxCompletionTokens: 8192,
+    },
+
+    // Multimodal and vision models
+    {
+      name: 'meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo',
+      label: 'Llama 3.2 90B Vision (Multimodal)',
+      provider: 'Together',
+      maxTokenAllowed: 64000,
+    },
+
+    // Efficient models for fast inference
+    {
+      name: 'mistralai/Mixtral-8x7B-Instruct-v0.1',
+      label: 'Mixtral 8x7B Instruct (Efficient)',
+      provider: 'Together',
+      maxTokenAllowed: 32000,
     },
   ];
 
@@ -69,7 +94,6 @@ export default class TogetherProvider extends BaseProvider {
       label: `${m.display_name} - in:$${m.pricing.input.toFixed(2)} out:$${m.pricing.output.toFixed(2)} - context ${Math.floor(m.context_length / 1000)}k`,
       provider: this.name,
       maxTokenAllowed: 8000,
-      maxCompletionTokens: 8192,
     }));
   }
 
@@ -78,7 +102,7 @@ export default class TogetherProvider extends BaseProvider {
     serverEnv: Env;
     apiKeys?: Record<string, string>;
     providerSettings?: Record<string, IProviderSetting>;
-  }): LanguageModelV1 {
+  }): LanguageModel {
     const { model, serverEnv, apiKeys, providerSettings } = options;
 
     const { baseUrl, apiKey } = this.getProviderBaseUrlAndKey({

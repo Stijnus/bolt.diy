@@ -45,7 +45,7 @@ async function enhancerAction({ context, request }: ActionFunctionArgs) {
       messages: [
         {
           role: 'user',
-          content:
+          parts: [{ type: 'text', text:
             `[Model: ${model}]\n\n[Provider: ${providerName}]\n\n` +
             stripIndents`
             You are a professional prompt engineer specializing in crafting precise, effective prompts.
@@ -74,7 +74,7 @@ async function enhancerAction({ context, request }: ActionFunctionArgs) {
             <original_prompt>
               ${message}
             </original_prompt>
-          `,
+          ` }],
         },
       ],
       env: context.cloudflare?.env as any,

@@ -1,5 +1,5 @@
 import { useSearchParams } from '@remix-run/react';
-import { generateId, type Message } from 'ai';
+import { type UIMessage } from 'ai';
 import ignore from 'ignore';
 import { useEffect, useState } from 'react';
 import { ClientOnly } from 'remix-utils/client-only';
@@ -7,7 +7,8 @@ import { BaseChat } from '~/components/chat/BaseChat';
 import { Chat } from '~/components/chat/Chat.client';
 import { useGit } from '~/lib/hooks/useGit';
 import { useChatHistory } from '~/lib/persistence';
-import { createCommandsMessage, detectProjectCommands, escapeBoltTags } from '~/utils/projectCommands';
+import { detectProjectCommands, createCommandsMessage, escapeBoltTags } from '~/utils/projectCommands';
+import { generateId } from '~/utils/fileUtils';
 import { LoadingOverlay } from '~/components/ui/LoadingOverlay';
 import { toast } from 'react-toastify';
 
@@ -72,9 +73,9 @@ export function GitUrlImport() {
           const commands = await detectProjectCommands(fileContents);
           const commandsMessage = createCommandsMessage(commands);
 
-          const filesMessage: Message = {
+          const filesMessage: UIMessage = {
             role: 'assistant',
-            content: `Cloning the repo ${repoUrl} into ${workdir}
+            parts: [{ type: 'text', text: `Cloning the repo ${repoUrl} into ${workdir}
 <boltArtifact id="imported-files" title="Git Cloned Files"  type="bundled">
 ${fileContents
   .map(
@@ -84,9 +85,8 @@ ${escapeBoltTags(file.content)}
 </boltAction>`,
   )
   .join('\n')}
-</boltArtifact>`,
+</boltArtifact>` }],
             id: generateId(),
-            createdAt: new Date(),
           };
 
           const messages = [filesMessage];

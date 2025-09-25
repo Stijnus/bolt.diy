@@ -1,4 +1,4 @@
-import { generateText, type CoreTool, type GenerateTextResult, type Message } from 'ai';
+import { generateText, type GenerateTextResult, type UIMessage } from 'ai';
 import type { IProviderSetting } from '~/types/model';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROVIDER_LIST } from '~/utils/constants';
 import { extractCurrentContext, extractPropertiesFromMessage, simplifyBoltActions } from './utils';
@@ -8,13 +8,13 @@ import { LLMManager } from '~/lib/modules/llm/manager';
 const logger = createScopedLogger('create-summary');
 
 export async function createSummary(props: {
-  messages: Message[];
+  messages: UIMessage[];
   env?: Env;
   apiKeys?: Record<string, string>;
   providerSettings?: Record<string, IProviderSetting>;
   promptId?: string;
   contextOptimization?: boolean;
-  onFinish?: (resp: GenerateTextResult<Record<string, CoreTool<any, any>>, never>) => void;
+  onFinish?: (resp: GenerateTextResult<any, any>) => void;
 }) {
   const { messages, env: serverEnv, apiKeys, providerSettings, onFinish } = props;
   let currentModel = DEFAULT_MODEL;
@@ -25,15 +25,15 @@ export async function createSummary(props: {
       currentModel = model;
       currentProvider = provider;
 
-      return { ...message, content };
+      return { ...message, parts: [{ type: 'text', text: content }] };
     } else if (message.role == 'assistant') {
-      let content = message.content;
+      let content = message.parts?.find(part => part.type === 'text')?.text || '';
 
       content = simplifyBoltActions(content);
       content = content.replace(/<div class=\\"__boltThought__\\">.*?<\/div>/s, '');
       content = content.replace(/<think>.*?<\/think>/s, '');
 
-      return { ...message, content };
+      return { ...message, parts: [{ type: 'text', text: content }] };
     }
 
     return message;
@@ -94,10 +94,8 @@ ${summary.summary}`;
 
   logger.debug('Sliced Messages:', slicedMessages.length);
 
-  const extractTextContent = (message: Message) =>
-    Array.isArray(message.content)
-      ? (message.content.find((item) => item.type === 'text')?.text as string) || ''
-      : message.content;
+  const extractTextContent = (message: any) =>
+    message.parts?.find((part: any) => part.type === 'text')?.text || '';
 
   // select files from the list of code file from the project that might be useful for the current request from the user
   const resp = await generateText({

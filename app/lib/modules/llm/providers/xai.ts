@@ -1,7 +1,7 @@
 import { BaseProvider } from '~/lib/modules/llm/base-provider';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import type { IProviderSetting } from '~/types/model';
-import type { LanguageModelV1 } from 'ai';
+import type { LanguageModel } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 
 export default class XAIProvider extends BaseProvider {
@@ -13,11 +13,35 @@ export default class XAIProvider extends BaseProvider {
   };
 
   staticModels: ModelInfo[] = [
-    { name: 'grok-4', label: 'xAI Grok 4', provider: 'xAI', maxTokenAllowed: 256000 },
-    { name: 'grok-4-07-09', label: 'xAI Grok 4 (07-09)', provider: 'xAI', maxTokenAllowed: 256000 },
-    { name: 'grok-3-mini', label: 'xAI Grok 3 Mini', provider: 'xAI', maxTokenAllowed: 131000 },
-    { name: 'grok-3-mini-fast', label: 'xAI Grok 3 Mini Fast', provider: 'xAI', maxTokenAllowed: 131000 },
-    { name: 'grok-code-fast-1', label: 'xAI Grok Code Fast 1', provider: 'xAI', maxTokenAllowed: 131000 },
+    // Grok 4 (2025) - Most intelligent model
+    {
+      name: 'grok-4',
+      label: 'Grok 4 (Most Intelligent)',
+      provider: 'xAI',
+      maxTokenAllowed: 128000
+    },
+
+    // Grok Code Fast 1 - Specialized for coding (70.8% SWE-bench)
+    {
+      name: 'grok-code-fast-1',
+      label: 'Grok Code Fast 1 (Coding Specialist)',
+      provider: 'xAI',
+      maxTokenAllowed: 256000
+    },
+
+    // Grok 3 - Large context model
+    {
+      name: 'grok-3',
+      label: 'Grok 3 (1M Context)',
+      provider: 'xAI',
+      maxTokenAllowed: 1000000
+    },
+    {
+      name: 'grok-3-beta',
+      label: 'Grok 3 Beta',
+      provider: 'xAI',
+      maxTokenAllowed: 1000000
+    },
   ];
 
   getModelInstance(options: {
@@ -25,7 +49,7 @@ export default class XAIProvider extends BaseProvider {
     serverEnv: Env;
     apiKeys?: Record<string, string>;
     providerSettings?: Record<string, IProviderSetting>;
-  }): LanguageModelV1 {
+  }): LanguageModel {
     const { model, serverEnv, apiKeys, providerSettings } = options;
 
     const { apiKey } = this.getProviderBaseUrlAndKey({

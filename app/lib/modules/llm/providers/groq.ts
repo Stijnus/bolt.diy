@@ -1,7 +1,7 @@
 import { BaseProvider } from '~/lib/modules/llm/base-provider';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import type { IProviderSetting } from '~/types/model';
-import type { LanguageModelV1 } from 'ai';
+import type { LanguageModel } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 
 export default class GroqProvider extends BaseProvider {
@@ -13,25 +13,52 @@ export default class GroqProvider extends BaseProvider {
   };
 
   staticModels: ModelInfo[] = [
-    /*
-     * Essential fallback models - only the most stable/reliable ones
-     * Llama 3.1 8B: 128k context, fast and efficient
-     */
+    // Official Llama 4 API (2025) - Partnership with Meta
     {
-      name: 'llama-3.1-8b-instant',
-      label: 'Llama 3.1 8B',
+      name: 'llama-4-scout',
+      label: 'Llama 4 Scout (Multimodal MoE)',
       provider: 'Groq',
-      maxTokenAllowed: 128000,
-      maxCompletionTokens: 8192,
+      maxTokenAllowed: 128000
+    },
+    {
+      name: 'llama-4-maverick',
+      label: 'Llama 4 Maverick (Advanced)',
+      provider: 'Groq',
+      maxTokenAllowed: 128000
     },
 
-    // Llama 3.3 70B: 128k context, most capable model
+    // Llama-3-Groq-Tool-Use models - Specialized for tool use
+    {
+      name: 'llama-3-groq-70b-tool-use',
+      label: 'Llama 3 Groq 70B Tool Use',
+      provider: 'Groq',
+      maxTokenAllowed: 64000
+    },
+    {
+      name: 'llama-3-groq-8b-tool-use',
+      label: 'Llama 3 Groq 8B Tool Use',
+      provider: 'Groq',
+      maxTokenAllowed: 64000
+    },
+
+    // Latest Llama models maintained for compatibility
     {
       name: 'llama-3.3-70b-versatile',
-      label: 'Llama 3.3 70B',
+      label: 'Llama 3.3 70B Versatile',
       provider: 'Groq',
-      maxTokenAllowed: 128000,
-      maxCompletionTokens: 8192,
+      maxTokenAllowed: 32000
+    },
+    {
+      name: 'llama-3.2-90b-vision-preview',
+      label: 'Llama 3.2 90B Vision',
+      provider: 'Groq',
+      maxTokenAllowed: 32000
+    },
+    {
+      name: 'deepseek-r1-distill-llama-70b',
+      label: 'DeepSeek R1 Distill Llama 70B',
+      provider: 'Groq',
+      maxTokenAllowed: 131072
     },
   ];
 
@@ -68,8 +95,7 @@ export default class GroqProvider extends BaseProvider {
       name: m.id,
       label: `${m.id} - context ${m.context_window ? Math.floor(m.context_window / 1000) + 'k' : 'N/A'} [ by ${m.owned_by}]`,
       provider: this.name,
-      maxTokenAllowed: Math.min(m.context_window || 8192, 16384),
-      maxCompletionTokens: 8192,
+      maxTokenAllowed: m.context_window || 8000,
     }));
   }
 
@@ -78,7 +104,7 @@ export default class GroqProvider extends BaseProvider {
     serverEnv: Env;
     apiKeys?: Record<string, string>;
     providerSettings?: Record<string, IProviderSetting>;
-  }): LanguageModelV1 {
+  }): LanguageModel {
     const { model, serverEnv, apiKeys, providerSettings } = options;
 
     const { apiKey } = this.getProviderBaseUrlAndKey({

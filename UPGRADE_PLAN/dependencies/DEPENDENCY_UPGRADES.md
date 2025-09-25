@@ -3,6 +3,88 @@
 ## Overview
 This document details the comprehensive dependency upgrade effort completed on the `stable` branch. All safe updates have been successfully implemented and consolidated into the `feature/dependency-upgrades` branch.
 
+## 2025-09-25 `pnpm outdated` Snapshot
+- **Command**: `pnpm outdated`
+- **Run Date**: 2025-09-25
+- **Total Outdated**: 44 (35 major — includes 2 deprecated typings, 2 minor, 6 patch, 1 internal build tag)
+- **Deprecated**: `@types/diff`, `@types/react-window`
+- **Immediate Watchlist**:
+  - Runtime-impacting majors: `zod@3 → 4`, `shiki@1 → 3`, `tailwind-merge@2 → 3`, `date-fns@3 → 4`, `react-markdown@9 → 10`, `react-toastify@10 → 11`
+  - Tooling majors: `vitest@2 → 3`, `vite-tsconfig-paths@4 → 5`, `pnpm@9 → 10`, `electron@33 → 38`, `electron-builder@25 → 26`, `rimraf@4 → 6`
+  - API consumers: `@octokit/rest@21 → 22`, `remix-utils@7 → 9`, `framer-motion@11 → 12`
+
+### Recommended Next Steps
+1. **Plan major dependency upgrades** in themed batches (e.g. testing stack, design system, API clients) to limit regression risk.
+2. **Audit deprecated typings** (`@types/diff`, `@types/react-window`) and either remove or replace them with maintained alternatives.
+3. **Validate major runtime upgrades** (`zod`, `react-*`, `date-fns`, `tailwind-merge`) in a feature branch with focused regression testing.
+4. **Schedule tooling refresh** (`pnpm`, `vitest`, `electron`, `rimraf`) after confirming CI/CD compatibility changes.
+
+### Detailed Upgrade List
+
+**Major upgrades (35)**
+
+| Package | Current | Latest | Type | Notes |
+| --- | --- | --- | --- | --- |
+| @electron/notarize | 2.5.0 | 3.1.0 | devDependencies | |
+| @nanostores/react | 0.7.3 | 1.0.0 | dependencies | |
+| @octokit/rest | 21.1.1 | 22.0.0 | dependencies | |
+| @octokit/types | 13.10.0 | 15.0.0 | dependencies | |
+| @types/diff | 5.2.3 | 8.0.0 | devDependencies | Deprecated upstream |
+| @types/react-window | 1.8.8 | 2.0.0 | devDependencies | Deprecated upstream |
+| concurrently | 8.2.2 | 9.2.1 | devDependencies | |
+| cross-env | 7.0.3 | 10.0.0 | devDependencies | |
+| date-fns | 3.6.0 | 4.1.0 | dependencies | |
+| diff | 5.2.0 | 8.0.2 | dependencies | |
+| dotenv | 16.6.1 | 17.2.2 | dependencies | |
+| electron | 33.4.11 | 38.1.2 | devDependencies | |
+| electron-builder | 25.1.8 | 26.0.12 | devDependencies | |
+| framer-motion | 11.18.2 | 12.23.21 | dependencies | |
+| ignore | 6.0.2 | 7.0.5 | dependencies | |
+| is-ci | 3.0.1 | 4.1.0 | devDependencies | |
+| isbot | 4.4.0 | 5.1.31 | dependencies | |
+| jose | 5.10.0 | 6.1.0 | dependencies | |
+| jsdom | 26.1.0 | 27.0.0 | devDependencies | |
+| jspdf | 2.5.2 | 3.0.3 | dependencies | |
+| nanostores | 0.10.3 | 1.0.1 | dependencies | |
+| pnpm | 9.15.9 | 10.17.1 | devDependencies | |
+| react-hotkeys-hook | 4.6.2 | 5.1.0 | dependencies | |
+| react-markdown | 9.1.0 | 10.1.0 | dependencies | |
+| react-qrcode-logo | 3.0.0 | 4.0.0 | dependencies | |
+| react-resizable-panels | 2.1.9 | 3.0.6 | dependencies | |
+| react-toastify | 10.0.6 | 11.0.5 | dependencies | |
+| react-window | 1.8.11 | 2.1.1 | dependencies | |
+| remix-utils | 7.7.0 | 9.0.0 | dependencies | |
+| rimraf | 4.4.1 | 6.0.1 | devDependencies | |
+| shiki | 1.29.2 | 3.13.0 | dependencies | |
+| tailwind-merge | 2.6.0 | 3.3.1 | dependencies | |
+| vite-tsconfig-paths | 4.3.2 | 5.1.4 | devDependencies | |
+| vitest | 2.1.9 | 3.2.4 | devDependencies | |
+| zod | 3.25.76 | 4.1.11 | dependencies | |
+
+**Minor upgrades (2)**
+
+| Package | Current | Latest | Type | Notes |
+| --- | --- | --- | --- | --- |
+| lucide-react | 0.485.0 | 0.544.0 | dependencies | |
+| wrangler | 4.39.0 | 4.40.0 | devDependencies | |
+
+**Patch upgrades (6)**
+
+| Package | Current | Latest | Type | Notes |
+| --- | --- | --- | --- | --- |
+| @ai-sdk/openai | 2.0.34 | 2.0.35 | dependencies | |
+| @ai-sdk/react | 2.0.51 | 2.0.52 | dependencies | |
+| @blitz/eslint-plugin | 0.1.0 | 0.1.4 | devDependencies | |
+| @types/dom-speech-recognition | 0.0.4 | 0.0.6 | devDependencies | |
+| ai | 5.0.51 | 5.0.52 | dependencies | |
+| isomorphic-git | 1.33.1 | 1.33.2 | dependencies | |
+
+**Non-standard tag (1)**
+
+| Package | Current | Latest | Type | Notes |
+| --- | --- | --- | --- | --- |
+| @webcontainer/api | 1.6.1-internal.1 | 1.6.1 | dependencies | Current build pinned to internal prerelease |
+
 ## Status: ✅ COMPLETED
 - **Branch**: `feature/dependency-upgrades`
 - **Base**: `stable`

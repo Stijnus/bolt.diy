@@ -1,7 +1,7 @@
 import { BaseProvider } from '~/lib/modules/llm/base-provider';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import type { IProviderSetting } from '~/types/model';
-import type { LanguageModelV1 } from 'ai';
+import type { LanguageModel } from 'ai';
 import { createMistral } from '@ai-sdk/mistral';
 
 export default class MistralProvider extends BaseProvider {
@@ -13,68 +13,46 @@ export default class MistralProvider extends BaseProvider {
   };
 
   staticModels: ModelInfo[] = [
+    // Codestral 25.01 (January 2025) - #1 on LMsys copilot arena
     {
-      name: 'open-mistral-7b',
-      label: 'Mistral 7B',
+      name: 'codestral-25.01',
+      label: 'Codestral 25.01 (#1 Copilot Arena)',
       provider: 'Mistral',
-      maxTokenAllowed: 8000,
-      maxCompletionTokens: 8192,
+      maxTokenAllowed: 256000
     },
     {
-      name: 'open-mixtral-8x7b',
-      label: 'Mistral 8x7B',
+      name: 'codestral-latest',
+      label: 'Codestral Latest',
       provider: 'Mistral',
-      maxTokenAllowed: 8000,
-      maxCompletionTokens: 8192,
+      maxTokenAllowed: 256000
     },
+
+    // Mistral Large Latest - General purpose flagship
+    {
+      name: 'mistral-large-latest',
+      label: 'Mistral Large Latest',
+      provider: 'Mistral',
+      maxTokenAllowed: 128000
+    },
+
+    // Specialized models maintained for compatibility
     {
       name: 'open-mixtral-8x22b',
-      label: 'Mistral 8x22B',
+      label: 'Mixtral 8x22B',
       provider: 'Mistral',
-      maxTokenAllowed: 8000,
-      maxCompletionTokens: 8192,
+      maxTokenAllowed: 64000
     },
     {
       name: 'open-codestral-mamba',
-      label: 'Codestral Mamba',
+      label: 'Codestral Mamba (Fast)',
       provider: 'Mistral',
-      maxTokenAllowed: 8000,
-      maxCompletionTokens: 8192,
-    },
-    {
-      name: 'open-mistral-nemo',
-      label: 'Mistral Nemo',
-      provider: 'Mistral',
-      maxTokenAllowed: 8000,
-      maxCompletionTokens: 8192,
-    },
-    {
-      name: 'ministral-8b-latest',
-      label: 'Mistral 8B',
-      provider: 'Mistral',
-      maxTokenAllowed: 8000,
-      maxCompletionTokens: 8192,
+      maxTokenAllowed: 32000
     },
     {
       name: 'mistral-small-latest',
       label: 'Mistral Small',
       provider: 'Mistral',
-      maxTokenAllowed: 8000,
-      maxCompletionTokens: 8192,
-    },
-    {
-      name: 'codestral-latest',
-      label: 'Codestral',
-      provider: 'Mistral',
-      maxTokenAllowed: 8000,
-      maxCompletionTokens: 8192,
-    },
-    {
-      name: 'mistral-large-latest',
-      label: 'Mistral Large Latest',
-      provider: 'Mistral',
-      maxTokenAllowed: 8000,
-      maxCompletionTokens: 8192,
+      maxTokenAllowed: 32000
     },
   ];
 
@@ -83,7 +61,7 @@ export default class MistralProvider extends BaseProvider {
     serverEnv: Env;
     apiKeys?: Record<string, string>;
     providerSettings?: Record<string, IProviderSetting>;
-  }): LanguageModelV1 {
+  }): LanguageModel {
     const { model, serverEnv, apiKeys, providerSettings } = options;
 
     const { apiKey } = this.getProviderBaseUrlAndKey({

@@ -1,10 +1,10 @@
-import { type Message } from 'ai';
+import { type UIMessage } from 'ai';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODEL_REGEX, PROVIDER_REGEX } from '~/utils/constants';
 import { IGNORE_PATTERNS, type FileMap } from './constants';
 import ignore from 'ignore';
 import type { ContextAnnotation } from '~/types/context';
 
-export function extractPropertiesFromMessage(message: Omit<Message, 'id'>): {
+export function extractPropertiesFromMessage(message: Omit<UIMessage, 'id'>): {
   model: string;
   provider: string;
   content: string;

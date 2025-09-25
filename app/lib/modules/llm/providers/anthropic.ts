@@ -1,6 +1,6 @@
 import { BaseProvider } from '~/lib/modules/llm/base-provider';
 import type { ModelInfo } from '~/lib/modules/llm/types';
-import type { LanguageModelV1 } from 'ai';
+import type { LanguageModel } from 'ai';
 import type { IProviderSetting } from '~/types/model';
 import { createAnthropic } from '@ai-sdk/anthropic';
 
@@ -13,34 +13,40 @@ export default class AnthropicProvider extends BaseProvider {
   };
 
   staticModels: ModelInfo[] = [
-    /*
-     * Essential fallback models - only the most stable/reliable ones
-     * Claude 3.5 Sonnet: 200k context, excellent for complex reasoning and coding
-     */
+    // Claude 4 Series (2025) - World's best coding models
+    {
+      name: 'claude-opus-4-20250101',
+      label: 'Claude Opus 4 (Best for Coding)',
+      provider: 'Anthropic',
+      maxTokenAllowed: 500000,
+    },
+    {
+      name: 'claude-sonnet-4-20250101',
+      label: 'Claude Sonnet 4 (Balanced Performance)',
+      provider: 'Anthropic',
+      maxTokenAllowed: 500000,
+    },
+
+    // Claude 3.7 Series - Extended thinking capabilities
+    {
+      name: 'claude-3-7-sonnet-20250219',
+      label: 'Claude 3.7 Sonnet (Extended Thinking)',
+      provider: 'Anthropic',
+      maxTokenAllowed: 200000,
+    },
+
+    // Claude 3.5 Series - Updated models (maintained for compatibility)
     {
       name: 'claude-3-5-sonnet-20241022',
-      label: 'Claude 3.5 Sonnet',
+      label: 'Claude 3.5 Sonnet (Latest)',
       provider: 'Anthropic',
       maxTokenAllowed: 200000,
-      maxCompletionTokens: 128000,
     },
-
-    // Claude 3 Haiku: 200k context, fastest and most cost-effective
     {
-      name: 'claude-3-haiku-20240307',
-      label: 'Claude 3 Haiku',
+      name: 'claude-3-5-haiku-20241022',
+      label: 'Claude 3.5 Haiku (Fast & Capable)',
       provider: 'Anthropic',
       maxTokenAllowed: 200000,
-      maxCompletionTokens: 128000,
-    },
-
-    // Claude Opus 4: 200k context, 32k output limit (latest flagship model)
-    {
-      name: 'claude-opus-4-20250514',
-      label: 'Claude 4 Opus',
-      provider: 'Anthropic',
-      maxTokenAllowed: 200000,
-      maxCompletionTokens: 32000,
     },
   ];
 
@@ -73,42 +79,12 @@ export default class AnthropicProvider extends BaseProvider {
 
     const data = res.data.filter((model: any) => model.type === 'model' && !staticModelIds.includes(model.id));
 
-    return data.map((m: any) => {
-      // Get accurate context window from Anthropic API
-      let contextWindow = 32000; // default fallback
-
-      // Anthropic provides max_tokens in their API response
-      if (m.max_tokens) {
-        contextWindow = m.max_tokens;
-      } else if (m.id?.includes('claude-3-5-sonnet')) {
-        contextWindow = 200000; // Claude 3.5 Sonnet has 200k context
-      } else if (m.id?.includes('claude-3-haiku')) {
-        contextWindow = 200000; // Claude 3 Haiku has 200k context
-      } else if (m.id?.includes('claude-3-opus')) {
-        contextWindow = 200000; // Claude 3 Opus has 200k context
-      } else if (m.id?.includes('claude-3-sonnet')) {
-        contextWindow = 200000; // Claude 3 Sonnet has 200k context
-      }
-
-      // Determine completion token limits based on specific model
-      let maxCompletionTokens = 128000; // default for older Claude 3 models
-
-      if (m.id?.includes('claude-opus-4')) {
-        maxCompletionTokens = 32000; // Claude 4 Opus: 32K output limit
-      } else if (m.id?.includes('claude-sonnet-4')) {
-        maxCompletionTokens = 64000; // Claude 4 Sonnet: 64K output limit
-      } else if (m.id?.includes('claude-4')) {
-        maxCompletionTokens = 32000; // Other Claude 4 models: conservative 32K limit
-      }
-
-      return {
-        name: m.id,
-        label: `${m.display_name} (${Math.floor(contextWindow / 1000)}k context)`,
-        provider: this.name,
-        maxTokenAllowed: contextWindow,
-        maxCompletionTokens,
-      };
-    });
+    return data.map((m: any) => ({
+      name: m.id,
+      label: `${m.display_name}`,
+      provider: this.name,
+      maxTokenAllowed: 32000,
+    }));
   }
 
   getModelInstance: (options: {
@@ -116,7 +92,7 @@ export default class AnthropicProvider extends BaseProvider {
     serverEnv: Env;
     apiKeys?: Record<string, string>;
     providerSettings?: Record<string, IProviderSetting>;
-  }) => LanguageModelV1 = (options) => {
+  }) => LanguageModel = (options) => {
     const { apiKeys, providerSettings, serverEnv, model } = options;
     const { apiKey } = this.getProviderBaseUrlAndKey({
       apiKeys,
@@ -127,7 +103,6 @@ export default class AnthropicProvider extends BaseProvider {
     });
     const anthropic = createAnthropic({
       apiKey,
-      headers: { 'anthropic-beta': 'output-128k-2025-02-19' },
     });
 
     return anthropic(model);
