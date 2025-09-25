@@ -46,24 +46,6 @@ export function isReasoningModel(modelName: string): boolean {
 // limits the number of model responses that can be returned in a single request
 export const MAX_RESPONSE_SEGMENTS = 2;
 
-export interface File {
-  type: 'file';
-  content: string;
-  isBinary: boolean;
-  isLocked?: boolean;
-  lockedByFolder?: string;
-}
-
-export interface Folder {
-  type: 'folder';
-  isLocked?: boolean;
-  lockedByFolder?: string;
-}
-
-type Dirent = File | Folder;
-
-export type FileMap = Record<string, Dirent | undefined>;
-
 export const IGNORE_PATTERNS = [
   'node_modules/**',
   '.git/**',

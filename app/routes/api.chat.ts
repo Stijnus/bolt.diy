@@ -1,6 +1,6 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { createUIMessageStream, createUIMessageStreamResponse, type JSONValue } from 'ai';
-import { type FileMap } from '~/lib/.server/llm/constants';
+import { type FileMap } from '~/types/files';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
 import type { IProviderSetting } from '~/types/model';
 import { createScopedLogger } from '~/utils/logger';

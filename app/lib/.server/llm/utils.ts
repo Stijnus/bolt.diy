@@ -1,5 +1,6 @@
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODEL_REGEX, PROVIDER_REGEX } from '~/utils/constants';
-import { IGNORE_PATTERNS, type FileMap } from './constants';
+import { IGNORE_PATTERNS } from './constants';
+import { type FileMap } from '~/types/files';
 import ignore from 'ignore';
 import type { ContextAnnotation } from '~/types/context';
 import { getAnnotationsFromUIMessage, getTextFromUIMessage, type MessageLike } from '~/utils/messageConversion';

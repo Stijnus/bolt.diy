@@ -1,5 +1,6 @@
 import { convertToCoreMessages, streamText as _streamText, type UIMessage } from 'ai';
-import { MAX_TOKENS, type FileMap } from './constants';
+import { MAX_TOKENS } from './constants';
+import { type FileMap } from '~/types/files';
 import { getSystemPrompt } from '~/lib/common/prompts/prompts';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODIFICATIONS_TAG_NAME, PROVIDER_LIST, WORK_DIR } from '~/utils/constants';
 import type { IProviderSetting } from '~/types/model';
