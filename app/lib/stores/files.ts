@@ -1,13 +1,7 @@
-import type { PathWatcherEvent, WebContainer } from '@webcontainer/api';
+import { Buffer } from 'node:buffer';
+import type { WebContainer } from '@webcontainer/api';
 import { getEncoding } from 'istextorbinary';
 import { map, type MapStore } from 'nanostores';
-import { Buffer } from 'node:buffer';
-import { path } from '~/utils/path';
-import { bufferWatchEvents } from '~/utils/buffer';
-import { WORK_DIR } from '~/utils/constants';
-import { computeFileModifications } from '~/utils/diff';
-import { createScopedLogger } from '~/utils/logger';
-import { unreachable } from '~/utils/unreachable';
 import {
   addLockedFile,
   removeLockedFile,
@@ -20,11 +14,27 @@ import {
   migrateLegacyLocks,
   clearCache,
 } from '~/lib/persistence/lockedFiles';
+
+/*
+ * import { bufferWatchEvents } from '~/utils/buffer';
+ * import { WORK_DIR } from '~/utils/constants';
+ */
+import { computeFileModifications } from '~/utils/diff';
 import { getCurrentChatId } from '~/utils/fileLocks';
+import { createScopedLogger } from '~/utils/logger';
+import { path } from '~/utils/path';
+import { unreachable } from '~/utils/unreachable';
 
 const logger = createScopedLogger('FilesStore');
 
 const utf8TextDecoder = new TextDecoder('utf8', { fatal: true });
+
+// TODO: Remove this once @webcontainer/api internal API is restored
+interface PathWatcherEvent {
+  type: string;
+  path: string;
+  buffer?: Buffer;
+}
 
 export interface File {
   type: 'file';
@@ -590,20 +600,11 @@ export class FilesStore {
   }
 
   async #init() {
-    const webcontainer = await this.#webcontainer;
-
     // Clean up any files that were previously deleted
     this.#cleanupDeletedFiles();
 
-    // Set up file watcher
-    webcontainer.internal.watchPaths(
-      {
-        include: [`${WORK_DIR}/**`],
-        exclude: ['**/node_modules', '.git', '**/package-lock.json'],
-        includeContent: true,
-      },
-      bufferWatchEvents(100, this.#processEventBuffer.bind(this)),
-    );
+    // Initialize filesystem scanning as replacement for disabled file watcher
+    await this.#initFilesystemScanner();
 
     // Get the current chat ID
     const currentChatId = getCurrentChatId();
@@ -928,6 +929,210 @@ export class FilesStore {
       }
     } catch (error) {
       logger.error('Failed to persist deleted paths to localStorage', error);
+    }
+  }
+
+  /**
+   * Initialize filesystem scanner to replace disabled file watcher
+   */
+  async #initFilesystemScanner() {
+    try {
+      logger.info('Initializing filesystem scanner...');
+
+      // Wait for WebContainer to be ready
+      const webcontainer = await this.#webcontainer;
+      logger.info('WebContainer is ready:', { workdir: webcontainer.workdir });
+
+      // Check if filesystem is empty and create a test file
+      try {
+        const rootEntries = await webcontainer.fs.readdir('.', { withFileTypes: true });
+        logger.info(
+          'Found entries in root directory:',
+          rootEntries.map((e) => ({ name: e.name, type: e.isDirectory() ? 'dir' : 'file' })),
+        );
+
+        if (rootEntries.length === 0) {
+          logger.info('Filesystem appears empty, creating test file...');
+          await webcontainer.fs.writeFile('README.md', '# Welcome to Bolt\n\nThis is your project workspace.');
+          logger.info('Test file created');
+        }
+      } catch (error) {
+        logger.warn('Failed to check/create test file:', error);
+      }
+
+      // Initial scan to populate the file tree
+      logger.info('Starting initial filesystem scan...');
+      await this.refreshFileSystem();
+
+      /*
+       * Set up less frequent periodic scanning to catch file changes
+       * This is a temporary solution until WebContainer API provides file watching again
+       */
+      setInterval(async () => {
+        try {
+          await this.refreshFileSystem();
+        } catch (error) {
+          logger.error('Failed to refresh filesystem during periodic scan:', error);
+        }
+      }, 30000); // Scan every 30 seconds instead of 5
+
+      logger.info('Filesystem scanner initialized successfully');
+    } catch (error) {
+      logger.error('Failed to initialize filesystem scanner:', error);
+    }
+  }
+
+  /**
+   * Manually refresh the file system by scanning WebContainer filesystem
+   */
+  async refreshFileSystem() {
+    try {
+      logger.debug('Starting filesystem refresh...');
+
+      const webcontainer = await this.#webcontainer;
+      const scannedFiles: FileMap = {};
+
+      // Scan the entire filesystem starting from workdir
+      logger.debug('Scanning filesystem from workdir:', webcontainer.workdir);
+      await this.#scanDirectory(webcontainer, '.', scannedFiles);
+
+      logger.debug('Scanned files:', Object.keys(scannedFiles));
+
+      // Check if there are any changes before updating
+      const currentFiles = this.files.get();
+      const currentKeys = new Set(Object.keys(currentFiles));
+      const scannedKeys = new Set(Object.keys(scannedFiles));
+
+      // Quick check if file lists are the same
+      const hasChanges =
+        currentKeys.size !== scannedKeys.size ||
+        [...scannedKeys].some((key) => !currentKeys.has(key)) ||
+        [...currentKeys].some((key) => !scannedKeys.has(key));
+
+      if (!hasChanges) {
+        logger.debug('No file system changes detected, skipping update');
+        return;
+      }
+
+      logger.debug('File system changes detected, updating store');
+
+      // Preserve existing lock states when updating files
+      const updatedFiles: FileMap = {};
+
+      // Process scanned files and preserve lock states
+      for (const [filePath, dirent] of Object.entries(scannedFiles)) {
+        const existingFile = currentFiles[filePath];
+
+        if (existingFile && dirent) {
+          // Preserve existing lock states
+          updatedFiles[filePath] = {
+            ...dirent,
+            isLocked: existingFile.isLocked,
+            lockedByFolder: existingFile.lockedByFolder,
+          };
+        } else {
+          updatedFiles[filePath] = dirent;
+        }
+      }
+
+      // Update the store with scanned files
+      this.files.set(updatedFiles);
+
+      // Update file count
+      this.#size = Object.values(updatedFiles).filter((dirent) => dirent?.type === 'file').length;
+
+      logger.info(
+        `Filesystem refreshed: ${this.#size} files found, total entries: ${Object.keys(updatedFiles).length}`,
+      );
+    } catch (error) {
+      logger.error('Failed to refresh file system:', error);
+    }
+  }
+
+  /**
+   * Recursively scan a directory and populate the file map
+   */
+  async #scanDirectory(webcontainer: WebContainer, dirPath: string, fileMap: FileMap) {
+    try {
+      logger.debug(`Scanning directory: ${dirPath}`);
+
+      const entries = await webcontainer.fs.readdir(dirPath, { withFileTypes: true });
+      logger.debug(
+        `Found ${entries.length} entries in ${dirPath}:`,
+        entries.map((e) => ({ name: e.name, type: e.isDirectory() ? 'dir' : 'file' })),
+      );
+
+      // Skip excluded directories
+      const excludedDirs = ['node_modules', '.git', '.next', 'dist/node_modules'];
+      const currentDirName = path.basename(dirPath);
+
+      if (excludedDirs.some((excluded) => dirPath.includes(excluded) || currentDirName === excluded)) {
+        logger.debug(`Skipping excluded directory: ${dirPath}`);
+        return;
+      }
+
+      for (const entry of entries) {
+        // Build relative path from current directory and entry name
+        const relativePath = dirPath === '.' ? entry.name : path.join(dirPath, entry.name);
+
+        // Normalize the path to use forward slashes and ensure it starts with webcontainer.workdir
+        const normalizedPath = `${webcontainer.workdir}/${relativePath.replace(/\\/g, '/')}`.replace(/\/+/g, '/');
+
+        logger.debug(
+          `Processing entry: ${entry.name}, workdir: ${webcontainer.workdir}, relativePath: ${relativePath}, normalizedPath: ${normalizedPath}`,
+        );
+
+        if (entry.isDirectory()) {
+          // Add folder to file map
+          fileMap[normalizedPath] = { type: 'folder' };
+          logger.debug(`Added folder: ${normalizedPath}`);
+
+          // Recursively scan subdirectory
+          const subDirPath = dirPath === '.' ? entry.name : path.join(dirPath, entry.name);
+          await this.#scanDirectory(webcontainer, subDirPath, fileMap);
+        } else if (entry.isFile()) {
+          try {
+            // Read file content using relative path
+            const buffer = await webcontainer.fs.readFile(relativePath);
+
+            let content = '';
+            let isBinary = false;
+
+            // Check if file is binary
+            if (buffer instanceof Uint8Array) {
+              isBinary = isBinaryFile(buffer);
+
+              if (!isBinary) {
+                content = this.#decodeFileContent(buffer);
+              }
+            } else if (typeof buffer === 'string') {
+              // Handle string content
+              content = buffer;
+            } else {
+              // Handle other buffer types that have toString method
+              content = buffer ? String(buffer) : '';
+            }
+
+            // Add file to file map
+            fileMap[normalizedPath] = {
+              type: 'file',
+              content,
+              isBinary,
+            };
+          } catch (error) {
+            logger.warn(`Failed to read file ${normalizedPath}:`, error);
+
+            // Add file entry even if we can't read the content
+            fileMap[normalizedPath] = {
+              type: 'file',
+              content: '',
+              isBinary: false,
+            };
+          }
+        }
+      }
+    } catch (error) {
+      logger.error(`Failed to scan directory ${dirPath}:`, error);
     }
   }
 }

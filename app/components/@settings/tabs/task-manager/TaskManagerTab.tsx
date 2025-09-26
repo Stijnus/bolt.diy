@@ -1,7 +1,3 @@
-import * as React from 'react';
-import { useEffect, useState, useCallback } from 'react';
-import { classNames } from '~/utils/classNames';
-import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -13,10 +9,14 @@ import {
   Legend,
   type Chart,
 } from 'chart.js';
+import * as React from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import { Line } from 'react-chartjs-2';
 import { toast } from 'react-toastify'; // Import toast
+import { useStore } from 'zustand';
 import { useUpdateCheck } from '~/lib/hooks/useUpdateCheck';
 import { tabConfigurationStore, type TabConfig } from '~/lib/stores/tabConfigurationStore';
-import { useStore } from 'zustand';
+import { classNames } from '~/utils/classNames';
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
@@ -383,6 +383,7 @@ const TaskManagerTab: React.FC = () => {
   // Effect to update metrics periodically
   useEffect(() => {
     const updateInterval = 5000; // Update every 5 seconds instead of 2.5 seconds
+
     let metricsInterval: NodeJS.Timeout;
 
     // Only run updates when tab is visible
@@ -452,6 +453,7 @@ const TaskManagerTab: React.FC = () => {
 
       // Get resource metrics
       const resources = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+
       const resourceMetrics = {
         total: resources.length,
         size: resources.reduce((total, r) => total + (r.transferSize || 0), 0),
@@ -501,10 +503,12 @@ const TaskManagerTab: React.FC = () => {
 
       const attemptMeasurement = async (): Promise<number> => {
         const start = performance.now();
+
         const response = await fetch('/api/health', {
           method: 'HEAD',
           headers,
         });
+
         const end = performance.now();
 
         if (!response.ok) {
@@ -560,6 +564,7 @@ const TaskManagerTab: React.FC = () => {
 
       // Get system memory info first as it's most important
       let systemMemoryInfo: SystemMemoryInfo | undefined;
+
       let memoryMetrics = {
         used: 0,
         total: 0,

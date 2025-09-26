@@ -1,17 +1,17 @@
+import { useStore } from '@nanostores/react';
+import { useLocation } from '@remix-run/react';
 import type { JSONValue, UIDataTypes, UIMessage, UITools } from 'ai';
 import { Fragment } from 'react';
-import { classNames } from '~/utils/classNames';
-import { AssistantMessage } from './AssistantMessage';
-import { UserMessage } from './UserMessage';
-import { useLocation } from '@remix-run/react';
-import { db, chatId } from '~/lib/persistence/useChatHistory';
-import { forkChat } from '~/lib/persistence/db';
-import { toast } from 'react-toastify';
-import { useStore } from '@nanostores/react';
-import { profileStore } from '~/lib/stores/profile';
 import { forwardRef } from 'react';
 import type { ForwardedRef } from 'react';
+import { toast } from 'react-toastify';
+import { AssistantMessage } from './AssistantMessage';
+import { UserMessage } from './UserMessage';
+import { forkChat, getClientDatabase } from '~/lib/persistence/db';
+import { chatId } from '~/lib/persistence/useChatHistory';
+import { profileStore } from '~/lib/stores/profile';
 import type { ProviderInfo } from '~/types/model';
+import { classNames } from '~/utils/classNames';
 
 type BoltMessage = UIMessage<unknown, UIDataTypes, UITools>;
 
@@ -63,6 +63,7 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
       model,
       addToolResult,
     } = props;
+
     const location = useLocation();
     const profile = useStore(profileStore);
 
@@ -74,12 +75,14 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
 
     const handleFork = async (messageId: string) => {
       try {
-        if (!db || !chatId.get()) {
+        const database = await getClientDatabase();
+
+        if (!database || !chatId.get()) {
           toast.error('Chat persistence is not available');
           return;
         }
 
-        const urlId = await forkChat(db, chatId.get()!, messageId);
+        const urlId = await forkChat(database, chatId.get()!, messageId);
         window.location.href = `/chat/${urlId}`;
       } catch (error) {
         toast.error('Failed to fork chat: ' + (error as Error).message);

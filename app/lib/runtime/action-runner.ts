@@ -1,11 +1,11 @@
 import type { WebContainer } from '@webcontainer/api';
-import { path as nodePath } from '~/utils/path';
 import { atom, map, type MapStore } from 'nanostores';
+import type { ActionCallbackData } from './message-parser';
 import type { ActionAlert, BoltAction, DeployAlert, FileHistory, SupabaseAction, SupabaseAlert } from '~/types/actions';
 import { createScopedLogger } from '~/utils/logger';
-import { unreachable } from '~/utils/unreachable';
-import type { ActionCallbackData } from './message-parser';
+import { path as nodePath } from '~/utils/path';
 import type { BoltShell } from '~/utils/shell';
+import { unreachable } from '~/utils/unreachable';
 
 const logger = createScopedLogger('ActionRunner');
 
@@ -72,6 +72,7 @@ export class ActionRunner {
   onAlert?: (alert: ActionAlert) => void;
   onSupabaseAlert?: (alert: SupabaseAlert) => void;
   onDeployAlert?: (alert: DeployAlert) => void;
+  onFileSystemUpdate?: () => void | Promise<void>;
   buildOutput?: { path: string; exitCode: number; output: string };
 
   constructor(
@@ -80,12 +81,14 @@ export class ActionRunner {
     onAlert?: (alert: ActionAlert) => void,
     onSupabaseAlert?: (alert: SupabaseAlert) => void,
     onDeployAlert?: (alert: DeployAlert) => void,
+    onFileSystemUpdate?: () => void | Promise<void>,
   ) {
     this.#webcontainer = webcontainerPromise;
     this.#shellTerminal = getShellTerminal;
     this.onAlert = onAlert;
     this.onSupabaseAlert = onSupabaseAlert;
     this.onDeployAlert = onDeployAlert;
+    this.onFileSystemUpdate = onFileSystemUpdate;
   }
 
   addAction(data: ActionCallbackData) {
@@ -333,6 +336,15 @@ export class ActionRunner {
     try {
       await webcontainer.fs.writeFile(relativePath, action.content);
       logger.debug(`File written ${relativePath}`);
+
+      // Trigger file system refresh after file write
+      if (this.onFileSystemUpdate) {
+        try {
+          await this.onFileSystemUpdate();
+        } catch (error) {
+          logger.error('Failed to update file system after file write:', error);
+        }
+      }
     } catch (error) {
       logger.error('Failed to write file\n\n', error);
     }

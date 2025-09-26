@@ -1,12 +1,12 @@
+import * as ContextMenu from '@radix-ui/react-context-menu';
+import { diffLines, type Change } from 'diff';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { toast } from 'react-toastify';
 import type { FileMap } from '~/lib/stores/files';
+import { workbenchStore } from '~/lib/stores/workbench';
+import type { FileHistory } from '~/types/actions';
 import { classNames } from '~/utils/classNames';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
-import * as ContextMenu from '@radix-ui/react-context-menu';
-import type { FileHistory } from '~/types/actions';
-import { diffLines, type Change } from 'diff';
-import { workbenchStore } from '~/lib/stores/workbench';
-import { toast } from 'react-toastify';
 import { path } from '~/utils/path';
 
 const logger = createScopedLogger('FileTree');
@@ -55,7 +55,17 @@ export const FileTree = memo(
     const computedHiddenFiles = useMemo(() => [...DEFAULT_HIDDEN_FILES, ...(hiddenFiles ?? [])], [hiddenFiles]);
 
     const fileList = useMemo(() => {
-      return buildFileList(files, rootFolder, hideRoot, computedHiddenFiles);
+      const result = buildFileList(files, rootFolder, hideRoot, computedHiddenFiles);
+      console.log('FileTree buildFileList:', {
+        filesCount: Object.keys(files).length,
+        sampleFiles: Object.keys(files).slice(0, 3),
+        rootFolder,
+        hideRoot,
+        resultCount: result.length,
+        sampleResult: result.slice(0, 3).map((item) => ({ kind: item.kind, name: item.name, fullPath: item.fullPath })),
+      });
+
+      return result;
     }, [files, rootFolder, hideRoot, computedHiddenFiles]);
 
     const [collapsedFolders, setCollapsedFolders] = useState(() => {
@@ -652,6 +662,7 @@ function File({
     }
 
     const normalizedOriginal = fileModifications.originalContent.replace(/\r\n/g, '\n');
+
     const normalizedCurrent =
       fileModifications.versions[fileModifications.versions.length - 1]?.content.replace(/\r\n/g, '\n') || '';
 
@@ -662,7 +673,6 @@ function File({
     const changes = diffLines(normalizedOriginal, normalizedCurrent, {
       newlineIsToken: false,
       ignoreWhitespace: true,
-      ignoreCase: false,
     });
 
     return changes.reduce(

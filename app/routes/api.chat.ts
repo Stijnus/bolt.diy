@@ -1,13 +1,13 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { createUIMessageStream, createUIMessageStreamResponse, type JSONValue } from 'ai';
-import { type FileMap } from '~/types/files';
-import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
-import type { IProviderSetting } from '~/types/model';
-import { createScopedLogger } from '~/utils/logger';
-import { getFilePaths, selectContext } from '~/lib/.server/llm/select-context';
-import type { ContextAnnotation, ProgressAnnotation } from '~/types/context';
-import { WORK_DIR } from '~/utils/constants';
 import { createSummary } from '~/lib/.server/llm/create-summary';
+import { getFilePaths, selectContext } from '~/lib/.server/llm/select-context';
+import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
+import type { ContextAnnotation, ProgressAnnotation } from '~/types/context';
+import { type FileMap } from '~/types/files';
+import type { IProviderSetting } from '~/types/model';
+import { WORK_DIR } from '~/utils/constants';
+import { createScopedLogger } from '~/utils/logger';
 
 export async function action(args: ActionFunctionArgs) {
   return chatAction(args);
@@ -51,6 +51,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
   const cookieHeader = request.headers.get('Cookie');
   const apiKeys = JSON.parse(parseCookies(cookieHeader || '').apiKeys || '{}');
+
   const providerSettings: Record<string, IProviderSetting> = JSON.parse(
     parseCookies(cookieHeader || '').providers || '{}',
   );
@@ -60,6 +61,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     inputTokens: 0,
     totalTokens: 0,
   };
+
   let progressCounter = 1;
 
   try {
@@ -83,6 +85,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         };
 
         const filePaths = getFilePaths(files || {});
+
         let filteredFiles: FileMap | undefined = undefined;
         let summary: string | undefined = undefined;
 

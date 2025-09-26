@@ -1,19 +1,19 @@
+import { useStore } from '@nanostores/react';
 import { motion, type Variants } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
-import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
-import { ThemeSwitch } from '~/components/ui/ThemeSwitch';
-import { ControlPanel } from '~/components/@settings/core/ControlPanel';
-import { SettingsButton, HelpButton } from '~/components/ui/SettingsButton';
-import { Button } from '~/components/ui/Button';
-import { db, deleteById, getAll, chatId, type ChatHistoryItem, useChatHistory } from '~/lib/persistence';
-import { cubicEasingFn } from '~/utils/easings';
 import { HistoryItem } from './HistoryItem';
 import { binDates } from './date-binning';
+import { ControlPanel } from '~/components/@settings/core/ControlPanel';
+import { Button } from '~/components/ui/Button';
+import { Dialog, DialogButton, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
+import { SettingsButton, HelpButton } from '~/components/ui/SettingsButton';
+import { ThemeSwitch } from '~/components/ui/ThemeSwitch';
 import { useSearchFilter } from '~/lib/hooks/useSearchFilter';
-import { classNames } from '~/utils/classNames';
-import { useStore } from '@nanostores/react';
+import { deleteById, getAll, getClientDatabase, chatId, type ChatHistoryItem, useChatHistory } from '~/lib/persistence';
 import { profileStore } from '~/lib/stores/profile';
+import { classNames } from '~/utils/classNames';
+import { cubicEasingFn } from '~/utils/easings';
 
 const menuVariants = {
   closed: {
@@ -79,36 +79,37 @@ export const Menu = () => {
     searchFields: ['description'],
   });
 
-  const loadEntries = useCallback(() => {
-    if (db) {
-      getAll(db)
+  const loadEntries = useCallback(async () => {
+    const database = await getClientDatabase();
+
+    if (database) {
+      getAll(database)
         .then((list) => list.filter((item) => item.urlId && item.description))
         .then(setList)
         .catch((error) => toast.error(error.message));
     }
   }, []);
 
-  const deleteChat = useCallback(
-    async (id: string): Promise<void> => {
-      if (!db) {
-        throw new Error('Database not available');
-      }
+  const deleteChat = useCallback(async (id: string): Promise<void> => {
+    const database = await getClientDatabase();
 
-      // Delete chat snapshot from localStorage
-      try {
-        const snapshotKey = `snapshot:${id}`;
-        localStorage.removeItem(snapshotKey);
-        console.log('Removed snapshot for chat:', id);
-      } catch (snapshotError) {
-        console.error(`Error deleting snapshot for chat ${id}:`, snapshotError);
-      }
+    if (!database) {
+      throw new Error('Database not available');
+    }
 
-      // Delete the chat from the database
-      await deleteById(db, id);
-      console.log('Successfully deleted chat:', id);
-    },
-    [db],
-  );
+    // Delete chat snapshot from localStorage
+    try {
+      const snapshotKey = `snapshot:${id}`;
+      localStorage.removeItem(snapshotKey);
+      console.log('Removed snapshot for chat:', id);
+    } catch (snapshotError) {
+      console.error(`Error deleting snapshot for chat ${id}:`, snapshotError);
+    }
+
+    // Delete the chat from the database
+    await deleteById(database, id);
+    console.log('Successfully deleted chat:', id);
+  }, []);
 
   const deleteItem = useCallback(
     (event: React.UIEvent, item: ChatHistoryItem) => {
@@ -150,7 +151,9 @@ export const Menu = () => {
 
   const deleteSelectedItems = useCallback(
     async (itemsToDeleteIds: string[]) => {
-      if (!db || itemsToDeleteIds.length === 0) {
+      const database = await getClientDatabase();
+
+      if (!database || itemsToDeleteIds.length === 0) {
         console.log('Bulk delete skipped: No DB or no items to delete.');
         return;
       }
@@ -158,8 +161,10 @@ export const Menu = () => {
       console.log(`Starting bulk delete for ${itemsToDeleteIds.length} chats`, itemsToDeleteIds);
 
       let deletedCount = 0;
+
       const errors: string[] = [];
       const currentChatId = chatId.get();
+
       let shouldNavigate = false;
 
       // Process deletions sequentially using the shared deleteChat logic
@@ -199,7 +204,7 @@ export const Menu = () => {
         window.location.pathname = '/';
       }
     },
-    [deleteChat, loadEntries, db],
+    [deleteChat, loadEntries],
   );
 
   const closeDialog = () => {

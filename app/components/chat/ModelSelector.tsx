@@ -1,7 +1,7 @@
-import type { ProviderInfo } from '~/types/model';
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import type { KeyboardEvent } from 'react';
 import type { ModelInfo } from '~/lib/modules/llm/types';
+import type { ProviderInfo } from '~/types/model';
 import { classNames } from '~/utils/classNames';
 
 // Fuzzy search utilities

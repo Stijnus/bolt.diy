@@ -1,13 +1,13 @@
+import { type JSONValue, type UIMessage, type UIMessagePart, type UIDataTypes, type UITools } from 'ai';
 import { memo, Fragment } from 'react';
 import { Markdown } from './Markdown';
-import { type JSONValue, type UIMessage, type UIMessagePart, type UIDataTypes, type UITools } from 'ai';
-import Popover from '~/components/ui/Popover';
-import { workbenchStore } from '~/lib/stores/workbench';
-import { WORK_DIR } from '~/utils/constants';
-import WithTooltip from '~/components/ui/Tooltip';
-import type { ProviderInfo } from '~/types/model';
 import { ToolInvocations, normalizeToolInvocations } from './ToolInvocations';
+import Popover from '~/components/ui/Popover';
+import WithTooltip from '~/components/ui/Tooltip';
+import { workbenchStore } from '~/lib/stores/workbench';
 import type { ToolCallAnnotation } from '~/types/context';
+import type { ProviderInfo } from '~/types/model';
+import { WORK_DIR } from '~/utils/constants';
 
 interface AssistantMessageProps {
   content: string;
@@ -89,6 +89,7 @@ export const AssistantMessage = memo(
       | undefined;
 
     const toolInvocations = normalizeToolInvocations(parts);
+
     const toolCallAnnotations = filteredAnnotations.filter(
       (annotation) => annotation.type === 'toolCall',
     ) as ToolCallAnnotation[];

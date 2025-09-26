@@ -1,8 +1,8 @@
-import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODEL_REGEX, PROVIDER_REGEX } from '~/utils/constants';
-import { IGNORE_PATTERNS } from './constants';
-import { type FileMap } from '~/types/files';
 import ignore from 'ignore';
+import { IGNORE_PATTERNS } from './constants';
 import type { ContextAnnotation } from '~/types/context';
+import { type FileMap } from '~/types/files';
+import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODEL_REGEX, PROVIDER_REGEX } from '~/utils/constants';
 import { getAnnotationsFromUIMessage, getTextFromUIMessage, type MessageLike } from '~/utils/messageConversion';
 
 export function extractPropertiesFromMessage(message: MessageLike): {
@@ -44,6 +44,7 @@ export function simplifyBoltActions(input: string): string {
 
 export function createFilesContext(files: FileMap, useRelativePath?: boolean) {
   const ig = ignore().add(IGNORE_PATTERNS);
+
   let filePaths = Object.keys(files);
   filePaths = filePaths.filter((x) => {
     const relPath = x.replace('/home/project/', '');
