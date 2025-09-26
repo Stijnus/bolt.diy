@@ -1,7 +1,7 @@
 import type { UIMessage } from 'ai';
-import { createScopedLogger } from '~/utils/logger';
-import type { ChatHistoryItem } from './useChatHistory';
 import type { Snapshot } from './types'; // Import Snapshot type
+import type { ChatHistoryItem } from './useChatHistory';
+import { createScopedLogger } from '~/utils/logger';
 
 export interface IChatMetadata {
   gitUrl: string;
@@ -341,3 +341,37 @@ export async function deleteSnapshot(db: IDBDatabase, chatId: string): Promise<v
     };
   });
 }
+
+// Safe database instance for components - only available on client-side
+let clientDB: IDBDatabase | undefined = undefined;
+let clientDBPromise: Promise<IDBDatabase | undefined> | undefined = undefined;
+
+export async function getClientDatabase(): Promise<IDBDatabase | undefined> {
+  if (clientDB !== undefined) {
+    return clientDB;
+  }
+
+  if (clientDBPromise) {
+    return clientDBPromise;
+  }
+
+  if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
+    clientDB = undefined;
+    return undefined;
+  }
+
+  clientDBPromise = openDatabase()
+    .then((db) => {
+      clientDB = db;
+      return db;
+    })
+    .catch(() => {
+      clientDB = undefined;
+      return undefined;
+    });
+
+  return clientDBPromise;
+}
+
+// Legacy export for backward compatibility - now safe from SSR issues
+export const db = undefined;

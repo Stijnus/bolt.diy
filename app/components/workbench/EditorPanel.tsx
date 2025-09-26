@@ -1,7 +1,12 @@
 import { useStore } from '@nanostores/react';
+import * as Tabs from '@radix-ui/react-tabs';
 import { memo, useMemo } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
-import * as Tabs from '@radix-ui/react-tabs';
+import { FileBreadcrumb } from './FileBreadcrumb';
+import { FileTree } from './FileTree';
+import { LockManager } from './LockManager'; // <-- Import LockManager
+import { Search } from './Search'; // <-- Ensure Search is imported
+import { DEFAULT_TERMINAL_SIZE, TerminalTabs } from './terminal/TerminalTabs';
 import {
   CodeMirrorEditor,
   type EditorDocument,
@@ -13,18 +18,13 @@ import {
 import { PanelHeader } from '~/components/ui/PanelHeader';
 import { PanelHeaderButton } from '~/components/ui/PanelHeaderButton';
 import type { FileMap } from '~/lib/stores/files';
-import type { FileHistory } from '~/types/actions';
 import { themeStore } from '~/lib/stores/theme';
+import { workbenchStore } from '~/lib/stores/workbench';
+import type { FileHistory } from '~/types/actions';
+import { classNames } from '~/utils/classNames'; // <-- Import classNames if not already present
 import { WORK_DIR } from '~/utils/constants';
 import { renderLogger } from '~/utils/logger';
 import { isMobile } from '~/utils/mobile';
-import { FileBreadcrumb } from './FileBreadcrumb';
-import { FileTree } from './FileTree';
-import { DEFAULT_TERMINAL_SIZE, TerminalTabs } from './terminal/TerminalTabs';
-import { workbenchStore } from '~/lib/stores/workbench';
-import { Search } from './Search'; // <-- Ensure Search is imported
-import { classNames } from '~/utils/classNames'; // <-- Import classNames if not already present
-import { LockManager } from './LockManager'; // <-- Import LockManager
 
 interface EditorPanelProps {
   files?: FileMap;
@@ -115,6 +115,24 @@ export const EditorPanel = memo(
                           Locks
                         </Tabs.Trigger>
                       </Tabs.List>
+                      <div className="flex items-center">
+                        <button
+                          className="mr-1 icon-button"
+                          onClick={async () => {
+                            console.log('Manual refresh triggered');
+
+                            try {
+                              await workbenchStore.refreshFileSystem();
+                              console.log('Refresh completed successfully');
+                            } catch (error) {
+                              console.error('Refresh failed:', error);
+                            }
+                          }}
+                          title="Refresh file tree"
+                        >
+                          <div className="i-ph:arrow-clockwise scale-110" />
+                        </button>
+                      </div>
                     </div>
                   </PanelHeader>
 

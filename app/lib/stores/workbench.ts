@@ -1,23 +1,23 @@
+import { Octokit, type RestEndpointMethodTypes } from '@octokit/rest';
+import fileSaver from 'file-saver';
+import Cookies from 'js-cookie';
+import JSZip from 'jszip';
 import { atom, map, type MapStore, type ReadableAtom, type WritableAtom } from 'nanostores';
-import type { EditorDocument, ScrollPosition } from '~/components/editor/codemirror/CodeMirrorEditor';
-import { ActionRunner } from '~/lib/runtime/action-runner';
-import type { ActionCallbackData, ArtifactCallbackData } from '~/lib/runtime/message-parser';
-import { webcontainer } from '~/lib/webcontainer';
-import type { ITerminal } from '~/types/terminal';
-import { unreachable } from '~/utils/unreachable';
 import { EditorStore } from './editor';
 import { FilesStore, type FileMap } from './files';
 import { PreviewsStore } from './previews';
 import { TerminalStore } from './terminal';
-import JSZip from 'jszip';
-import fileSaver from 'file-saver';
-import { Octokit, type RestEndpointMethodTypes } from '@octokit/rest';
-import { path } from '~/utils/path';
-import { extractRelativePath } from '~/utils/diff';
-import { description } from '~/lib/persistence';
-import Cookies from 'js-cookie';
-import { createSampler } from '~/utils/sampler';
+import type { EditorDocument, ScrollPosition } from '~/components/editor/codemirror/CodeMirrorEditor';
+import { description, chatId } from '~/lib/persistence/useChatHistory';
+import { ActionRunner } from '~/lib/runtime/action-runner';
+import type { ActionCallbackData, ArtifactCallbackData } from '~/lib/runtime/message-parser';
+import { webcontainer } from '~/lib/webcontainer';
 import type { ActionAlert, DeployAlert, SupabaseAlert } from '~/types/actions';
+import type { ITerminal } from '~/types/terminal';
+import { extractRelativePath } from '~/utils/diff';
+import { path } from '~/utils/path';
+import { createSampler } from '~/utils/sampler';
+import { unreachable } from '~/utils/unreachable';
 
 const { saveAs } = fileSaver;
 
@@ -42,6 +42,8 @@ export class WorkbenchStore {
   #terminalStore = new TerminalStore(webcontainer);
 
   #reloadedMessages = new Set<string>();
+  #takeSnapshotCallback?: (messageId: string, files: FileMap, chatId?: string) => Promise<void>;
+  #snapshotTimeout?: NodeJS.Timeout;
 
   artifacts: Artifacts = import.meta.hot?.data.artifacts ?? map({});
 
@@ -155,6 +157,60 @@ export class WorkbenchStore {
     this.#terminalStore.onTerminalResize(cols, rows);
   }
 
+  /**
+   * Set the callback for taking snapshots when manual file operations occur
+   */
+  setSnapshotCallback(callback: (messageId: string, files: FileMap, chatId?: string) => Promise<void>) {
+    this.#takeSnapshotCallback = callback;
+  }
+
+  /**
+   * Trigger a snapshot to persist manual changes (debounced)
+   */
+  async #triggerSnapshot() {
+    console.log('[WorkbenchStore] #triggerSnapshot called');
+
+    if (!this.#takeSnapshotCallback) {
+      console.log('[WorkbenchStore] No takeSnapshotCallback registered');
+      return;
+    }
+
+    const currentChatId = chatId.get();
+    console.log('[WorkbenchStore] Current chat ID:', currentChatId);
+
+    if (!currentChatId) {
+      console.log('[WorkbenchStore] No chat ID available, skipping snapshot');
+      return;
+    }
+
+    // Clear existing timeout to debounce rapid operations
+    if (this.#snapshotTimeout) {
+      clearTimeout(this.#snapshotTimeout);
+    }
+
+    console.log('[WorkbenchStore] Scheduling debounced snapshot in 500ms');
+
+    // Debounce snapshot creation (500ms delay)
+    this.#snapshotTimeout = setTimeout(async () => {
+      try {
+        // Use a special messageId for manual operations
+        const manualMessageId = `manual-${Date.now()}`;
+
+        const fileCount = Object.keys(this.files.get()).filter(
+          (path) => this.files.get()[path]?.type === 'file',
+        ).length;
+        console.log('[WorkbenchStore] Taking snapshot:', { manualMessageId, fileCount, currentChatId });
+
+        await this.#takeSnapshotCallback!(manualMessageId, this.files.get(), currentChatId);
+        console.log('[WorkbenchStore] Snapshot completed successfully');
+      } catch (error) {
+        console.error('[WorkbenchStore] Failed to take snapshot for manual operation:', error);
+      } finally {
+        this.#snapshotTimeout = undefined;
+      }
+    }, 500);
+  }
+
   setDocuments(files: FileMap) {
     this.#editorStore.setDocuments(files);
 
@@ -242,6 +298,9 @@ export class WorkbenchStore {
     newUnsavedFiles.delete(filePath);
 
     this.unsavedFiles.set(newUnsavedFiles);
+
+    // Trigger snapshot to persist manual file save
+    await this.#triggerSnapshot();
   }
 
   async saveCurrentDocument() {
@@ -359,6 +418,9 @@ export class WorkbenchStore {
           newUnsavedFiles.delete(filePath);
           this.unsavedFiles.set(newUnsavedFiles);
         }
+
+        // Trigger snapshot to persist manual file creation
+        await this.#triggerSnapshot();
       }
 
       return success;
@@ -370,7 +432,14 @@ export class WorkbenchStore {
 
   async createFolder(folderPath: string) {
     try {
-      return await this.#filesStore.createFolder(folderPath);
+      const success = await this.#filesStore.createFolder(folderPath);
+
+      if (success) {
+        // Trigger snapshot to persist manual folder creation
+        await this.#triggerSnapshot();
+      }
+
+      return success;
     } catch (error) {
       console.error('Failed to create folder:', error);
       throw error;
@@ -394,6 +463,7 @@ export class WorkbenchStore {
 
         if (isCurrentFile) {
           const files = this.files.get();
+
           let nextFile: string | undefined = undefined;
 
           for (const [path, dirent] of Object.entries(files)) {
@@ -405,6 +475,9 @@ export class WorkbenchStore {
 
           this.setSelectedFile(nextFile);
         }
+
+        // Trigger snapshot to persist manual file deletion
+        await this.#triggerSnapshot();
       }
 
       return success;
@@ -437,6 +510,7 @@ export class WorkbenchStore {
 
         if (isInCurrentFolder) {
           const files = this.files.get();
+
           let nextFile: string | undefined = undefined;
 
           for (const [path, dirent] of Object.entries(files)) {
@@ -448,6 +522,9 @@ export class WorkbenchStore {
 
           this.setSelectedFile(nextFile);
         }
+
+        // Trigger snapshot to persist manual folder deletion
+        await this.#triggerSnapshot();
       }
 
       return success;
@@ -504,6 +581,12 @@ export class WorkbenchStore {
           }
 
           this.deployAlert.set(alert);
+        },
+        () => {
+          // Trigger file system refresh after file operations
+          this.#filesStore.refreshFileSystem().catch((error) => {
+            console.error('Failed to refresh file system after action:', error);
+          });
         },
       ),
     });
@@ -655,6 +738,7 @@ export class WorkbenchStore {
       if (dirent?.type === 'file' && !dirent.isBinary) {
         const relativePath = extractRelativePath(filePath);
         const pathSegments = relativePath.split('/');
+
         let currentHandle = targetHandle;
 
         for (let i = 0; i < pathSegments.length - 1; i++) {
@@ -819,6 +903,7 @@ export class WorkbenchStore {
               repo: repo.name,
               ref: `heads/${repo.default_branch || 'main'}`, // Handle dynamic branch
             });
+
             const latestCommitSha = ref.object.sha;
 
             // Create a new tree
@@ -938,6 +1023,14 @@ export class WorkbenchStore {
       console.error('Error pushing to repository:', error);
       throw error; // Rethrow the error for further handling
     }
+  }
+
+  /**
+   * Refresh the file system by scanning WebContainer filesystem
+   * This replaces the disabled file watcher functionality
+   */
+  async refreshFileSystem() {
+    return this.#filesStore.refreshFileSystem();
   }
 }
 

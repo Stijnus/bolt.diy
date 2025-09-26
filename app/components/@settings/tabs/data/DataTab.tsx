@@ -1,14 +1,14 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
-import { Button } from '~/components/ui/Button';
-import { ConfirmationDialog, SelectionDialog } from '~/components/ui/Dialog';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '~/components/ui/Card';
 import { motion } from 'framer-motion';
-import { useDataOperations } from '~/lib/hooks/useDataOperations';
-import { openDatabase } from '~/lib/persistence/db';
-import { getAllChats, type Chat } from '~/lib/persistence/chats';
-import { DataVisualization } from './DataVisualization';
-import { classNames } from '~/utils/classNames';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { toast } from 'react-toastify';
+import { DataVisualization } from './DataVisualization';
+import { Button } from '~/components/ui/Button';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '~/components/ui/Card';
+import { ConfirmationDialog, SelectionDialog } from '~/components/ui/Dialog';
+import { useDataOperations } from '~/lib/hooks/useDataOperations';
+import { getAllChats, type Chat } from '~/lib/persistence/chats';
+import { getClientDatabase } from '~/lib/persistence/db';
+import { classNames } from '~/utils/classNames';
 
 // Create a custom hook to connect to the boltHistory database
 function useBoltHistoryDB() {
@@ -21,7 +21,7 @@ function useBoltHistoryDB() {
       try {
         setIsLoading(true);
 
-        const database = await openDatabase();
+        const database = await getClientDatabase();
         setDb(database || null);
         setIsLoading(false);
       } catch (err) {

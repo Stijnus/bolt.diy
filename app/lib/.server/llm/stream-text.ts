@@ -1,14 +1,14 @@
 import { convertToCoreMessages, streamText as _streamText, type UIMessage } from 'ai';
 import { MAX_TOKENS } from './constants';
-import { type FileMap } from '~/types/files';
-import { getSystemPrompt } from '~/lib/common/prompts/prompts';
-import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODIFICATIONS_TAG_NAME, PROVIDER_LIST, WORK_DIR } from '~/utils/constants';
-import type { IProviderSetting } from '~/types/model';
-import { PromptLibrary } from '~/lib/common/prompt-library';
-import { allowedHTMLElements } from '~/utils/markdown';
-import { LLMManager } from '~/lib/modules/llm/manager';
-import { createScopedLogger } from '~/utils/logger';
 import { createFilesContext, extractPropertiesFromMessage } from './utils';
+import { PromptLibrary } from '~/lib/common/prompt-library';
+import { getSystemPrompt } from '~/lib/common/prompts/prompts';
+import { LLMManager } from '~/lib/modules/llm/manager';
+import { type FileMap } from '~/types/files';
+import type { IProviderSetting } from '~/types/model';
+import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODIFICATIONS_TAG_NAME, PROVIDER_LIST, WORK_DIR } from '~/utils/constants';
+import { createScopedLogger } from '~/utils/logger';
+import { allowedHTMLElements } from '~/utils/markdown';
 
 export type Messages = UIMessage[];
 
@@ -51,8 +51,10 @@ export async function streamText(props: {
     summary,
     supabaseConnection,
   } = props;
+
   let currentModel = DEFAULT_MODEL;
   let currentProvider = DEFAULT_PROVIDER.name;
+
   let processedMessages = messages.map((message) => {
     if (message.role === 'user') {
       const { model, provider, content } = extractPropertiesFromMessage(message);
@@ -88,6 +90,7 @@ export async function streamText(props: {
 
   const provider = PROVIDER_LIST.find((p) => p.name === currentProvider) || DEFAULT_PROVIDER;
   const staticModels = LLMManager.getInstance().getStaticModelListFromProvider(provider);
+
   let modelDetails = staticModels.find((m) => m.name === currentModel);
 
   if (!modelDetails) {

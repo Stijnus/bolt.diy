@@ -1,8 +1,8 @@
-import type { UIDataTypes, UIMessagePart, UITools, FileUIPart } from 'ai';
-import { MODEL_REGEX, PROVIDER_REGEX } from '~/utils/constants';
-import { Markdown } from './Markdown';
 import { useStore } from '@nanostores/react';
+import type { UIDataTypes, UIMessagePart, UITools, FileUIPart } from 'ai';
+import { Markdown } from './Markdown';
 import { profileStore } from '~/lib/stores/profile';
+import { MODEL_REGEX, PROVIDER_REGEX } from '~/utils/constants';
 
 interface UserMessageProps {
   content: string;

@@ -1,12 +1,12 @@
+import { useStore } from '@nanostores/react';
 import { getToolOrDynamicToolName, isToolOrDynamicToolUIPart, type DynamicToolUIPart, type ToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
 import { AnimatePresence, motion } from 'framer-motion';
 import { memo, useMemo, useState } from 'react';
 import { createHighlighter, type BundledLanguage, type BundledTheme, type HighlighterGeneric } from 'shiki';
-import { cubicEasingFn } from '~/utils/easings';
 import { themeStore, type Theme } from '~/lib/stores/theme';
-import { useStore } from '@nanostores/react';
 import type { ToolCallAnnotation } from '~/types/context';
+import { cubicEasingFn } from '~/utils/easings';
 
 export type ToolInvocationPart = ToolUIPart | DynamicToolUIPart;
 

@@ -2,32 +2,32 @@
  * @ts-nocheck
  * Preventing TS checks with files presented in the video for a better presentation.
  */
+import { useChat } from '@ai-sdk/react';
 import { useStore } from '@nanostores/react';
+import { useSearchParams } from '@remix-run/react';
 import type { UIMessage } from 'ai';
 import { DefaultChatTransport } from 'ai';
-import { useChat } from '@ai-sdk/react';
 import { useAnimate } from 'framer-motion';
+import Cookies from 'js-cookie';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { cssTransition, toast, ToastContainer } from 'react-toastify';
-import { useMessageParser, usePromptEnhancer, useShortcuts } from '~/lib/hooks';
-import { description, useChatHistory } from '~/lib/persistence';
-import { chatStore } from '~/lib/stores/chat';
-import { workbenchStore } from '~/lib/stores/workbench';
-import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROMPT_COOKIE_KEY, PROVIDER_LIST } from '~/utils/constants';
-import { cubicEasingFn } from '~/utils/easings';
-import { createScopedLogger, renderLogger } from '~/utils/logger';
 import { BaseChat } from './BaseChat';
-import Cookies from 'js-cookie';
-import { debounce } from '~/utils/debounce';
+import { useMessageParser, usePromptEnhancer, useShortcuts } from '~/lib/hooks';
 import { useSettings } from '~/lib/hooks/useSettings';
-import type { ProviderInfo } from '~/types/model';
-import { useSearchParams } from '@remix-run/react';
-import { createSampler } from '~/utils/sampler';
-import { getTemplates, selectStarterTemplate } from '~/utils/selectStarterTemplate';
+import { description, useChatHistory } from '~/lib/persistence/useChatHistory';
+import { chatStore } from '~/lib/stores/chat';
 import { logStore } from '~/lib/stores/logs';
 import { streamingState } from '~/lib/stores/streaming';
-import { filesToArtifacts } from '~/utils/fileUtils';
 import { supabaseConnection } from '~/lib/stores/supabase';
+import { workbenchStore } from '~/lib/stores/workbench';
+import type { ProviderInfo } from '~/types/model';
+import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROMPT_COOKIE_KEY, PROVIDER_LIST } from '~/utils/constants';
+import { debounce } from '~/utils/debounce';
+import { cubicEasingFn } from '~/utils/easings';
+import { filesToArtifacts } from '~/utils/fileUtils';
+import { createScopedLogger, renderLogger } from '~/utils/logger';
+import { createSampler } from '~/utils/sampler';
+import { getTemplates, selectStarterTemplate } from '~/utils/selectStarterTemplate';
 
 const toastAnimation = cssTransition({
   enter: 'animated fadeInRight',
@@ -128,9 +128,11 @@ export const ChatImpl = memo(
     const actionAlert = useStore(workbenchStore.alert);
     const deployAlert = useStore(workbenchStore.deployAlert);
     const supabaseConn = useStore(supabaseConnection); // Add this line to get Supabase connection
+
     const selectedProject = supabaseConn.stats?.projects?.find(
       (project) => project.id === supabaseConn.selectedProjectId,
     );
+
     const supabaseAlert = useStore(workbenchStore.supabaseAlert);
     const { activeProviders, promptId, autoSelectTemplate, contextOptimizationEnabled } = useSettings();
 

@@ -36,6 +36,7 @@ export function convertMessageToUIMessage(message: ReactMessage): UIMessage {
  */
 export function convertUIMessageToMessage(message: UIMessage): ReactMessage {
   const textContent = message.parts?.find((part) => part.type === 'text')?.text || '';
+
   const createdAt =
     typeof message.metadata === 'object' && message.metadata && 'createdAt' in (message.metadata as any)
       ? ((message.metadata as { createdAt?: Date }).createdAt ?? undefined)

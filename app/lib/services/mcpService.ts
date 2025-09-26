@@ -1,3 +1,4 @@
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import {
   convertToCoreMessages,
   experimental_createMCPClient,
@@ -8,7 +9,6 @@ import {
   type UIMessageStreamWriter,
 } from 'ai';
 import { Experimental_StdioMCPTransport } from 'ai/mcp-stdio';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { z } from 'zod';
 import type { ToolCallAnnotation } from '~/types/context';
 import { TOOL_EXECUTION_ERROR, TOOL_NO_EXECUTE_FUNCTION } from '~/utils/constants';
@@ -22,7 +22,7 @@ export const stdioServerConfigSchema = z
     command: z.string().min(1, 'Command cannot be empty'),
     args: z.array(z.string()).optional(),
     cwd: z.string().optional(),
-    env: z.record(z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
   })
   .transform((data) => ({
     ...data,
@@ -34,7 +34,7 @@ export const sseServerConfigSchema = z
   .object({
     type: z.enum(['sse']).optional(),
     url: z.string().url('URL must be a valid URL format'),
-    headers: z.record(z.string()).optional(),
+    headers: z.record(z.string(), z.string()).optional(),
   })
   .transform((data) => ({
     ...data,
@@ -46,7 +46,7 @@ export const streamableHTTPServerConfigSchema = z
   .object({
     type: z.enum(['streamable-http']).optional(),
     url: z.string().url('URL must be a valid URL format'),
-    headers: z.record(z.string()).optional(),
+    headers: z.record(z.string(), z.string()).optional(),
   })
   .transform((data) => ({
     ...data,
@@ -148,7 +148,7 @@ export class MCPService {
       return mcpServerConfigSchema.parse(config);
     } catch (validationError) {
       if (validationError instanceof z.ZodError) {
-        const errorMessages = validationError.errors.map((err) => `${err.path.join('.')}: ${err.message}`).join('; ');
+        const errorMessages = validationError.issues.map((err) => `${err.path.join('.')}: ${err.message}`).join('; ');
         throw new Error(`Invalid configuration for server "${serverName}": ${errorMessages}`);
       }
 
