@@ -40,7 +40,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: bolt-ai-development
+      target: development
     env_file: 
       - '.env'
       - '.env.local'

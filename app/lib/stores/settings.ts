@@ -52,11 +52,37 @@ export const shortcutsStore = map<Shortcuts>({
 
 // Create a single key for provider settings
 const PROVIDER_SETTINGS_KEY = 'provider_settings';
+const AUTO_ENABLED_KEY = 'auto_enabled_providers';
 
 // Add this helper function at the top of the file
 const isBrowser = typeof window !== 'undefined';
 
-// Initialize provider settings from both localStorage and defaults
+// Interface for configured provider info from server
+interface ConfiguredProvider {
+  name: string;
+  isConfigured: boolean;
+  configMethod: 'environment' | 'none';
+}
+
+// Fetch configured providers from server
+const fetchConfiguredProviders = async (): Promise<ConfiguredProvider[]> => {
+  try {
+    const response = await fetch('/api/configured-providers');
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const data = (await response.json()) as { providers?: ConfiguredProvider[] };
+
+    return data.providers || [];
+  } catch (error) {
+    console.error('Error fetching configured providers:', error);
+    return [];
+  }
+};
+
+// Initialize provider settings from both localStorage and server-detected configuration
 const getInitialProviderSettings = (): ProviderSetting => {
   const initialSettings: ProviderSetting = {};
 
@@ -92,7 +118,83 @@ const getInitialProviderSettings = (): ProviderSetting => {
   return initialSettings;
 };
 
+// Auto-enable providers that are configured on the server
+const autoEnableConfiguredProviders = async () => {
+  if (!isBrowser) {
+    return;
+  }
+
+  try {
+    const configuredProviders = await fetchConfiguredProviders();
+    const currentSettings = providersStore.get();
+    const savedSettings = localStorage.getItem(PROVIDER_SETTINGS_KEY);
+    const autoEnabledProviders = localStorage.getItem(AUTO_ENABLED_KEY);
+
+    // Track which providers were auto-enabled to avoid overriding user preferences
+    const previouslyAutoEnabled = autoEnabledProviders ? JSON.parse(autoEnabledProviders) : [];
+    const newlyAutoEnabled: string[] = [];
+
+    let hasChanges = false;
+
+    configuredProviders.forEach(({ name, isConfigured, configMethod }) => {
+      if (isConfigured && configMethod === 'environment' && LOCAL_PROVIDERS.includes(name)) {
+        const currentProvider = currentSettings[name];
+
+        if (currentProvider) {
+          /*
+           * Only auto-enable if:
+           * 1. Provider is not already enabled, AND
+           * 2. Either we haven't saved settings yet (first time) OR provider was previously auto-enabled
+           */
+          const hasUserSettings = savedSettings !== null;
+          const wasAutoEnabled = previouslyAutoEnabled.includes(name);
+          const shouldAutoEnable = !currentProvider.settings.enabled && (!hasUserSettings || wasAutoEnabled);
+
+          if (shouldAutoEnable) {
+            currentSettings[name] = {
+              ...currentProvider,
+              settings: {
+                ...currentProvider.settings,
+                enabled: true,
+              },
+            };
+            newlyAutoEnabled.push(name);
+            hasChanges = true;
+          }
+        }
+      }
+    });
+
+    if (hasChanges) {
+      // Update the store
+      providersStore.set(currentSettings);
+
+      // Save to localStorage
+      localStorage.setItem(PROVIDER_SETTINGS_KEY, JSON.stringify(currentSettings));
+
+      // Update the auto-enabled providers list
+      const allAutoEnabled = [...new Set([...previouslyAutoEnabled, ...newlyAutoEnabled])];
+      localStorage.setItem(AUTO_ENABLED_KEY, JSON.stringify(allAutoEnabled));
+
+      console.log(`Auto-enabled providers: ${newlyAutoEnabled.join(', ')}`);
+    }
+  } catch (error) {
+    console.error('Error auto-enabling configured providers:', error);
+  }
+};
+
 export const providersStore = map<ProviderSetting>(getInitialProviderSettings());
+
+// Export the auto-enable function for use in components
+export const initializeProviders = autoEnableConfiguredProviders;
+
+// Initialize providers when the module loads (in browser only)
+if (isBrowser) {
+  // Use a small delay to ensure DOM and other resources are ready
+  setTimeout(() => {
+    autoEnableConfiguredProviders();
+  }, 100);
+}
 
 // Create a function to update provider settings that handles both store and persistence
 export const updateProviderSettings = (provider: string, settings: ProviderSetting) => {
@@ -113,6 +215,37 @@ export const updateProviderSettings = (provider: string, settings: ProviderSetti
   // Save to localStorage
   const allSettings = providersStore.get();
   localStorage.setItem(PROVIDER_SETTINGS_KEY, JSON.stringify(allSettings));
+
+  // If this is a local provider, update the auto-enabled tracking
+  if (LOCAL_PROVIDERS.includes(provider) && updatedProvider.settings.enabled !== undefined) {
+    updateAutoEnabledTracking(provider, updatedProvider.settings.enabled);
+  }
+};
+
+// Update auto-enabled tracking when user manually changes provider settings
+const updateAutoEnabledTracking = (providerName: string, isEnabled: boolean) => {
+  if (!isBrowser) {
+    return;
+  }
+
+  try {
+    const autoEnabledProviders = localStorage.getItem(AUTO_ENABLED_KEY);
+    const currentAutoEnabled = autoEnabledProviders ? JSON.parse(autoEnabledProviders) : [];
+
+    if (isEnabled) {
+      // If user enables provider, add to auto-enabled list (for future detection)
+      if (!currentAutoEnabled.includes(providerName)) {
+        currentAutoEnabled.push(providerName);
+        localStorage.setItem(AUTO_ENABLED_KEY, JSON.stringify(currentAutoEnabled));
+      }
+    } else {
+      // If user disables provider, remove from auto-enabled list (respect user choice)
+      const updatedAutoEnabled = currentAutoEnabled.filter((name: string) => name !== providerName);
+      localStorage.setItem(AUTO_ENABLED_KEY, JSON.stringify(updatedAutoEnabled));
+    }
+  } catch (error) {
+    console.error('Error updating auto-enabled tracking:', error);
+  }
 };
 
 export const isDebugMode = atom(false);
