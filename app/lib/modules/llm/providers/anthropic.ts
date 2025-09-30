@@ -13,6 +13,15 @@ export default class AnthropicProvider extends BaseProvider {
   };
 
   staticModels: ModelInfo[] = [
+    // Claude Sonnet 4.5: 200k context, latest model
+    {
+      name: 'claude-sonnet-4-5-20250929',
+      label: 'Claude Sonnet 4.5',
+      provider: 'Anthropic',
+      maxTokenAllowed: 200000,
+      maxCompletionTokens: 128000,
+    },
+
     /*
      * Essential fallback models - only the most stable/reliable ones
      * Claude 3.5 Sonnet: 200k context, excellent for complex reasoning and coding
@@ -80,6 +89,8 @@ export default class AnthropicProvider extends BaseProvider {
       // Anthropic provides max_tokens in their API response
       if (m.max_tokens) {
         contextWindow = m.max_tokens;
+      } else if (m.id?.includes('claude-sonnet-4-5')) {
+        contextWindow = 200000; // Claude Sonnet 4.5 has 200k context
       } else if (m.id?.includes('claude-sonnet-4')) {
         contextWindow = 64000; // Claude Sonnet 4 has 64k context
       } else if (m.id?.includes('claude-opus-4')) {
@@ -97,7 +108,9 @@ export default class AnthropicProvider extends BaseProvider {
       // Determine completion token limits based on specific model
       let maxCompletionTokens = 128000; // default for older Claude 3 models
 
-      if (m.id?.includes('claude-opus-4')) {
+      if (m.id?.includes('claude-sonnet-4-5')) {
+        maxCompletionTokens = 128000; // Claude Sonnet 4.5: 128K output limit
+      } else if (m.id?.includes('claude-opus-4')) {
         maxCompletionTokens = 32000; // Claude 4 Opus: 32K output limit
       } else if (m.id?.includes('claude-sonnet-4')) {
         maxCompletionTokens = 64000; // Claude 4 Sonnet: 64K output limit

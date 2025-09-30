@@ -1,12 +1,12 @@
 import React from 'react';
 
 const EXAMPLE_PROMPTS = [
-  { text: 'Create a mobile app about bolt.diy' },
-  { text: 'Build a todo app in React using Tailwind' },
-  { text: 'Build a simple blog using Astro' },
-  { text: 'Create a cookie consent form using Material UI' },
-  { text: 'Make a space invaders game' },
-  { text: 'Make a Tic Tac Toe game in html, css and js only' },
+  { text: 'Build an AI chatbot with streaming responses' },
+  { text: 'Create a dashboard with charts using shadcn/ui' },
+  { text: 'Make a kanban board with drag and drop' },
+  { text: 'Build a SaaS landing page with pricing and Stripe' },
+  { text: 'Create a markdown blog with syntax highlighting' },
+  { text: 'Build a task manager with Supabase real-time sync' },
 ];
 
 export function ExamplePrompts(sendMessage?: { (event: React.UIEvent, messageInput?: string): void | undefined }) {
