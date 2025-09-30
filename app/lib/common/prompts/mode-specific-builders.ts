@@ -109,54 +109,54 @@ export class BuildModePromptBuilder extends ModeSpecificPromptBuilder {
     const sections: string[] = [];
 
     // Always include system header
-    sections.push(this.getSystemHeader());
-    sections.push(this.getSystemConstraints());
-    sections.push(this.getTechnologyPreferences());
+    sections.push(this._getSystemHeader());
+    sections.push(this._getSystemConstraints());
+    sections.push(this._getTechnologyPreferences());
 
     // Add intent-specific sections
     if (this.options.detectedIntent) {
       const recommendedSections = getRecommendedSections(this.options.detectedIntent);
 
       if (recommendedSections.includes('artifact_instructions')) {
-        sections.push(this.getArtifactInstructions());
+        sections.push(this._getArtifactInstructions());
       }
 
       if (recommendedSections.includes('code_quality_standards')) {
-        sections.push(this.getCodeQualityStandards());
+        sections.push(this._getCodeQualityStandards());
       }
 
       if (recommendedSections.includes('project_structure_standards')) {
-        sections.push(this.getProjectStructureStandards());
+        sections.push(this._getProjectStructureStandards());
       }
 
       if (recommendedSections.includes('design_instructions') && this.options.detectedIntent.context.requiresDesign) {
-        sections.push(this.getDesignInstructions());
+        sections.push(this._getDesignInstructions());
       }
 
       if (
         recommendedSections.includes('supabase_instructions') &&
         this.options.detectedIntent.context.requiresDatabase
       ) {
-        sections.push(this.getSupabaseInstructions());
+        sections.push(this._getSupabaseInstructions());
       }
 
       if (recommendedSections.includes('code_fix_triage') && this.options.detectedIntent.category === 'fix-bug') {
-        sections.push(this.getCodeFixTriage());
+        sections.push(this._getCodeFixTriage());
       }
     } else {
       // Fallback to standard sections
-      sections.push(this.getArtifactInstructions());
-      sections.push(this.getCodeQualityStandards());
+      sections.push(this._getArtifactInstructions());
+      sections.push(this._getCodeQualityStandards());
     }
 
     // Always include build mode instructions and message formatting
-    sections.push(this.getBuildModeInstructions());
-    sections.push(this.getMessageFormatting());
+    sections.push(this._getBuildModeInstructions());
+    sections.push(this._getMessageFormatting());
 
     return sections.filter((s) => s.trim() !== '').join('\n\n');
   }
 
-  private getSystemHeader(): string {
+  private _getSystemHeader(): string {
     return this.getVerboseText(
       'You are Bolt, an AI coding assistant. The year is 2025.',
       'You are Bolt, an expert AI assistant and exceptional senior software developer created by StackBlitz. The year is 2025.',
@@ -164,7 +164,7 @@ export class BuildModePromptBuilder extends ModeSpecificPromptBuilder {
     );
   }
 
-  private getSystemConstraints(): string {
+  private _getSystemConstraints(): string {
     const constraints = this.getVerboseText(
       'WebContainer limitations: Browser-based Node.js runtime. JavaScript and WebAssembly only. No native binaries.',
       'You operate in WebContainer, an in-browser Node.js runtime. Cannot run native binaries (only JS, WebAssembly). Python limited to standard library.',
@@ -183,7 +183,7 @@ export class BuildModePromptBuilder extends ModeSpecificPromptBuilder {
     return constraints;
   }
 
-  private getTechnologyPreferences(): string {
+  private _getTechnologyPreferences(): string {
     return this.getVerboseText(
       'Use Vite for web servers. Prefer Node.js scripts. Use Supabase for databases. Use Pexels for images.',
       `<technology_preferences>
@@ -201,7 +201,7 @@ export class BuildModePromptBuilder extends ModeSpecificPromptBuilder {
     );
   }
 
-  private getArtifactInstructions(): string {
+  private _getArtifactInstructions(): string {
     if (this.options.detectedIntent?.category === 'fix-bug') {
       return this.getVerboseText(
         'Create artifacts for targeted bug fixes. Analyze issue, apply minimal changes, preserve existing structure.',
@@ -291,7 +291,7 @@ export class BuildModePromptBuilder extends ModeSpecificPromptBuilder {
     );
   }
 
-  private getCodeQualityStandards(): string {
+  private _getCodeQualityStandards(): string {
     const intent = this.options.detectedIntent;
 
     if (intent?.category === 'fix-bug') {
@@ -349,7 +349,7 @@ export class BuildModePromptBuilder extends ModeSpecificPromptBuilder {
     return ''; // Skip for other intents to save tokens
   }
 
-  private getProjectStructureStandards(): string {
+  private _getProjectStructureStandards(): string {
     if (this.verbosity === 'minimal' || this.options.detectedIntent?.category === 'fix-bug') {
       return ''; // Skip for bug fixes and minimal verbosity
     }
@@ -380,7 +380,7 @@ export class BuildModePromptBuilder extends ModeSpecificPromptBuilder {
     );
   }
 
-  private getDesignInstructions(): string {
+  private _getDesignInstructions(): string {
     if (!this.options.detectedIntent?.context.requiresDesign) {
       return '';
     }
@@ -423,7 +423,7 @@ export class BuildModePromptBuilder extends ModeSpecificPromptBuilder {
     );
   }
 
-  private getSupabaseInstructions(): string {
+  private _getSupabaseInstructions(): string {
     if (!this.options.detectedIntent?.context.requiresDatabase) {
       return '';
     }
@@ -494,7 +494,7 @@ export class BuildModePromptBuilder extends ModeSpecificPromptBuilder {
     );
   }
 
-  private getCodeFixTriage(): string {
+  private _getCodeFixTriage(): string {
     if (this.options.detectedIntent?.category !== 'fix-bug') {
       return '';
     }
@@ -515,7 +515,7 @@ export class BuildModePromptBuilder extends ModeSpecificPromptBuilder {
 </code_fix_triage>`;
   }
 
-  private getBuildModeInstructions(): string {
+  private _getBuildModeInstructions(): string {
     return this.getVerboseText(
       "Build mode: Implement solutions using artifacts. Focus on user's request.",
       `<build_mode_instructions>
@@ -543,7 +543,7 @@ export class BuildModePromptBuilder extends ModeSpecificPromptBuilder {
     );
   }
 
-  private getMessageFormatting(): string {
+  private _getMessageFormatting(): string {
     return `<message_formatting_info>
   Available HTML elements: ${this.options.allowedHtmlElements?.join(', ') || 'none'}
 </message_formatting_info>`;
@@ -598,24 +598,24 @@ export class DatabaseModePromptBuilder extends BuildModePromptBuilder {
   build(): string {
     const sections: string[] = [];
 
-    sections.push(this.getDatabaseSystemHeader());
-    sections.push(this.getDatabaseSystemConstraints());
-    sections.push(this.getDatabaseSupabaseInstructions());
-    sections.push(this.getDatabaseArtifactInstructions());
-    sections.push(this.getDatabaseBuildModeInstructions());
+    sections.push(this._getDatabaseSystemHeader());
+    sections.push(this._getDatabaseSystemConstraints());
+    sections.push(this._getDatabaseSupabaseInstructions());
+    sections.push(this._getDatabaseArtifactInstructions());
+    sections.push(this._getDatabaseBuildModeInstructions());
 
     return sections.filter((s) => s.trim() !== '').join('\n\n');
   }
 
-  private getDatabaseSystemHeader(): string {
+  private _getDatabaseSystemHeader(): string {
     return 'You are Bolt, an AI assistant specialized in database operations and Supabase integration. The year is 2025.';
   }
 
-  private getDatabaseSystemConstraints(): string {
+  private _getDatabaseSystemConstraints(): string {
     return 'WebContainer environment: browser-based runtime, JavaScript/WebAssembly only, no native binaries.';
   }
 
-  private getDatabaseSupabaseInstructions(): string {
+  private _getDatabaseSupabaseInstructions(): string {
     // Always include full Supabase instructions for database mode
     if (!this.options.supabase?.isConnected) {
       return 'CRITICAL: Use Supabase for databases. You are not connected - remind user to connect to Supabase.';
@@ -660,7 +660,7 @@ export class DatabaseModePromptBuilder extends BuildModePromptBuilder {
 </database_instructions>`;
   }
 
-  private getDatabaseArtifactInstructions(): string {
+  private _getDatabaseArtifactInstructions(): string {
     return `<artifact_instructions>
   Database-focused artifacts:
   1. Analyze existing database schema first
@@ -673,7 +673,7 @@ export class DatabaseModePromptBuilder extends BuildModePromptBuilder {
 </artifact_instructions>`;
   }
 
-  private getDatabaseBuildModeInstructions(): string {
+  private _getDatabaseBuildModeInstructions(): string {
     return `<build_mode_instructions>
   Database mode: Focus on data modeling, security, and integration.
   1. Plan schema carefully before implementation

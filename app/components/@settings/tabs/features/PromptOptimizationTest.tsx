@@ -7,7 +7,6 @@ import {
   generateOptimizedPromptFull,
   analyzeProviderOptimal,
   OptimizedPromptSystem,
-  OPTIMIZATION_CONFIG,
 } from '~/lib/common/prompts/optimized-prompt-system';
 import type { Message } from 'ai';
 

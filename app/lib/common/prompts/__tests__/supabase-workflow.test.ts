@@ -3,7 +3,7 @@ import {
   analyzeSupabaseContext,
   getSupabaseWorkflowInstructions,
   normalizeSupabaseConnectionState,
-} from '../supabase-workflow-rules';
+} from '~/lib/common/prompts/supabase-workflow-rules';
 import type { SupabaseConnectionState, SupabaseProject } from '~/lib/stores/supabase';
 import type { SupabaseUser } from '~/types/supabase';
 

@@ -909,7 +909,7 @@ export class ActionRunner {
   }
 
   async #handleProjectCreate(action: SupabaseAction) {
-    const { name, organizationId, region, plan, dbPassword, content } = action;
+    const { name, organizationId, region, plan, dbPassword } = action;
     const connection = supabaseConnection.get();
 
     if (!connection.token) {
@@ -1019,7 +1019,7 @@ export class ActionRunner {
   }
 
   async #handleProjectSetup(action: SupabaseAction) {
-    const { projectId, content } = action;
+    const { projectId } = action;
     const connection = supabaseConnection.get();
 
     if (!connection.token) {
@@ -1139,8 +1139,7 @@ export class ActionRunner {
     }
   }
 
-  async #handleProjectValidate(action: SupabaseAction) {
-    const { projectId, content } = action;
+  async #handleProjectValidate(_action: SupabaseAction) {
     const connection = supabaseConnection.get();
 
     if (!connection.token || !connection.credentials?.anonKey) {

@@ -29,7 +29,6 @@ export function EnhancedSupabaseChatAlert({ alert, clearAlert, postMessage }: Pr
     queryStatus,
     projectStatus,
     operation,
-    projectId,
     projectUrl,
     estimatedTime,
     progress,
@@ -50,6 +49,8 @@ export function EnhancedSupabaseChatAlert({ alert, clearAlert, postMessage }: Pr
       }, 1000);
       return () => clearInterval(timer);
     }
+
+    return undefined;
   }, [estimatedTime, stage]);
 
   // Determine connection state
@@ -62,22 +63,8 @@ export function EnhancedSupabaseChatAlert({ alert, clearAlert, postMessage }: Pr
   // Generate workflow steps based on operation
   const workflowSteps = generateWorkflowSteps(operation, stage, queryStatus, projectStatus);
 
-  // Get appropriate icon for the alert type
-  const getAlertIcon = () => {
-    switch (type) {
-      case 'success':
-        return 'i-ph:check-circle';
-      case 'error':
-        return 'i-ph:x-circle';
-      case 'warning':
-        return 'i-ph:warning';
-      default:
-        return 'i-ph:info';
-    }
-  };
-
   // Get dynamic message based on current state
-  const getMessage = () => {
+  const getMessage = (): string => {
     if (content && operation === 'query') {
       return 'Review the SQL query below and execute when ready.';
     }

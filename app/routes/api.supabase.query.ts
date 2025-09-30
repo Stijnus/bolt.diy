@@ -109,7 +109,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
         try {
           errorData = JSON.parse(errorText) as Record<string, unknown>;
-        } catch (e) {
+        } catch {
           errorData = { message: errorText };
         }
 

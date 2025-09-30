@@ -46,7 +46,7 @@ function getMinimalDesignInstructions(context?: DesignContext): string {
 /**
  * Standard design instructions (100-150 tokens)
  */
-function getStandardDesignInstructions(designScheme?: DesignScheme, context?: DesignContext): string {
+function getStandardDesignInstructions(designScheme?: DesignScheme, _context?: DesignContext): string {
   const customScheme = designScheme ? getDesignSchemeString(designScheme, 'compact') : '';
 
   return `<design_instructions>

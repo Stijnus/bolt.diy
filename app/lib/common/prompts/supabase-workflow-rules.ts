@@ -107,7 +107,7 @@ export function getSupabaseWorkflowInstructions(
   context: SupabaseWorkflowContext,
   verbosity: VerbosityLevel = 'standard',
 ): string {
-  const { connectionState, needsProject, needsProjectSelection, needsSetup, hasExistingTables, isNewProject } = context;
+  const { connectionState, needsProject, needsProjectSelection, needsSetup } = context;
 
   // No connection - guide through full setup
   if (!connectionState.token) {

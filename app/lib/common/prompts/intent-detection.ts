@@ -1,4 +1,3 @@
-import type { ModelInfo } from '~/lib/modules/llm/types';
 import type { Message } from 'ai';
 
 export type IntentCategory =

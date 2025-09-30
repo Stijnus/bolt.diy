@@ -1,6 +1,6 @@
 import { createUnifiedPrompt } from './prompts/unified-prompt';
 import { createProviderOptimizedPrompt } from './prompts/provider-optimized-prompt';
-import { generateOptimizedPromptQuick, generateOptimizedPromptFull } from './prompts/optimized-prompt-system';
+import { generateOptimizedPromptQuick } from './prompts/optimized-prompt-system';
 import type { DesignScheme } from '~/types/design-scheme';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import type { Message } from 'ai';

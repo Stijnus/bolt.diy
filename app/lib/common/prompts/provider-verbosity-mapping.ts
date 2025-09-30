@@ -1,6 +1,5 @@
 import type { ProviderCategory } from './provider-categories';
 import type { VerbosityLevel } from './schema-loader';
-import { getProviderOptimization } from './schema-loader';
 import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('ProviderVerbosityMapping');
@@ -503,7 +502,6 @@ export function getVerbosityForTask(
   const { verbosity, reasoning } = getOptimalVerbosity(providerCategory, context);
 
   const tips: string[] = [];
-  const mapping = PROVIDER_VERBOSITY_MAPPING[providerCategory];
 
   // Add task-specific tips
   if (taskType === 'fix-bug' && verbosity === 'minimal') {

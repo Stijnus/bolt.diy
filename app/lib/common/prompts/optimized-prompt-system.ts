@@ -84,10 +84,10 @@ export interface OptimizedPromptResult {
  * Main class for the optimized prompt system
  */
 export class OptimizedPromptSystem {
-  private benchmarkingEnabled: boolean;
+  private _benchmarkingEnabled: boolean;
 
   constructor(enableBenchmarking = false) {
-    this.benchmarkingEnabled = enableBenchmarking;
+    this._benchmarkingEnabled = enableBenchmarking;
   }
 
   /**
@@ -137,12 +137,12 @@ export class OptimizedPromptSystem {
       // Step 3: Calculate performance metrics
       let performance;
 
-      if (this.benchmarkingEnabled) {
-        performance = await this.calculatePerformance(options, result);
+      if (this._benchmarkingEnabled) {
+        performance = await this._calculatePerformance(options, result);
       }
 
       // Step 4: Calculate token reduction compared to baseline
-      const tokenReduction = await this.calculateTokenReduction(options, result);
+      const tokenReduction = await this._calculateTokenReduction(options, result);
 
       return {
         prompt: result.content,
@@ -153,7 +153,7 @@ export class OptimizedPromptSystem {
           providerCategory: result.metadata.providerCategory,
           intentCategory: result.metadata.intentCategory,
           intentConfidence: detectedIntent?.confidence,
-          optimizationsApplied: this.getOptimizationList(result),
+          optimizationsApplied: this._getOptimizationList(result),
           generationTime,
           validationPassed: result.metadata.validationResults?.valid ?? true,
         },
@@ -247,8 +247,8 @@ export class OptimizedPromptSystem {
     return {
       recommendedVerbosity: verbosity,
       estimatedTokenReduction: result.metadata.tokenReduction,
-      strengths: this.getProviderStrengths(result.metadata.providerCategory),
-      limitations: this.getProviderLimitations(result.metadata.providerCategory),
+      strengths: this._getProviderStrengths(result.metadata.providerCategory),
+      limitations: this._getProviderLimitations(result.metadata.providerCategory),
       recommendations: [
         reasoning,
         `Use ${verbosity} verbosity for optimal performance`,
@@ -260,9 +260,9 @@ export class OptimizedPromptSystem {
   /**
    * Private helper methods
    */
-  private async calculatePerformance(
+  private async _calculatePerformance(
     options: OptimizedPromptOptions,
-    result: any,
+    _result: any,
   ): Promise<OptimizedPromptResult['performance']> {
     // Run a quick benchmark comparison
     const benchmark = await runPerformanceBenchmark(
@@ -301,13 +301,13 @@ export class OptimizedPromptSystem {
     };
   }
 
-  private async calculateTokenReduction(options: OptimizedPromptOptions, result: any): Promise<number> {
+  private async _calculateTokenReduction(options: OptimizedPromptOptions, result: any): Promise<number> {
     // Quick estimation compared to a standard baseline
     const estimatedBaseline = 1000; // Average baseline token count
     return Math.max(0, Math.round(((estimatedBaseline - result.metadata.estimatedTokens) / estimatedBaseline) * 100));
   }
 
-  private getOptimizationList(result: any): string[] {
+  private _getOptimizationList(result: any): string[] {
     const optimizations: string[] = [];
 
     if (result.metadata.optimizationApplied) {
@@ -327,7 +327,7 @@ export class OptimizedPromptSystem {
     return optimizations;
   }
 
-  private getProviderStrengths(category: string): string[] {
+  private _getProviderStrengths(category: string): string[] {
     const strengthsMap: Record<string, string[]> = {
       'high-context': ['Large context windows', 'Detailed instructions', 'Complex reasoning'],
       reasoning: ['Internal reasoning', 'Problem solving', 'Minimal guidance needed'],
@@ -340,7 +340,7 @@ export class OptimizedPromptSystem {
     return strengthsMap[category] || ['General capabilities'];
   }
 
-  private getProviderLimitations(category: string): string[] {
+  private _getProviderLimitations(category: string): string[] {
     const limitationsMap: Record<string, string[]> = {
       'high-context': ['Slower processing', 'Higher cost', 'May be overkill'],
       reasoning: ['Less predictable', 'May over-think', 'Limited formatting control'],

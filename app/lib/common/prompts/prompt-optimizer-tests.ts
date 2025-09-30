@@ -1,7 +1,5 @@
-import type { DetectedIntent } from './intent-detection';
 import type { VerbosityLevel } from './schema-loader';
-import { generateOptimizedPrompt, generatePromptVariations } from './dynamic-rule-injector';
-import { getOptimalVerbosity, compareProviderEfficiency } from './provider-verbosity-mapping';
+import { generateOptimizedPrompt } from './dynamic-rule-injector';
 import { detectIntent } from './intent-detection';
 import { createScopedLogger } from '~/utils/logger';
 

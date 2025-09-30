@@ -8,14 +8,7 @@ import type {
   IntentCategory,
   ProviderCategory as SchemaProviderCategory,
 } from './schema-loader';
-import {
-  loadRuleData,
-  getRulesForIntent,
-  getProviderOptimization,
-  getContextualRule,
-  estimateTokens,
-  validateContent,
-} from './schema-loader';
+import { loadRuleData, getRulesForIntent, getProviderOptimization, validateContent } from './schema-loader';
 import { getProviderCategory } from './provider-categories';
 import { getCompressedSupabaseInstructions } from './compressed-supabase-rules';
 import { getCompressedDesignInstructions } from './compressed-design-standards';
@@ -72,7 +65,7 @@ export interface GeneratedPrompt {
  * Main dynamic rule injection system
  */
 export class DynamicRuleInjector {
-  private options: Required<
+  private _options: Required<
     Omit<
       RuleInjectionOptions,
       | 'detectedIntent'
@@ -94,11 +87,11 @@ export class DynamicRuleInjector {
       | 'modelDetails'
       | 'supabaseConnection'
     >;
-  private providerCategory: ProviderCategory;
-  private ruleData: ReturnType<typeof loadRuleData>;
+  private _providerCategory: ProviderCategory;
+  private _ruleData: ReturnType<typeof loadRuleData>;
 
   constructor(options: RuleInjectionOptions) {
-    this.options = {
+    this._options = {
       cwd: WORK_DIR,
       allowedHtmlElements: allowedHTMLElements,
       modificationTagName: 'boltArtifact',
@@ -110,8 +103,8 @@ export class DynamicRuleInjector {
       ...options,
     };
 
-    this.providerCategory = getProviderCategory(options.providerName, options.modelDetails);
-    this.ruleData = loadRuleData();
+    this._providerCategory = getProviderCategory(options.providerName, options.modelDetails);
+    this._ruleData = loadRuleData();
   }
 
   /**
@@ -121,37 +114,37 @@ export class DynamicRuleInjector {
     const startTime = Date.now();
 
     // Determine optimal verbosity level
-    const verbosity = this.determineVerbosity();
+    const verbosity = this._determineVerbosity();
 
     // Get provider optimization settings
-    const optimization = getProviderOptimization(this.providerCategory as SchemaProviderCategory);
+    const optimization = getProviderOptimization(this._providerCategory as SchemaProviderCategory);
 
     // Get intent-specific rules
-    const intentRules = this.getIntentSpecificRules(verbosity);
+    const intentRules = this._getIntentSpecificRules(verbosity);
 
     // Build prompt sections
-    const sections = this.buildPromptSections(verbosity, intentRules);
+    const sections = this._buildPromptSections(verbosity, intentRules);
 
     // Apply token optimization if needed
-    const optimizedSections = this.applyTokenOptimization(sections, verbosity, optimization);
+    const optimizedSections = this._applyTokenOptimization(sections, verbosity, optimization);
 
     // Combine sections into final prompt
     const content = optimizedSections.join('\n\n');
 
     // Validate content
-    const validationResults = this.validatePromptContent(content, intentRules.included);
+    const validationResults = this._validatePromptContent(content, intentRules.included);
 
     // Calculate metadata
-    const estimatedTokens = this.estimatePromptTokens(content);
+    const estimatedTokens = this._estimatePromptTokens(content);
     const generationTime = Date.now() - startTime;
 
     logger.info('Dynamic prompt generated', {
-      provider: this.options.providerName,
-      providerCategory: this.providerCategory,
+      provider: this._options.providerName,
+      providerCategory: this._providerCategory,
       verbosity,
       estimatedTokens,
       sectionsCount: optimizedSections.length,
-      intentCategory: this.options.detectedIntent?.category,
+      intentCategory: this._options.detectedIntent?.category,
       generationTime,
     });
 
@@ -160,8 +153,8 @@ export class DynamicRuleInjector {
       metadata: {
         estimatedTokens,
         verbosityLevel: verbosity,
-        providerCategory: this.providerCategory,
-        intentCategory: this.options.detectedIntent?.category,
+        providerCategory: this._providerCategory,
+        intentCategory: this._options.detectedIntent?.category,
         rulesIncluded: intentRules.included,
         rulesExcluded: intentRules.excluded,
         optimizationApplied: optimization.tokenReduction !== 0,
@@ -173,19 +166,19 @@ export class DynamicRuleInjector {
   /**
    * Determines optimal verbosity level based on context
    */
-  private determineVerbosity(): VerbosityLevel {
+  private _determineVerbosity(): VerbosityLevel {
     // Explicit override
-    if (this.options.forceVerbosity) {
-      return this.options.forceVerbosity;
+    if (this._options.forceVerbosity) {
+      return this._options.forceVerbosity;
     }
 
     // Provider-based preference
-    const optimization = getProviderOptimization(this.providerCategory as SchemaProviderCategory);
+    const optimization = getProviderOptimization(this._providerCategory as SchemaProviderCategory);
     let verbosity = optimization.preferredVerbosity;
 
     // Intent-based adjustments
-    if (this.options.detectedIntent) {
-      const intent = this.options.detectedIntent;
+    if (this._options.detectedIntent) {
+      const intent = this._options.detectedIntent;
 
       // High confidence simple tasks can use minimal verbosity
       if (intent.confidence === 'high' && intent.context.complexity === 'simple') {
@@ -204,9 +197,9 @@ export class DynamicRuleInjector {
     }
 
     // Token limit constraints
-    if (this.options.maxTokens && this.options.maxTokens < 4000) {
+    if (this._options.maxTokens && this._options.maxTokens < 4000) {
       verbosity = 'minimal';
-    } else if (this.options.maxTokens && this.options.maxTokens < 8000 && verbosity === 'detailed') {
+    } else if (this._options.maxTokens && this._options.maxTokens < 8000 && verbosity === 'detailed') {
       verbosity = 'standard';
     }
 
@@ -216,17 +209,17 @@ export class DynamicRuleInjector {
   /**
    * Gets intent-specific rules and determines which to include/exclude
    */
-  private getIntentSpecificRules(verbosity: VerbosityLevel): {
+  private _getIntentSpecificRules(verbosity: VerbosityLevel): {
     included: RuleCategory[];
     excluded: RuleCategory[];
     required: string;
     optional: string;
   } {
-    if (!this.options.detectedIntent) {
+    if (!this._options.detectedIntent) {
       // Fallback for unknown intent
       const defaultRules: RuleCategory[] = ['webcontainer_constraints', 'technology_preferences'];
 
-      if (this.options.chatMode === 'build') {
+      if (this._options.chatMode === 'build') {
         defaultRules.push('artifact_creation', 'code_quality');
       }
 
@@ -238,13 +231,13 @@ export class DynamicRuleInjector {
       };
     }
 
-    const intentCategory = this.options.detectedIntent.category as IntentCategory;
+    const intentCategory = this._options.detectedIntent.category as IntentCategory;
     const placeholders = {
-      cwd: this.options.cwd,
+      cwd: this._options.cwd,
     };
 
     const intentRules = getRulesForIntent(intentCategory, verbosity, placeholders);
-    const mapping = this.ruleData.intentRuleMappings[intentCategory];
+    const mapping = this._ruleData.intentRuleMappings[intentCategory];
 
     const included = [...mapping.required, ...mapping.optional] as RuleCategory[];
     const excluded = mapping.forbidden as RuleCategory[];
@@ -260,14 +253,14 @@ export class DynamicRuleInjector {
   /**
    * Builds prompt sections based on intent and context
    */
-  private buildPromptSections(
+  private _buildPromptSections(
     verbosity: VerbosityLevel,
-    intentRules: ReturnType<typeof this.getIntentSpecificRules>,
+    intentRules: ReturnType<typeof this._getIntentSpecificRules>,
   ): string[] {
     const sections: string[] = [];
 
     // System header (always included)
-    sections.push(this.getSystemHeader(verbosity));
+    sections.push(this._getSystemHeader(verbosity));
 
     // Core rules based on intent
     if (intentRules.required) {
@@ -275,7 +268,7 @@ export class DynamicRuleInjector {
     }
 
     // Context-specific sections
-    this.addContextSpecificSections(sections, verbosity);
+    this._addContextSpecificSections(sections, verbosity);
 
     // Optional rules (if space allows)
     if (intentRules.optional && verbosity !== 'minimal') {
@@ -283,7 +276,7 @@ export class DynamicRuleInjector {
     }
 
     // Mode-specific instructions
-    sections.push(this.getModeInstructions(verbosity));
+    sections.push(this._getModeInstructions(verbosity));
 
     return sections.filter((section) => section.trim() !== '');
   }
@@ -291,13 +284,13 @@ export class DynamicRuleInjector {
   /**
    * Adds context-specific sections (Supabase, Design, etc.)
    */
-  private addContextSpecificSections(sections: string[], verbosity: VerbosityLevel): void {
-    const intent = this.options.detectedIntent;
+  private _addContextSpecificSections(sections: string[], verbosity: VerbosityLevel): void {
+    const intent = this._options.detectedIntent;
 
     // Supabase instructions for database operations
     if (intent?.context.requiresDatabase || intent?.category === 'database-ops') {
-      const supabaseState = this.options.supabaseConnection ||
-        this.options.supabase || {
+      const supabaseState = this._options.supabaseConnection ||
+        this._options.supabase || {
           isConnected: false,
           hasSelectedProject: false,
         };
@@ -318,7 +311,7 @@ export class DynamicRuleInjector {
         targetComplexity: intent?.context.complexity || 'moderate',
       };
 
-      const designInstructions = getCompressedDesignInstructions(verbosity, this.options.designScheme, designContext);
+      const designInstructions = getCompressedDesignInstructions(verbosity, this._options.designScheme, designContext);
 
       if (designInstructions) {
         sections.push(designInstructions);
@@ -326,35 +319,35 @@ export class DynamicRuleInjector {
     }
 
     // Mobile-specific instructions
-    if (this.options.projectType === 'mobile') {
-      sections.push(this.getMobileInstructions(verbosity));
+    if (this._options.projectType === 'mobile') {
+      sections.push(this._getMobileInstructions(verbosity));
     }
 
     // Message formatting
-    sections.push(this.getMessageFormatting());
+    sections.push(this._getMessageFormatting());
   }
 
   /**
    * Applies token optimization based on provider and constraints
    */
-  private applyTokenOptimization(
+  private _applyTokenOptimization(
     sections: string[],
     verbosity: VerbosityLevel,
     optimization: ReturnType<typeof getProviderOptimization>,
   ): string[] {
-    if (!this.options.maxTokens || optimization.tokenReduction <= 0) {
+    if (!this._options.maxTokens || optimization.tokenReduction <= 0) {
       return sections;
     }
 
-    const currentTokens = this.estimatePromptTokens(sections.join('\n\n'));
+    const currentTokens = this._estimatePromptTokens(sections.join('\n\n'));
 
-    if (currentTokens <= this.options.maxTokens) {
+    if (currentTokens <= this._options.maxTokens) {
       return sections;
     }
 
     logger.info('Applying token optimization', {
       currentTokens,
-      maxTokens: this.options.maxTokens,
+      maxTokens: this._options.maxTokens,
       reductionTarget: optimization.tokenReduction,
     });
 
@@ -362,16 +355,16 @@ export class DynamicRuleInjector {
     let optimizedSections = [...sections];
 
     // 1. Remove optional sections first
-    if (currentTokens > this.options.maxTokens && verbosity !== 'minimal') {
-      optimizedSections = this.removeOptionalSections(optimizedSections);
+    if (currentTokens > this._options.maxTokens && verbosity !== 'minimal') {
+      optimizedSections = this._removeOptionalSections(optimizedSections);
     }
 
     // 2. Reduce verbosity if still too long
-    const newTokens = this.estimatePromptTokens(optimizedSections.join('\n\n'));
+    const newTokens = this._estimatePromptTokens(optimizedSections.join('\n\n'));
 
-    if (newTokens > this.options.maxTokens && verbosity !== 'minimal') {
+    if (newTokens > this._options.maxTokens && verbosity !== 'minimal') {
       const lowerVerbosity = verbosity === 'detailed' ? 'standard' : 'minimal';
-      return this.buildPromptSections(lowerVerbosity, this.getIntentSpecificRules(lowerVerbosity));
+      return this._buildPromptSections(lowerVerbosity, this._getIntentSpecificRules(lowerVerbosity));
     }
 
     return optimizedSections;
@@ -380,8 +373,8 @@ export class DynamicRuleInjector {
   /**
    * Removes optional sections to reduce token count
    */
-  private removeOptionalSections(sections: string[]): string[] {
-    const optimization = getProviderOptimization(this.providerCategory as SchemaProviderCategory);
+  private _removeOptionalSections(sections: string[]): string[] {
+    const optimization = getProviderOptimization(this._providerCategory as SchemaProviderCategory);
     const excludedSections = optimization.excludedSections;
 
     return sections.filter((section) => {
@@ -393,14 +386,14 @@ export class DynamicRuleInjector {
   /**
    * Validates generated prompt content
    */
-  private validatePromptContent(content: string, includedRules: RuleCategory[]) {
+  private _validatePromptContent(content: string, includedRules: RuleCategory[]) {
     return validateContent(content, includedRules);
   }
 
   /**
    * Estimates token count for the prompt
    */
-  private estimatePromptTokens(content: string): number {
+  private _estimatePromptTokens(content: string): number {
     // Simple estimation: ~4 characters per token
     return Math.ceil(content.length / 4);
   }
@@ -408,7 +401,7 @@ export class DynamicRuleInjector {
   /**
    * Helper methods for generating specific sections
    */
-  private getSystemHeader(verbosity: VerbosityLevel): string {
+  private _getSystemHeader(verbosity: VerbosityLevel): string {
     switch (verbosity) {
       case 'minimal':
         return 'You are Bolt, an AI coding assistant. The year is 2025.';
@@ -419,8 +412,8 @@ export class DynamicRuleInjector {
     }
   }
 
-  private getModeInstructions(verbosity: VerbosityLevel): string {
-    if (this.options.chatMode === 'discuss') {
+  private _getModeInstructions(verbosity: VerbosityLevel): string {
+    if (this._options.chatMode === 'discuss') {
       return 'Provide guidance and plans without implementing code. Use "You should..." not "I will...".';
     }
 
@@ -454,7 +447,7 @@ Build mode: Implement solutions using artifacts.
     }
   }
 
-  private getMobileInstructions(verbosity: VerbosityLevel): string {
+  private _getMobileInstructions(verbosity: VerbosityLevel): string {
     if (verbosity === 'minimal') {
       return 'Mobile: React Native/Expo only. Touch targets 44px+. Native patterns.';
     }
@@ -468,9 +461,9 @@ React Native and Expo only supported frameworks.
 </mobile_app_instructions>`;
   }
 
-  private getMessageFormatting(): string {
+  private _getMessageFormatting(): string {
     return `<message_formatting_info>
-Available HTML elements: ${this.options.allowedHtmlElements.join(', ') || 'none'}
+Available HTML elements: ${this._options.allowedHtmlElements.join(', ') || 'none'}
 </message_formatting_info>`;
   }
 }

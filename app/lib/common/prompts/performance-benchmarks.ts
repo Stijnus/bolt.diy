@@ -76,8 +76,8 @@ export interface PerformanceMetrics {
  * Main performance benchmarking class
  */
 export class PerformanceBenchmark {
-  private results: BenchmarkResult[] = [];
-  private baselineCache = new Map<string, BenchmarkResult>();
+  private _results: BenchmarkResult[] = [];
+  private _baselineCache = new Map<string, BenchmarkResult>();
 
   /**
    * Runs a comprehensive benchmark comparing all prompt generation methods
@@ -92,32 +92,32 @@ export class PerformanceBenchmark {
 
     for (const providerName of providers) {
       // Benchmark original unified prompt
-      const baselineResult = await this.benchmarkUnifiedPrompt(options, providerName);
+      const baselineResult = await this._benchmarkUnifiedPrompt(options, providerName);
 
       // Benchmark provider-optimized prompt
-      const providerOptimizedResult = await this.benchmarkProviderOptimizedPrompt(options, providerName);
+      const providerOptimizedResult = await this._benchmarkProviderOptimizedPrompt(options, providerName);
 
       // Benchmark new dynamic system
-      const dynamicOptimizedResult = await this.benchmarkDynamicPrompt(options, providerName);
+      const dynamicOptimizedResult = await this._benchmarkDynamicPrompt(options, providerName);
 
       // Compare provider-optimized vs baseline
-      const providerComparison = this.compareResults(baselineResult, providerOptimizedResult);
+      const providerComparison = this._compareResults(baselineResult, providerOptimizedResult);
       providerComparison.baseline = baselineResult;
       providerComparison.optimized = providerOptimizedResult;
 
       // Compare dynamic vs baseline
-      const dynamicComparison = this.compareResults(baselineResult, dynamicOptimizedResult);
+      const dynamicComparison = this._compareResults(baselineResult, dynamicOptimizedResult);
       dynamicComparison.baseline = baselineResult;
       dynamicComparison.optimized = dynamicOptimizedResult;
 
       comparisons.push(providerComparison, dynamicComparison);
 
-      this.results.push(baselineResult, providerOptimizedResult, dynamicOptimizedResult);
+      this._results.push(baselineResult, providerOptimizedResult, dynamicOptimizedResult);
     }
 
     logger.info('Comprehensive benchmark completed', {
       totalComparisons: comparisons.length,
-      averageTokenReduction: this.calculateAverageTokenReduction(comparisons),
+      averageTokenReduction: this._calculateAverageTokenReduction(comparisons),
     });
 
     return comparisons;
@@ -126,9 +126,9 @@ export class PerformanceBenchmark {
   /**
    * Benchmarks the original unified prompt system
    */
-  private async benchmarkUnifiedPrompt(options: BenchmarkOptions, providerName: string): Promise<BenchmarkResult> {
+  private async _benchmarkUnifiedPrompt(options: BenchmarkOptions, providerName: string): Promise<BenchmarkResult> {
     const startTime = Date.now();
-    const startMemory = this.getMemoryUsage();
+    const startMemory = this._getMemoryUsage();
 
     try {
       const prompt = createUnifiedPrompt({
@@ -143,12 +143,12 @@ export class PerformanceBenchmark {
       });
 
       const endTime = Date.now();
-      const endMemory = this.getMemoryUsage();
+      const endMemory = this._getMemoryUsage();
 
       return {
         algorithm: 'unified-prompt',
         providerName,
-        tokenCount: this.estimateTokens(prompt),
+        tokenCount: this._estimateTokens(prompt),
         generationTime: endTime - startTime,
         memoryUsage: endMemory - startMemory,
         compressionRatio: 1.0, // Baseline
@@ -157,25 +157,25 @@ export class PerformanceBenchmark {
           intentCategory: options.detectedIntent?.category,
           intentConfidence: options.detectedIntent?.confidence,
           optimizationsApplied: [],
-          sectionsIncluded: this.countSections(prompt),
+          sectionsIncluded: this._countSections(prompt),
           validationPassed: true,
         },
       };
     } catch (error) {
       logger.error('Unified prompt benchmark failed', { providerName, error });
-      return this.createErrorResult('unified-prompt', providerName);
+      return this._createErrorResult('unified-prompt', providerName);
     }
   }
 
   /**
    * Benchmarks the provider-optimized prompt system
    */
-  private async benchmarkProviderOptimizedPrompt(
+  private async _benchmarkProviderOptimizedPrompt(
     options: BenchmarkOptions,
     providerName: string,
   ): Promise<BenchmarkResult> {
     const startTime = Date.now();
-    const startMemory = this.getMemoryUsage();
+    const startMemory = this._getMemoryUsage();
 
     try {
       const prompt = createProviderOptimizedPrompt({
@@ -191,15 +191,15 @@ export class PerformanceBenchmark {
       });
 
       const endTime = Date.now();
-      const endMemory = this.getMemoryUsage();
+      const endMemory = this._getMemoryUsage();
 
-      const baseline = this.getBaselineResult(providerName, options);
-      const compressionRatio = baseline ? this.estimateTokens(prompt) / baseline.tokenCount : 1.0;
+      const baseline = this._getBaselineResult(providerName, options);
+      const compressionRatio = baseline ? this._estimateTokens(prompt) / baseline.tokenCount : 1.0;
 
       return {
         algorithm: 'provider-optimized',
         providerName,
-        tokenCount: this.estimateTokens(prompt),
+        tokenCount: this._estimateTokens(prompt),
         generationTime: endTime - startTime,
         memoryUsage: endMemory - startMemory,
         compressionRatio,
@@ -208,22 +208,22 @@ export class PerformanceBenchmark {
           intentCategory: options.detectedIntent?.category,
           intentConfidence: options.detectedIntent?.confidence,
           optimizationsApplied: ['provider-specific'],
-          sectionsIncluded: this.countSections(prompt),
+          sectionsIncluded: this._countSections(prompt),
           validationPassed: true,
         },
       };
     } catch (error) {
       logger.error('Provider-optimized prompt benchmark failed', { providerName, error });
-      return this.createErrorResult('provider-optimized', providerName);
+      return this._createErrorResult('provider-optimized', providerName);
     }
   }
 
   /**
    * Benchmarks the new dynamic prompt system
    */
-  private async benchmarkDynamicPrompt(options: BenchmarkOptions, providerName: string): Promise<BenchmarkResult> {
+  private async _benchmarkDynamicPrompt(options: BenchmarkOptions, providerName: string): Promise<BenchmarkResult> {
     const startTime = Date.now();
-    const startMemory = this.getMemoryUsage();
+    const startMemory = this._getMemoryUsage();
 
     try {
       const result = generateOptimizedPrompt({
@@ -239,9 +239,9 @@ export class PerformanceBenchmark {
       });
 
       const endTime = Date.now();
-      const endMemory = this.getMemoryUsage();
+      const endMemory = this._getMemoryUsage();
 
-      const baseline = this.getBaselineResult(providerName, options);
+      const baseline = this._getBaselineResult(providerName, options);
       const compressionRatio = baseline ? result.metadata.estimatedTokens / baseline.tokenCount : 1.0;
 
       return {
@@ -265,14 +265,14 @@ export class PerformanceBenchmark {
       };
     } catch (error) {
       logger.error('Dynamic prompt benchmark failed', { providerName, error });
-      return this.createErrorResult('dynamic-optimized', providerName);
+      return this._createErrorResult('dynamic-optimized', providerName);
     }
   }
 
   /**
    * Compares two benchmark results
    */
-  private compareResults(baseline: BenchmarkResult, optimized: BenchmarkResult): BenchmarkComparison {
+  private _compareResults(baseline: BenchmarkResult, optimized: BenchmarkResult): BenchmarkComparison {
     const tokenReduction = ((baseline.tokenCount - optimized.tokenCount) / baseline.tokenCount) * 100;
     const speedImprovement = ((baseline.generationTime - optimized.generationTime) / baseline.generationTime) * 100;
     const memoryReduction =
@@ -324,32 +324,32 @@ export class PerformanceBenchmark {
    * Analyzes performance trends over time
    */
   analyzePerformanceTrends(): PerformanceMetrics {
-    if (this.results.length === 0) {
-      return this.createEmptyMetrics();
+    if (this._results.length === 0) {
+      return this._createEmptyMetrics();
     }
 
-    const optimizedResults = this.results.filter((r) => r.algorithm !== 'unified-prompt');
-    const baselineResults = this.results.filter((r) => r.algorithm === 'unified-prompt');
+    const optimizedResults = this._results.filter((r) => r.algorithm !== 'unified-prompt');
+    const baselineResults = this._results.filter((r) => r.algorithm === 'unified-prompt');
 
     // Calculate average metrics
-    const averageTokenReduction = this.calculateAverageTokenReduction(
+    const averageTokenReduction = this._calculateAverageTokenReduction(
       optimizedResults
         .map((opt) => {
           const baseline = baselineResults.find((base) => base.providerName === opt.providerName);
-          return baseline ? this.compareResults(baseline, opt) : null;
+          return baseline ? this._compareResults(baseline, opt) : null;
         })
         .filter(Boolean) as BenchmarkComparison[],
     );
 
-    const averageSpeedImprovement = this.calculateAverageSpeedImprovement(optimizedResults);
-    const averageCompressionRatio = this.calculateAverageCompressionRatio(optimizedResults);
-    const successRate = this.calculateSuccessRate(optimizedResults);
+    const averageSpeedImprovement = this._calculateAverageSpeedImprovement(optimizedResults);
+    const averageCompressionRatio = this._calculateAverageCompressionRatio(optimizedResults);
+    const successRate = this._calculateSuccessRate(optimizedResults);
 
     // Provider-specific analysis
-    const providerEfficiency = this.analyzeProviderEfficiency();
+    const providerEfficiency = this._analyzeProviderEfficiency();
 
     // Trend analysis
-    const trendAnalysis = this.analyzeTrends();
+    const trendAnalysis = this._analyzeTrends();
 
     return {
       averageTokenReduction,
@@ -364,16 +364,16 @@ export class PerformanceBenchmark {
   /**
    * Utility methods
    */
-  private estimateTokens(content: string): number {
+  private _estimateTokens(content: string): number {
     // Simple estimation: ~4 characters per token
     return Math.ceil(content.length / 4);
   }
 
-  private countSections(content: string): number {
+  private _countSections(content: string): number {
     return (content.match(/<[^>]+>/g) || []).length;
   }
 
-  private getMemoryUsage(): number {
+  private _getMemoryUsage(): number {
     // Simple memory usage estimation
     if (typeof process !== 'undefined' && process.memoryUsage) {
       return process.memoryUsage().heapUsed;
@@ -382,12 +382,12 @@ export class PerformanceBenchmark {
     return 0;
   }
 
-  private getBaselineResult(providerName: string, options: BenchmarkOptions): BenchmarkResult | null {
+  private _getBaselineResult(providerName: string, options: BenchmarkOptions): BenchmarkResult | null {
     const cacheKey = `${providerName}-${JSON.stringify(options)}`;
-    return this.baselineCache.get(cacheKey) || null;
+    return this._baselineCache.get(cacheKey) || null;
   }
 
-  private createErrorResult(algorithm: string, providerName: string): BenchmarkResult {
+  private _createErrorResult(algorithm: string, providerName: string): BenchmarkResult {
     return {
       algorithm,
       providerName,
@@ -403,7 +403,7 @@ export class PerformanceBenchmark {
     };
   }
 
-  private calculateAverageTokenReduction(comparisons: BenchmarkComparison[]): number {
+  private _calculateAverageTokenReduction(comparisons: BenchmarkComparison[]): number {
     if (comparisons.length === 0) {
       return 0;
     }
@@ -411,7 +411,7 @@ export class PerformanceBenchmark {
     return comparisons.reduce((sum, comp) => sum + comp.improvement.tokenReduction, 0) / comparisons.length;
   }
 
-  private calculateAverageSpeedImprovement(results: BenchmarkResult[]): number {
+  private _calculateAverageSpeedImprovement(results: BenchmarkResult[]): number {
     if (results.length === 0) {
       return 0;
     }
@@ -419,7 +419,7 @@ export class PerformanceBenchmark {
     return results.reduce((sum, result) => sum + (result.generationTime || 0), 0) / results.length;
   }
 
-  private calculateAverageCompressionRatio(results: BenchmarkResult[]): number {
+  private _calculateAverageCompressionRatio(results: BenchmarkResult[]): number {
     if (results.length === 0) {
       return 1;
     }
@@ -427,7 +427,7 @@ export class PerformanceBenchmark {
     return results.reduce((sum, result) => sum + result.compressionRatio, 0) / results.length;
   }
 
-  private calculateSuccessRate(results: BenchmarkResult[]): number {
+  private _calculateSuccessRate(results: BenchmarkResult[]): number {
     if (results.length === 0) {
       return 0;
     }
@@ -437,13 +437,13 @@ export class PerformanceBenchmark {
     return (successfulResults.length / results.length) * 100;
   }
 
-  private analyzeProviderEfficiency(): Record<
+  private _analyzeProviderEfficiency(): Record<
     string,
     { averageReduction: number; averageSpeed: number; reliability: number }
   > {
     const providerStats: Record<string, any> = {};
 
-    for (const result of this.results) {
+    for (const result of this._results) {
       if (!providerStats[result.providerName]) {
         providerStats[result.providerName] = {
           results: [],
@@ -479,14 +479,14 @@ export class PerformanceBenchmark {
     return efficiency;
   }
 
-  private analyzeTrends(): { improvingMetrics: string[]; decliningMetrics: string[]; recommendations: string[] } {
+  private _analyzeTrends(): { improvingMetrics: string[]; decliningMetrics: string[]; recommendations: string[] } {
     const improvingMetrics: string[] = [];
     const decliningMetrics: string[] = [];
     const recommendations: string[] = [];
 
     // Simple trend analysis based on recent results
-    const recentResults = this.results.slice(-10); // Last 10 results
-    const earlierResults = this.results.slice(0, -10);
+    const recentResults = this._results.slice(-10); // Last 10 results
+    const earlierResults = this._results.slice(0, -10);
 
     if (earlierResults.length > 0) {
       const recentAvgTokens = recentResults.reduce((sum, r) => sum + r.tokenCount, 0) / recentResults.length;
@@ -518,7 +518,7 @@ export class PerformanceBenchmark {
     };
   }
 
-  private createEmptyMetrics(): PerformanceMetrics {
+  private _createEmptyMetrics(): PerformanceMetrics {
     return {
       averageTokenReduction: 0,
       averageSpeedImprovement: 0,
@@ -542,7 +542,7 @@ export class PerformanceBenchmark {
     timestamp: number;
   } {
     return {
-      results: this.results,
+      results: this._results,
       summary: this.analyzePerformanceTrends(),
       timestamp: Date.now(),
     };
@@ -552,8 +552,8 @@ export class PerformanceBenchmark {
    * Clear stored results
    */
   clearResults(): void {
-    this.results = [];
-    this.baselineCache.clear();
+    this._results = [];
+    this._baselineCache.clear();
     logger.info('Benchmark results cleared');
   }
 }
