@@ -213,6 +213,9 @@ export function useVercelDeploy() {
         source: 'vercel',
       });
 
+      // Show success toast notification
+      toast.success(`🚀 Vercel deployment completed successfully!`);
+
       return true;
     } catch (err) {
       console.error('Vercel deploy error:', err);
