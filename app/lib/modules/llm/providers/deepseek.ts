@@ -13,19 +13,19 @@ export default class DeepseekProvider extends BaseProvider {
   };
 
   staticModels: ModelInfo[] = [
-    // DeepSeek Chat - DeepSeek-V3.1-Terminus (Non-thinking Mode)
+    // DeepSeek Chat - DeepSeek-V3.2-Exp (Non-thinking Mode)
     {
       name: 'deepseek-chat',
-      label: 'DeepSeek Chat (V3.1-Terminus)',
+      label: 'DeepSeek Chat (V3.2-Exp)',
       provider: 'Deepseek',
       maxTokenAllowed: 128000, // 128K context length
       maxCompletionTokens: 8192, // Maximum 8K output tokens
     },
 
-    // DeepSeek Reasoner - DeepSeek-V3.1-Terminus (Thinking Mode)
+    // DeepSeek Reasoner - DeepSeek-V3.2-Exp (Thinking Mode)
     {
       name: 'deepseek-reasoner',
-      label: 'DeepSeek Reasoner (V3.1-Terminus)',
+      label: 'DeepSeek Reasoner (V3.2-Exp)',
       provider: 'Deepseek',
       maxTokenAllowed: 128000, // 128K context length
       maxCompletionTokens: 64000, // Maximum 64K output tokens with reasoning
@@ -74,11 +74,11 @@ export default class DeepseekProvider extends BaseProvider {
       let maxCompletionTokens = 8192; // default for deepseek-chat
 
       if (m.id === 'deepseek-chat') {
-        // DeepSeek Chat - V3.1-Terminus (Non-thinking Mode)
+        // DeepSeek Chat - V3.2-Exp (Non-thinking Mode)
         contextWindow = 128000;
         maxCompletionTokens = 8192; // Maximum 8K output
       } else if (m.id === 'deepseek-reasoner') {
-        // DeepSeek Reasoner - V3.1-Terminus (Thinking Mode)
+        // DeepSeek Reasoner - V3.2-Exp (Thinking Mode)
         contextWindow = 128000;
         maxCompletionTokens = 64000; // Maximum 64K output with reasoning
       }
