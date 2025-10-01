@@ -16,11 +16,18 @@ export default class ZAIProvider extends BaseProvider {
 
   staticModels: ModelInfo[] = [
     {
+      name: 'glm-4.6',
+      label: 'GLM-4.6',
+      provider: 'ZAI',
+      maxTokenAllowed: 200000,
+      maxCompletionTokens: 96000,
+    },
+    {
       name: 'glm-4.5',
       label: 'GLM-4.5',
       provider: 'ZAI',
       maxTokenAllowed: 128000,
-      maxCompletionTokens: 32000,
+      maxCompletionTokens: 96000,
     },
     {
       name: 'glm-4.5v',
@@ -106,7 +113,11 @@ export default class ZAIProvider extends BaseProvider {
     }
 
     // Generate readable label from model ID
-    if (modelId.includes('glm-4.5v')) {
+    if (modelId.includes('glm-4.6v')) {
+      return 'GLM-4.6V (Visual)';
+    } else if (modelId.includes('glm-4.6')) {
+      return 'GLM-4.6';
+    } else if (modelId.includes('glm-4.5v')) {
       return 'GLM-4.5V (Visual)';
     } else if (modelId.includes('glm-4.5')) {
       return 'GLM-4.5';
@@ -161,8 +172,25 @@ export default class ZAIProvider extends BaseProvider {
     });
 
     if (!baseUrl || !apiKey) {
-      throw new Error(`Missing configuration for ${this.name} provider`);
+      const missing: string[] = [];
+
+      if (!baseUrl) {
+        missing.push('base URL (set ZAI_API_BASE_URL or override in provider settings)');
+      }
+
+      if (!apiKey) {
+        missing.push('API key (set ZAI_API_KEY or add it via Settings → Providers)');
+      }
+
+      throw new Error(`Missing configuration for ${this.name} provider: ${missing.join(' and ')}`);
     }
+
+    /*
+     * Enable thinking mode for GLM models at the provider level
+     * GLM models have dynamic thinking enabled by default, but we explicitly set it
+     * for coding tasks to ensure optimal performance (90.6% tool calling success rate)
+     */
+    const isGLMModel = model.toLowerCase().startsWith('glm-');
 
     // Create ZAI-specific OpenAI client with required headers
     const openai = createOpenAI({
@@ -171,6 +199,24 @@ export default class ZAIProvider extends BaseProvider {
       headers: {
         'Accept-Language': 'en-US,en',
       },
+      ...(isGLMModel && {
+        /*
+         * Enable thinking mode for improved reasoning and coding
+         * Reference: https://docs.z.ai/guides/llm/glm-4.5
+         */
+        fetch: async (url: RequestInfo | URL, init?: RequestInit) => {
+          const body = init?.body ? JSON.parse(init.body as string) : {};
+          const modifiedBody = {
+            ...body,
+            thinking: { type: 'enabled' },
+          };
+
+          return fetch(url, {
+            ...init,
+            body: JSON.stringify(modifiedBody),
+          });
+        },
+      }),
     });
 
     return openai(model);

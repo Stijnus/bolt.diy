@@ -168,7 +168,7 @@ export async function streamText(props: {
     `Token limits for model ${modelDetails.name}: maxTokens=${safeMaxTokens}, maxTokenAllowed=${modelDetails.maxTokenAllowed}, maxCompletionTokens=${modelDetails.maxCompletionTokens}`,
   );
 
-  let systemPrompt = await PromptLibrary.getPromptFromLibraryWithProvider(
+  let systemPrompt = PromptLibrary.getPromptFromLibraryWithProvider(
     promptId || 'default',
     {
       cwd: WORK_DIR,
@@ -182,12 +182,9 @@ export async function streamText(props: {
         hasSelectedProject: options?.supabaseConnection?.hasSelectedProject || false,
         credentials: options?.supabaseConnection?.credentials || undefined,
       },
-      messages: processedMessages,
-      maxTokens: safeMaxTokens,
     },
     currentProvider,
     modelDetails,
-    processedMessages,
   );
 
   if (chatMode === 'build' && contextFiles && contextOptimization) {

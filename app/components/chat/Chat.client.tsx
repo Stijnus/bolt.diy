@@ -110,6 +110,7 @@ export const ChatImpl = memo(
       const savedProvider = Cookies.get('selectedProvider');
       return (PROVIDER_LIST.find((p) => p.name === savedProvider) || DEFAULT_PROVIDER) as ProviderInfo;
     });
+    const [providerConfigCache, setProviderConfigCache] = useState<Record<string, boolean>>({});
     const { showChat } = useStore(chatStore);
     const [animationScope, animate] = useAnimate();
     const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
@@ -386,6 +387,65 @@ export const ChatImpl = memo(
       return attachments;
     };
 
+    const ensureProviderConfigured = useCallback(
+      async (providerToCheck: ProviderInfo): Promise<boolean> => {
+        if (!providerToCheck) {
+          return false;
+        }
+
+        const providerName = providerToCheck.name;
+        const providerConfig = (providerToCheck as ProviderInfo & { config?: { apiTokenKey?: string } }).config;
+        const requiresApiKey = Boolean(providerConfig?.apiTokenKey);
+
+        if (!requiresApiKey) {
+          return true;
+        }
+
+        let cookieApiKeys: Record<string, string> = {};
+
+        try {
+          const storedApiKeys = Cookies.get('apiKeys');
+          cookieApiKeys = storedApiKeys ? JSON.parse(storedApiKeys) : {};
+        } catch (error) {
+          console.error('Failed to parse apiKeys cookie:', error);
+          cookieApiKeys = {};
+        }
+
+        const keyFromCookie = cookieApiKeys?.[providerName]?.trim();
+
+        if (keyFromCookie) {
+          if (!providerConfigCache[providerName]) {
+            setProviderConfigCache((prev) => ({ ...prev, [providerName]: true }));
+          }
+
+          return true;
+        }
+
+        if (providerConfigCache[providerName] !== undefined) {
+          return providerConfigCache[providerName];
+        }
+
+        try {
+          const response = await fetch(`/api/check-env-key?provider=${encodeURIComponent(providerName)}`);
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          const data = (await response.json()) as { isSet: boolean };
+          setProviderConfigCache((prev) => ({ ...prev, [providerName]: data.isSet }));
+
+          return data.isSet;
+        } catch (error) {
+          console.error(`Failed to verify configuration for provider ${providerName}:`, error);
+          setProviderConfigCache((prev) => ({ ...prev, [providerName]: false }));
+
+          return false;
+        }
+      },
+      [providerConfigCache],
+    );
+
     const sendMessage = async (_event: React.UIEvent, messageInput?: string) => {
       const messageContent = messageInput || input;
 
@@ -395,6 +455,16 @@ export const ChatImpl = memo(
 
       if (isLoading) {
         abort();
+        return;
+      }
+
+      const providerReady = await ensureProviderConfigured(provider);
+
+      if (!providerReady) {
+        toast.error(
+          `${provider.name} provider is not configured. Add an API key in Settings → Providers before sending a message.`,
+        );
+
         return;
       }
 
@@ -610,6 +680,14 @@ export const ChatImpl = memo(
     const handleProviderChange = (newProvider: ProviderInfo) => {
       setProvider(newProvider);
       Cookies.set('selectedProvider', newProvider.name, { expires: 30 });
+
+      ensureProviderConfigured(newProvider).then((configured) => {
+        if (!configured) {
+          toast.warning(
+            `${newProvider.name} provider is not configured yet. Add an API key in Settings → Providers before sending a message.`,
+          );
+        }
+      });
     };
 
     return (

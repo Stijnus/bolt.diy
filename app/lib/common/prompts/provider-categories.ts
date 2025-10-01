@@ -1,145 +1,70 @@
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import { isReasoningModel } from '~/lib/common/model-utils';
 
+// Provider category types
 export type ProviderCategory =
-  | 'high-context' // Google, Anthropic (2M-200K context)
-  | 'reasoning' // o1, o3, Claude 4 (simplified prompts)
-  | 'speed-optimized' // Groq, Cerebras (concise prompts)
-  | 'local-models' // Ollama (simplified vocabulary)
-  | 'coding-specialized' // DeepSeek Coder, xAI Grok Code (enhanced coding focus)
-  | 'standard'; // OpenAI, others (balanced approach)
+  | 'high-context'
+  | 'reasoning'
+  | 'speed-optimized'
+  | 'local-models'
+  | 'coding-specialized'
+  | 'standard';
 
 export interface ProviderCategoryConfig {
   category: ProviderCategory;
   name: string;
   description: string;
-  characteristics: {
-    contextWindow: { min: number; max: number };
-    preferredPromptLength: 'ultra-concise' | 'concise' | 'balanced' | 'detailed' | 'comprehensive';
-    supportsComplexInstructions: boolean;
-    optimizedFor: string[];
-    specialHandling?: string[];
-  };
-  promptOptimizations: {
-    tokenReduction: number; // Percentage reduction compared to standard
-    prioritizeSections: string[];
-    excludeSections?: string[];
-    simplifyLanguage: boolean;
-    enhanceCodeGuidelines: boolean;
-  };
+  tokenReduction: number; // 0%, 15%, or 30% reduction
+  prefersConcisePrompts: boolean; // true for reasoning/speed-optimized
 }
 
 export const PROVIDER_CATEGORIES: Record<ProviderCategory, ProviderCategoryConfig> = {
   'high-context': {
     category: 'high-context',
     name: 'High-Context Providers',
-    description: 'Providers with massive context windows (400K-2M tokens) - 2025 updated',
-    characteristics: {
-      contextWindow: { min: 400000, max: 2000000 }, // Updated for GPT-5 400K, Kimi K3 2M
-      preferredPromptLength: 'comprehensive',
-      supportsComplexInstructions: true,
-      optimizedFor: ['detailed examples', 'comprehensive guidelines', 'complex reasoning'],
-    },
-    promptOptimizations: {
-      tokenReduction: -30, // Expand prompts by 30% for 2025 large context models
-      prioritizeSections: ['code_quality_standards', 'project_structure_standards', 'design_instructions'],
-      simplifyLanguage: false,
-      enhanceCodeGuidelines: true,
-    },
+    description: 'Large context window models (Gemini, Claude) - can handle detailed prompts',
+    tokenReduction: 0,
+    prefersConcisePrompts: false,
   },
 
   reasoning: {
     category: 'reasoning',
     name: 'Reasoning Models',
-    description: 'Models with internal reasoning capabilities (o1, o3, Claude 4, DeepSeek R1, Kimi Thinking)',
-    characteristics: {
-      contextWindow: { min: 200000, max: 400000 }, // Updated for 2025 reasoning models
-      preferredPromptLength: 'concise',
-      supportsComplexInstructions: false, // They reason internally
-      optimizedFor: ['clear objectives', 'direct instructions', 'minimal guidance'],
-      specialHandling: ['filter unsupported parameters', 'use maxCompletionTokens'],
-    },
-    promptOptimizations: {
-      tokenReduction: 45, // Increased reduction - 2025 reasoning models are more capable
-      prioritizeSections: ['system_constraints', 'artifact_instructions'],
-      excludeSections: ['message_formatting_info', 'running_shell_commands_info'],
-      simplifyLanguage: true,
-      enhanceCodeGuidelines: false,
-    },
+    description: 'Models with internal reasoning (o1, o3, DeepSeek R1) - prefer concise prompts',
+    tokenReduction: 30,
+    prefersConcisePrompts: true,
   },
 
   'speed-optimized': {
     category: 'speed-optimized',
-    name: 'Speed-Optimized Providers',
-    description: 'Ultra-fast inference providers (Groq, Cerebras)',
-    characteristics: {
-      contextWindow: { min: 8000, max: 128000 },
-      preferredPromptLength: 'ultra-concise',
-      supportsComplexInstructions: true,
-      optimizedFor: ['fast inference', 'minimal latency', 'efficient processing'],
-    },
-    promptOptimizations: {
-      tokenReduction: 60, // 60% reduction for speed
-      prioritizeSections: ['code_fix_triage', 'system_constraints', 'technology_preferences'],
-      excludeSections: ['design_instructions', 'mobile_app_instructions'],
-      simplifyLanguage: true,
-      enhanceCodeGuidelines: false,
-    },
+    name: 'Speed-Optimized',
+    description: 'Fast inference models (Groq, Cerebras) - optimize for speed',
+    tokenReduction: 30,
+    prefersConcisePrompts: true,
   },
 
   'local-models': {
     category: 'local-models',
     name: 'Local Models',
-    description: 'Self-hosted models via Ollama',
-    characteristics: {
-      contextWindow: { min: 8000, max: 128000 },
-      preferredPromptLength: 'concise',
-      supportsComplexInstructions: false,
-      optimizedFor: ['simple instructions', 'clear guidance', 'resource efficiency'],
-    },
-    promptOptimizations: {
-      tokenReduction: 45, // 45% reduction for local models
-      prioritizeSections: ['system_constraints', 'artifact_instructions'],
-      excludeSections: ['design_instructions', 'supabase_instructions'],
-      simplifyLanguage: true,
-      enhanceCodeGuidelines: false,
-    },
+    description: 'Self-hosted via Ollama - moderate optimization',
+    tokenReduction: 15,
+    prefersConcisePrompts: true,
   },
 
   'coding-specialized': {
     category: 'coding-specialized',
-    name: 'Coding-Specialized Models',
-    description: 'Models optimized for code generation (DeepSeek V3.1, Grok 4, GPT-5 Codex)',
-    characteristics: {
-      contextWindow: { min: 128000, max: 400000 }, // Updated for 2025 coding models
-      preferredPromptLength: 'detailed',
-      supportsComplexInstructions: true,
-      optimizedFor: ['code generation', 'software architecture', 'best practices'],
-    },
-    promptOptimizations: {
-      tokenReduction: 5, // Even less reduction for advanced 2025 coding models
-      prioritizeSections: ['code_quality_standards', 'project_structure_standards', 'artifact_instructions'],
-      simplifyLanguage: false,
-      enhanceCodeGuidelines: true,
-    },
+    name: 'Coding-Specialized',
+    description: 'Code-focused models (DeepSeek, Grok) - detailed coding prompts work best',
+    tokenReduction: 0,
+    prefersConcisePrompts: false,
   },
 
   standard: {
     category: 'standard',
-    name: 'Standard Providers',
-    description: 'Balanced providers with standard capabilities - 2025 updated',
-    characteristics: {
-      contextWindow: { min: 32000, max: 256000 }, // Updated baseline for 2025
-      preferredPromptLength: 'balanced',
-      supportsComplexInstructions: true,
-      optimizedFor: ['general purpose', 'balanced performance', 'versatility'],
-    },
-    promptOptimizations: {
-      tokenReduction: 0, // No reduction - use standard prompt
-      prioritizeSections: ['artifact_instructions', 'system_constraints', 'technology_preferences'],
-      simplifyLanguage: false,
-      enhanceCodeGuidelines: true,
-    },
+    name: 'Standard',
+    description: 'Balanced general-purpose models',
+    tokenReduction: 0,
+    prefersConcisePrompts: false,
   },
 };
 
@@ -183,7 +108,7 @@ export const PROVIDER_TO_CATEGORY: Record<string, ProviderCategory> = {
   AmazonBedrock: 'standard',
   HuggingFace: 'standard',
   Hyperbolic: 'standard',
-  ZAI: 'standard',
+  ZAI: 'coding-specialized',
 };
 
 /**
@@ -216,18 +141,8 @@ export function getCategoryConfig(category: ProviderCategory): ProviderCategoryC
 }
 
 /**
- * Determines if a provider should use token-optimized prompts based on context window
- */
-export function shouldOptimizeForTokens(modelDetails: ModelInfo): boolean {
-  const contextWindow = modelDetails.maxTokenAllowed || 32000;
-
-  // Optimize for models with smaller context windows
-  return contextWindow < 64000;
-}
-
-/**
  * Gets token reduction percentage for a provider category
  */
 export function getTokenReduction(category: ProviderCategory): number {
-  return PROVIDER_CATEGORIES[category].promptOptimizations.tokenReduction;
+  return PROVIDER_CATEGORIES[category].tokenReduction;
 }

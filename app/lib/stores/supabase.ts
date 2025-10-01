@@ -213,6 +213,9 @@ export async function fetchProjectApiKeys(projectId: string, token: string) {
         },
       });
 
+      // Automatically create/update .env file with Supabase credentials
+      await createSupabaseEnvFile(supabaseUrl, anonKey.api_key);
+
       return { anonKey: anonKey.api_key, supabaseUrl };
     }
 
@@ -223,4 +226,50 @@ export async function fetchProjectApiKeys(projectId: string, token: string) {
   } finally {
     isFetchingApiKeys.set(false);
   }
+}
+
+/**
+ * Automatically creates or updates .env file with Supabase credentials
+ */
+async function createSupabaseEnvFile(supabaseUrl: string, anonKey: string) {
+  try {
+    // Dynamic import to avoid circular dependencies
+    const { workbenchStore } = await import('~/lib/stores/workbench');
+    const { WORK_DIR } = await import('~/utils/constants');
+
+    const envContent = generateEnvContent(supabaseUrl, anonKey);
+    const envPath = `${WORK_DIR}/.env`;
+
+    // Update the file in the workbench store
+    workbenchStore.files.setKey(envPath, {
+      type: 'file',
+      content: envContent,
+      isBinary: false,
+    });
+
+    console.log('Supabase .env file created/updated automatically');
+  } catch (error) {
+    console.error('Failed to create .env file:', error);
+
+    // Don't throw - this is a nice-to-have feature
+  }
+}
+
+/**
+ * Generates .env file content for Supabase
+ */
+function generateEnvContent(supabaseUrl: string, anonKey: string): string {
+  return `# Supabase Configuration
+# Auto-generated when connecting to Supabase
+
+VITE_SUPABASE_URL=${supabaseUrl}
+VITE_SUPABASE_ANON_KEY=${anonKey}
+
+# Optional: Service Role Key (keep this secret!)
+# Only use this for server-side operations
+# SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+
+# Database URL (for direct database access if needed)
+# DATABASE_URL=postgresql://postgres:[password]@${supabaseUrl.replace('https://', 'db.')}.co:5432/postgres
+`;
 }

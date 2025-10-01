@@ -65,8 +65,12 @@ MOST IMPORTANT: YOU DONT HAVE TIME TO THINK JUST START RESPONDING BASED ON HUNCH
 
 const templates: Template[] = STARTER_TEMPLATES.filter((t) => !t.name.includes('shadcn'));
 
-const parseSelectedTemplate = (llmOutput: string): { template: string; title: string } | null => {
+const parseSelectedTemplate = (llmOutput?: string): { template: string; title: string } | null => {
   try {
+    if (!llmOutput || typeof llmOutput !== 'string') {
+      return null;
+    }
+
     // Extract content between <templateName> tags
     const templateNameMatch = llmOutput.match(/<templateName>(.*?)<\/templateName>/);
     const titleMatch = llmOutput.match(/<title>(.*?)<\/title>/);
@@ -90,14 +94,35 @@ export const selectStarterTemplate = async (options: { message: string; model: s
     provider,
     system: starterTemplateSelectionPrompt(templates),
   };
-  const response = await fetch('/api/llmcall', {
-    method: 'POST',
-    body: JSON.stringify(requestBody),
-  });
-  const respJson: { text: string } = await response.json();
+  let response: Response;
+
+  try {
+    response = await fetch('/api/llmcall', {
+      method: 'POST',
+      body: JSON.stringify(requestBody),
+    });
+  } catch (error) {
+    console.error('Error calling /api/llmcall:', error);
+    return { template: 'blank', title: '' };
+  }
+
+  if (!response.ok) {
+    console.error('Failed to call /api/llmcall:', response.status, response.statusText);
+    return { template: 'blank', title: '' };
+  }
+
+  let respJson: { text?: string };
+
+  try {
+    respJson = (await response.json()) as { text?: string };
+  } catch (error) {
+    console.error('Failed to parse /api/llmcall response JSON:', error);
+    return { template: 'blank', title: '' };
+  }
+
   console.log(respJson);
 
-  const { text } = respJson;
+  const { text } = respJson ?? {};
   const selectedTemplate = parseSelectedTemplate(text);
 
   if (selectedTemplate) {

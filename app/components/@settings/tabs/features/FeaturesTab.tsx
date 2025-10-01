@@ -6,7 +6,6 @@ import { useSettings } from '~/lib/hooks/useSettings';
 import { classNames } from '~/utils/classNames';
 import { toast } from 'react-toastify';
 import { PromptLibrary } from '~/lib/common/prompt-library';
-import PromptOptimizationTest from './PromptOptimizationTest';
 
 interface FeatureToggle {
   id: string;
@@ -309,13 +308,6 @@ export default function FeaturesTab() {
           </select>
         </div>
       </motion.div>
-
-      {/* Optimization Test Suite */}
-      {showOptimizationTest && (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-          <PromptOptimizationTest />
-        </motion.div>
-      )}
     </div>
   );
 }

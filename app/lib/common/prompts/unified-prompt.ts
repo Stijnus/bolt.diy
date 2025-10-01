@@ -8,6 +8,9 @@ import {
   type LegacySupabaseConnectionState,
 } from './supabase-workflow-rules';
 import type { SupabaseConnectionState } from '~/lib/stores/supabase';
+import { getDesignInstructions } from './shared-design-instructions';
+import { getCodeQualityStandards, getProjectStructureStandards } from './shared-code-standards';
+import { getFrameworkStandards } from './shared-framework-standards';
 
 export interface UnifiedPromptOptions {
   cwd?: string;
@@ -154,92 +157,19 @@ The year is 2025.`;
     - Use semantic versioning and avoid deprecated packages
     - Verify package compatibility and security
 
-  <code_quality_standards>
-    CRITICAL Code Quality Requirements:
-    - Write clean, readable, and well-structured code that follows modern best practices
-    - Use consistent naming conventions (camelCase for variables/functions, PascalCase for components/classes)
-    - Implement proper error handling with try-catch blocks and meaningful error messages
-    - Add TypeScript types for all functions, props, and data structures where applicable
-    - Use modern JavaScript/TypeScript features (arrow functions, destructuring, async/await, optional chaining)
-    - Write self-documenting code with clear variable and function names
-    - Add JSDoc comments for complex functions and public APIs
-    - Follow the Single Responsibility Principle (SRP) - one function, one purpose
-    - Avoid deep nesting and complex conditional logic
-    - Use early returns to reduce nesting
-    - Implement proper validation for user inputs and API responses
-    - Use meaningful variable names that describe the data they contain
-    - Avoid magic numbers and strings - use named constants
-    - Prefer composition over inheritance
-    - Write code that is easy to test and maintain
-  </code_quality_standards>
+  ${getCodeQualityStandards()}
 
-  <project_structure_standards>
-    CRITICAL Project Structure Requirements:
-    - Organize code by feature/domain, not by file type (feature-based folder structure)
-    - Use clear, descriptive folder and file names that indicate their purpose
-    - Create logical folder hierarchies that scale with project growth
-    - Follow framework-specific conventions and best practices:
-      * React/Next.js: components/, hooks/, utils/, types/, lib/, pages/ or app/
-      * Node.js/Express: controllers/, middleware/, models/, routes/, utils/
-      * General: src/, tests/, docs/, public/, config/
-    - Group related files together in feature folders
-    - Separate concerns clearly (UI components, business logic, utilities, types)
-    - Use index files for clean imports and barrel exports
-    - Place shared/common code in dedicated folders (shared/, common/, core/)
-    - Keep configuration files in the root or config/ directory
-    - Create dedicated folders for assets, styles, and static files
-    - Use kebab-case for folder names and file names (except React components)
-    - Follow naming patterns:
-      * Components: PascalCase.tsx/jsx
-      * Utilities: camelCase.ts/js
-      * Types: camelCase.types.ts
-      * Hooks: useCamelCase.ts
-      * Constants: UPPER_SNAKE_CASE or camelCase.constants.ts
-    - Maintain consistent depth levels - avoid overly nested structures
-    - Create README.md files for complex features explaining their purpose and usage
-  </project_structure_standards>
+  ${getProjectStructureStandards()}
+
+  ${getFrameworkStandards()}
 </artifact_instructions>`;
   }
 
   private _getDesignInstructions(): string {
-    if (this._options.chatMode === 'discuss') {
-      return ''; // Simplified design guidance for discuss mode
-    }
-
-    return `<design_instructions>
-  CRITICAL Design Standards:
-  - Create breathtaking, immersive designs that feel like bespoke masterpieces, rivaling the polish of Apple, Stripe, or luxury brands
-  - Designs must be production-ready, fully featured, with no placeholders unless explicitly requested
-  - Avoid generic or templated aesthetics; every design must have a unique, brand-specific visual signature
-  - Headers must be dynamic, immersive, and storytelling-driven using layered visuals and motion
-  - Incorporate purposeful, lightweight animations for scroll reveals and micro-interactions
-
-  Design Principles:
-  - Achieve Apple-level refinement with meticulous attention to detail
-  - Deliver fully functional interactive components with intuitive feedback states
-  - Use custom illustrations or symbolic visuals instead of generic stock imagery
-  - Ensure designs feel alive and modern with dynamic elements like gradients and glows
-  - Before finalizing, ask: "Would this design make Apple or Stripe designers pause and take notice?"
-
-  Technical Requirements:
-  - Curated color palette (3-5 evocative colors + neutrals)
-  - Minimum 4.5:1 contrast ratio for accessibility
-  - Expressive, readable fonts (18px+ body, 40px+ headlines)
-  - Full responsiveness across all screen sizes
-  - WCAG 2.1 AA guidelines compliance
-  - 8px grid system for consistent spacing
-  - Subtle shadows, gradients, and rounded corners (16px radius)
-
-  User Design Scheme:
-  ${
-    this._options.designScheme
-      ? `
-  FONT: ${JSON.stringify(this._options.designScheme.font)}
-  PALETTE: ${JSON.stringify(this._options.designScheme.palette)}
-  FEATURES: ${JSON.stringify(this._options.designScheme.features)}`
-      : 'None provided. Create a bespoke palette, font selection, and feature set that aligns with the brand identity.'
-  }
-</design_instructions>`;
+    return getDesignInstructions({
+      chatMode: this._options.chatMode,
+      designScheme: this._options.designScheme,
+    });
   }
 
   private _getMobileInstructions(): string {

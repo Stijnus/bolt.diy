@@ -1,10 +1,11 @@
 import { createUnifiedPrompt } from './prompts/unified-prompt';
 import { createProviderOptimizedPrompt } from './prompts/provider-optimized-prompt';
-import { generateOptimizedPromptQuick } from './prompts/optimized-prompt-system';
 import type { DesignScheme } from '~/types/design-scheme';
 import type { ModelInfo } from '~/lib/modules/llm/types';
-import type { Message } from 'ai';
 import type { SupabaseConnectionState } from '~/lib/stores/supabase';
+import { createScopedLogger } from '~/utils/logger';
+
+const logger = createScopedLogger('PromptLibrary');
 
 export interface PromptOptions {
   cwd: string;
@@ -23,9 +24,6 @@ export interface PromptOptions {
   };
   supabaseConnection?: SupabaseConnectionState;
   projectType?: 'web' | 'mobile' | 'node' | 'auto';
-  messages?: Message[];
-  maxTokens?: number;
-  forceVerbosity?: 'minimal' | 'standard' | 'detailed';
 }
 
 export interface ProviderAwarePromptOptions extends PromptOptions {
@@ -39,12 +37,12 @@ export class PromptLibrary {
     {
       label: string;
       description: string;
-      get: (options: PromptOptions) => string | Promise<string>;
+      get: (options: PromptOptions) => string;
     }
   > = {
     default: {
       label: 'Unified Prompt',
-      description: 'Optimized dynamic prompt with context-aware loading and 40-60% token reduction',
+      description: 'Standard prompt with context-aware loading and balanced token usage',
       get: (options) =>
         createUnifiedPrompt({
           cwd: options.cwd,
@@ -60,7 +58,7 @@ export class PromptLibrary {
     },
     'provider-optimized': {
       label: 'Provider-Optimized Prompt',
-      description: "Provider-specific prompts optimized for each LLM's unique characteristics and capabilities",
+      description: "Provider-specific prompts optimized for each LLM's unique characteristics",
       get: (options) => {
         // This will be called with provider-aware options
         const providerOptions = options as ProviderAwarePromptOptions;
@@ -85,39 +83,6 @@ export class PromptLibrary {
         });
       },
     },
-    optimized: {
-      label: 'AI-Optimized Prompt',
-      description: 'Next-generation prompt with intent detection, dynamic rule injection, and 60-80% token reduction',
-      get: async (options) => {
-        const providerOptions = options as ProviderAwarePromptOptions;
-
-        if (!providerOptions.providerName) {
-          // Fallback to unified prompt if no provider specified
-          return this.library.default.get(options);
-        }
-
-        try {
-          return await generateOptimizedPromptQuick({
-            providerName: providerOptions.providerName,
-            modelDetails: providerOptions.modelDetails,
-            chatMode: options.chatMode,
-            projectType: options.projectType,
-            cwd: options.cwd,
-            allowedHtmlElements: options.allowedHtmlElements,
-            designScheme: options.designScheme,
-            contextOptimization: options.contextOptimization,
-            supabase: options.supabase,
-            supabaseConnection: options.supabaseConnection,
-            messages: options.messages,
-            maxTokens: options.maxTokens,
-            forceVerbosity: options.forceVerbosity,
-          });
-        } catch (error) {
-          console.warn('Optimized prompt generation failed, falling back to provider-optimized:', error);
-          return this.library['provider-optimized'].get(options);
-        }
-      },
-    },
   };
 
   static getList() {
@@ -131,52 +96,61 @@ export class PromptLibrary {
     });
   }
 
-  static async getPromptFromLibrary(promptId: string, options: PromptOptions) {
+  static getPromptFromLibrary(promptId: string, options: PromptOptions): string {
     const prompt = this.library[promptId];
 
     if (!prompt) {
-      throw 'Prompt Not Found';
+      logger.error('Prompt not found in library', { promptId, availablePrompts: Object.keys(this.library) });
+      throw new Error(`Prompt '${promptId}' not found. Available prompts: ${Object.keys(this.library).join(', ')}`);
     }
 
-    return await this.library[promptId]?.get(options);
+    try {
+      return prompt.get(options);
+    } catch (error) {
+      logger.error('Failed to generate prompt', {
+        promptId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error(
+        `Failed to generate prompt '${promptId}': ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /**
    * Provider-aware prompt selection
    * Automatically selects the best prompt based on provider capabilities
    */
-  static async getProviderAwarePrompt(options: ProviderAwarePromptOptions): Promise<string> {
-    // If provider-optimized prompt is specifically requested
+  static getProviderAwarePrompt(options: ProviderAwarePromptOptions): string {
+    // If provider is specified, use provider-optimized prompt
     if (options.providerName) {
-      return await this.library['provider-optimized'].get(options);
+      return this.library['provider-optimized'].get(options);
     }
 
     // Fallback to default unified prompt
-    return await this.library.default.get(options);
+    return this.library.default.get(options);
   }
 
   /**
-   * Legacy method with provider awareness
+   * Main method with provider awareness - used by stream-text.ts
    */
-  static async getPromptFromLibraryWithProvider(
+  static getPromptFromLibraryWithProvider(
     promptId: string,
     options: PromptOptions,
     providerName?: string,
     modelDetails?: ModelInfo,
-    messages?: Message[],
-  ): Promise<string> {
+  ): string {
     const providerAwareOptions: ProviderAwarePromptOptions = {
       ...options,
       providerName,
       modelDetails,
-      messages,
     };
 
     // If using default prompt but provider is specified, use provider-optimized instead
     if (promptId === 'default' && providerName) {
-      return await this.library['provider-optimized'].get(providerAwareOptions);
+      return this.library['provider-optimized'].get(providerAwareOptions);
     }
 
-    return await this.getPromptFromLibrary(promptId, providerAwareOptions);
+    return this.getPromptFromLibrary(promptId, providerAwareOptions);
   }
 }

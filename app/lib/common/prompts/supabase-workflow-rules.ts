@@ -1,4 +1,4 @@
-import type { VerbosityLevel } from './mode-specific-builders';
+export type VerbosityLevel = 'minimal' | 'standard' | 'detailed';
 import type { SupabaseConnectionState, SupabaseProject } from '~/lib/stores/supabase';
 
 export interface LegacySupabaseConnectionState {

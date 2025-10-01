@@ -49,7 +49,7 @@ export function getTokenOptimizationConfig(
     shouldOptimize = true;
   } else if (availableForPrompt < 32000) {
     optimizationLevel = 'minimal';
-    shouldOptimize = categoryConfig.promptOptimizations.tokenReduction > 0;
+    shouldOptimize = categoryConfig.tokenReduction > 0;
   }
 
   // Speed-optimized providers should always optimize
@@ -138,26 +138,23 @@ export function optimizeContentForTokens(
   // Apply progressive optimizations based on level
   switch (optimizationLevel) {
     case 'ultra':
-      // Most aggressive optimization
+      /*
+       * Most aggressive optimization - preserve critical markers and code formatting
+       * NOTE: We preserve CRITICAL/IMPORTANT/MANDATORY markers - they're essential for LLMs
+       * NOTE: We preserve code formatting (backticks, bold) - helps with parsing
+       */
       optimized = optimized
         .replace(/\n{3,}/g, '\n\n') // Reduce multiple newlines
         .replace(/\s{2,}/g, ' ') // Reduce multiple spaces
-        .replace(/\*\*([^*]+)\*\*/g, '$1') // Remove bold formatting
-        .replace(/\*([^*]+)\*/g, '$1') // Remove italic formatting
-        .replace(/`([^`]+)`/g, '$1') // Remove code formatting
-        .replace(/\s+- /g, ' • ') // Shorten bullet points
-        .replace(/CRITICAL:\s*/g, '') // Remove emphasis words
-        .replace(/IMPORTANT:\s*/g, '')
-        .replace(/MANDATORY:\s*/g, '');
+        .replace(/\s+- /g, ' • '); // Shorten bullet points
       break;
 
     case 'aggressive':
-      // Significant optimization
-      optimized = optimized
-        .replace(/\n{3,}/g, '\n\n')
-        .replace(/\s{2,}/g, ' ')
-        .replace(/CRITICAL:\s*/g, '')
-        .replace(/IMPORTANT:\s*/g, '');
+      /*
+       * Significant optimization - preserve critical markers
+       * NOTE: Preserve CRITICAL/IMPORTANT markers for proper instruction emphasis
+       */
+      optimized = optimized.replace(/\n{3,}/g, '\n\n').replace(/\s{2,}/g, ' ');
       break;
 
     case 'moderate':
@@ -185,17 +182,17 @@ export function optimizeContentForTokens(
 export function prioritizeSections(
   sections: Array<{ name: string; content: string; priority: number }>,
   optimizationLevel: TokenOptimizationConfig['optimizationLevel'],
-  category: ProviderCategory,
+  _category: ProviderCategory,
 ): Array<{ name: string; content: string; priority: number }> {
   const target = OPTIMIZATION_TARGETS[optimizationLevel];
-  const categoryConfig = getCategoryConfig(category);
 
   // Sort by priority
   const sorted = sections.sort((a, b) => a.priority - b.priority);
 
   // For ultra optimization, only keep the most critical sections
   if (optimizationLevel === 'ultra') {
-    const criticalSections = categoryConfig.promptOptimizations.prioritizeSections.slice(0, 3);
+    // All sections are critical in simplified system
+    const criticalSections: string[] = [];
     return sorted.filter((section) => criticalSections.includes(section.name));
   }
 
@@ -235,7 +232,7 @@ export function calculateOptimalPromptSize(
   }
 
   // Apply category-specific token reduction
-  const reductionPercent = categoryConfig.promptOptimizations.tokenReduction;
+  const reductionPercent = categoryConfig.tokenReduction;
 
   if (reductionPercent > 0) {
     targetTokens = Math.max(targetTokens * (1 - reductionPercent / 100), 1000);

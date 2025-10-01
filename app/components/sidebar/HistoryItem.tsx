@@ -68,12 +68,25 @@ export function HistoryItem({
   return (
     <div
       className={classNames(
-        'group rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50/80 dark:hover:bg-gray-800/30 overflow-hidden flex justify-between items-center px-3 py-2 transition-colors',
-        { 'text-gray-900 dark:text-white bg-gray-50/80 dark:bg-gray-800/30': isActiveChat },
+        'group relative rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50/80 dark:hover:bg-gray-800/30 overflow-hidden flex justify-between items-center px-3 py-2 transition-colors border border-transparent',
+        {
+          'text-gray-900 dark:text-white bg-purple-50/60 dark:bg-purple-500/10 border-purple-300/70 dark:border-purple-500/30 shadow-[0_0_0_1px_rgba(168,85,247,0.25)]':
+            isActiveChat,
+        },
         { 'cursor-pointer': selectionMode },
       )}
       onClick={selectionMode ? handleItemClick : undefined}
     >
+      <span
+        aria-hidden
+        className={classNames(
+          'pointer-events-none absolute left-1 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-purple-500 transition-opacity duration-150',
+          {
+            'opacity-100': isActiveChat,
+            'opacity-0 group-hover:opacity-60': !isActiveChat,
+          },
+        )}
+      />
       {selectionMode && (
         <div className="flex items-center mr-2" onClick={(e) => e.stopPropagation()}>
           <Checkbox
@@ -106,10 +119,17 @@ export function HistoryItem({
         <a
           href={`/chat/${item.urlId}`}
           className="flex w-full relative truncate block"
+          aria-current={isActiveChat ? 'page' : undefined}
           onClick={selectionMode ? handleItemClick : undefined}
         >
           <WithTooltip tooltip={currentDescription}>
-            <span className="truncate pr-24">{currentDescription}</span>
+            <span
+              className={classNames('truncate pr-24', {
+                'font-medium text-purple-700 dark:text-purple-200': isActiveChat,
+              })}
+            >
+              {currentDescription}
+            </span>
           </WithTooltip>
           <div
             className={classNames(

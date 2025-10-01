@@ -18,8 +18,12 @@ import {
   normalizeSupabaseConnectionState,
   type LegacySupabaseConnectionState,
 } from './supabase-workflow-rules';
-import type { VerbosityLevel } from './mode-specific-builders';
 import type { SupabaseConnectionState } from '~/lib/stores/supabase';
+import { getDesignInstructions } from './shared-design-instructions';
+import { getCodeQualityStandards, getProjectStructureStandards } from './shared-code-standards';
+import { getFrameworkStandards } from './shared-framework-standards';
+
+export type VerbosityLevel = 'minimal' | 'standard' | 'detailed';
 
 const logger = createScopedLogger('ProviderOptimizedPrompt');
 
@@ -53,28 +57,17 @@ abstract class PromptSection {
   /**
    * Determines if this section should be included for the given category
    */
-  shouldInclude(category: ProviderCategory): boolean {
-    const config = getCategoryConfig(category);
-    const sectionName = this.getSectionName();
-
-    // Exclude sections that are explicitly excluded
-    if (config.promptOptimizations.excludeSections?.includes(sectionName)) {
-      return false;
-    }
-
+  shouldInclude(_category: ProviderCategory): boolean {
+    // All sections included in simplified system
     return true;
   }
 
   /**
    * Gets priority level for this section (lower = higher priority)
    */
-  getPriority(category: ProviderCategory): number {
-    const config = getCategoryConfig(category);
-    const sectionName = this.getSectionName();
-
-    const priorityIndex = config.promptOptimizations.prioritizeSections.indexOf(sectionName);
-
-    return priorityIndex === -1 ? 99 : priorityIndex;
+  getPriority(_category: ProviderCategory): number {
+    // Equal priority in simplified system
+    return 1;
   }
 }
 
@@ -89,7 +82,7 @@ class SystemHeaderSection extends PromptSection {
   getContent(options: ProviderOptimizedPromptOptions, category: ProviderCategory): string {
     const config = getCategoryConfig(category);
 
-    if (config.promptOptimizations.simplifyLanguage) {
+    if (config.prefersConcisePrompts) {
       return `You are Bolt, an AI coding assistant created by StackBlitz. The year is 2025.`;
     }
 
@@ -110,7 +103,7 @@ class SystemConstraintsSection extends PromptSection {
   getContent(options: ProviderOptimizedPromptOptions, category: ProviderCategory): string {
     const config = getCategoryConfig(category);
 
-    if (config.promptOptimizations.simplifyLanguage) {
+    if (config.prefersConcisePrompts) {
       return `<system_constraints>
   WebContainer environment limitations:
     - Browser-based Node.js runtime (not full Linux)
@@ -144,7 +137,7 @@ class TechnologyPreferencesSection extends PromptSection {
   getContent(options: ProviderOptimizedPromptOptions, category: ProviderCategory): string {
     const config = getCategoryConfig(category);
 
-    if (config.promptOptimizations.simplifyLanguage) {
+    if (config.prefersConcisePrompts) {
       return `<technology_preferences>
   - Use Vite for web servers
   - Prefer Node.js scripts over shell scripts
@@ -172,6 +165,7 @@ class ArtifactInstructionsSection extends PromptSection {
 
   getContent(options: ProviderOptimizedPromptOptions, category: ProviderCategory): string {
     const config = getCategoryConfig(category);
+    const isZAI = options.providerName === 'ZAI';
 
     if (category === 'reasoning') {
       // Simplified for reasoning models - they figure out the details
@@ -190,7 +184,7 @@ class ArtifactInstructionsSection extends PromptSection {
 </artifact_instructions>`;
     }
 
-    if (config.promptOptimizations.simplifyLanguage) {
+    if (config.prefersConcisePrompts) {
       return `<artifact_instructions>
   Create artifacts containing files and shell commands.
 
@@ -208,7 +202,15 @@ class ArtifactInstructionsSection extends PromptSection {
 
     // Full instructions for high-context and standard providers
     return `<artifact_instructions>
-  Bolt may create a SINGLE comprehensive artifact containing:
+${
+  isZAI
+    ? `  MANDATORY FOR ALL CODING TASKS:
+  You MUST create artifacts for ALL code generation, file creation, or project modifications.
+  NEVER write code snippets directly in chat responses - ALWAYS use the <boltArtifact> format.
+
+`
+    : ''
+}  Bolt may create a SINGLE comprehensive artifact containing:
     - Files to create and their contents
     - Shell commands including dependencies
 
@@ -265,6 +267,40 @@ class ArtifactInstructionsSection extends PromptSection {
     - Include dev dependencies for tooling (ESLint, Prettier, TypeScript, etc.)
     - Use semantic versioning and avoid deprecated packages
     - Verify package compatibility and security
+${
+  isZAI
+    ? `
+
+  ARTIFACT FORMAT EXAMPLE:
+  <boltArtifact id="project-setup" title="Project Setup">
+    <boltAction type="file" filePath="package.json">
+    {
+      "name": "example-app",
+      "scripts": {
+        "dev": "vite"
+      },
+      "dependencies": {
+        "react": "^18.2.0"
+      }
+    }
+    </boltAction>
+    <boltAction type="file" filePath="src/App.tsx">
+    export default function App() {
+      return <div>Hello World</div>;
+    }
+    </boltAction>
+    <boltAction type="shell">
+    npm install
+    </boltAction>
+    <boltAction type="start">
+    npm run dev
+    </boltAction>
+  </boltArtifact>
+
+  IMPORTANT: ALWAYS wrap your code changes in <boltArtifact> tags as shown above.
+  DO NOT write code directly in chat - use the artifact format for ALL file creation and modifications.`
+    : ''
+}
 </artifact_instructions>`;
   }
 }
@@ -277,73 +313,8 @@ class CodeQualityStandardsSection extends PromptSection {
     return 'code_quality_standards';
   }
 
-  getContent(options: ProviderOptimizedPromptOptions, category: ProviderCategory): string {
-    const config = getCategoryConfig(category);
-
-    // Skip for speed-optimized and local models unless they enhance code guidelines
-    if (
-      !config.promptOptimizations.enhanceCodeGuidelines &&
-      (category === 'speed-optimized' || category === 'local-models')
-    ) {
-      return '';
-    }
-
-    if (category === 'coding-specialized') {
-      // Enhanced code guidelines for coding-specialized models
-      return `<code_quality_standards>
-    CRITICAL Code Quality Requirements:
-    - Write production-ready, maintainable, and well-structured code following industry best practices
-    - Use consistent naming conventions (camelCase for variables/functions, PascalCase for components/classes)
-    - Implement comprehensive error handling with try-catch blocks and meaningful error messages
-    - Add TypeScript types for all functions, props, and data structures where applicable
-    - Use modern JavaScript/TypeScript features (arrow functions, destructuring, async/await, optional chaining)
-    - Write self-documenting code with clear variable and function names
-    - Add JSDoc comments for complex functions and public APIs
-    - Follow SOLID principles, especially Single Responsibility Principle (SRP)
-    - Avoid deep nesting and complex conditional logic - use early returns
-    - Implement proper validation for user inputs and API responses
-    - Use meaningful variable names that describe the data they contain
-    - Avoid magic numbers and strings - use named constants
-    - Prefer composition over inheritance
-    - Write code that is easy to test, debug, and maintain
-    - Follow security best practices - never expose secrets or credentials
-    - Optimize for performance and memory usage
-    - Use appropriate design patterns for the problem domain
-    - Ensure code is accessible and follows WCAG guidelines for UI components
-  </code_quality_standards>`;
-    }
-
-    if (config.promptOptimizations.simplifyLanguage) {
-      return `<code_quality_standards>
-    Code Quality Requirements:
-    - Write clean, readable, well-structured code
-    - Use proper naming conventions
-    - Add error handling and TypeScript types
-    - Use modern JavaScript/TypeScript features
-    - Keep functions focused (Single Responsibility)
-    - Use meaningful variable names and constants
-    - Write maintainable, testable code
-  </code_quality_standards>`;
-    }
-
-    return `<code_quality_standards>
-    CRITICAL Code Quality Requirements:
-    - Write clean, readable, and well-structured code that follows modern best practices
-    - Use consistent naming conventions (camelCase for variables/functions, PascalCase for components/classes)
-    - Implement proper error handling with try-catch blocks and meaningful error messages
-    - Add TypeScript types for all functions, props, and data structures where applicable
-    - Use modern JavaScript/TypeScript features (arrow functions, destructuring, async/await, optional chaining)
-    - Write self-documenting code with clear variable and function names
-    - Add JSDoc comments for complex functions and public APIs
-    - Follow the Single Responsibility Principle (SRP) - one function, one purpose
-    - Avoid deep nesting and complex conditional logic
-    - Use early returns to reduce nesting
-    - Implement proper validation for user inputs and API responses
-    - Use meaningful variable names that describe the data they contain
-    - Avoid magic numbers and strings - use named constants
-    - Prefer composition over inheritance
-    - Write code that is easy to test and maintain
-  </code_quality_standards>`;
+  getContent(_options: ProviderOptimizedPromptOptions, category: ProviderCategory): string {
+    return getCodeQualityStandards(category);
   }
 }
 
@@ -355,54 +326,26 @@ class ProjectStructureStandardsSection extends PromptSection {
     return 'project_structure_standards';
   }
 
-  getContent(options: ProviderOptimizedPromptOptions, category: ProviderCategory): string {
-    const config = getCategoryConfig(category);
+  getContent(_options: ProviderOptimizedPromptOptions, category: ProviderCategory): string {
+    return getProjectStructureStandards(category);
+  }
+}
 
-    // Skip for models that don't enhance code guidelines
-    if (
-      !config.promptOptimizations.enhanceCodeGuidelines &&
-      (category === 'speed-optimized' || category === 'local-models' || category === 'reasoning')
-    ) {
-      return '';
-    }
+/**
+ * Framework-specific standards section
+ */
+class FrameworkStandardsSection extends PromptSection {
+  getSectionName(): string {
+    return 'framework_standards';
+  }
 
-    if (config.promptOptimizations.simplifyLanguage) {
-      return `<project_structure_standards>
-    Project Structure Requirements:
-    - Organize by feature/domain, not file type
-    - Use clear, descriptive folder and file names
-    - Follow framework conventions (React: components/, hooks/, utils/)
-    - Group related files in feature folders
-    - Use index files for clean imports
-    - Keep consistent naming patterns
-  </project_structure_standards>`;
-    }
+  getContent(_options: ProviderOptimizedPromptOptions, category: ProviderCategory): string {
+    return getFrameworkStandards(category);
+  }
 
-    return `<project_structure_standards>
-    CRITICAL Project Structure Requirements:
-    - Organize code by feature/domain, not by file type (feature-based folder structure)
-    - Use clear, descriptive folder and file names that indicate their purpose
-    - Create logical folder hierarchies that scale with project growth
-    - Follow framework-specific conventions and best practices:
-      * React/Next.js: components/, hooks/, utils/, types/, lib/, pages/ or app/
-      * Node.js/Express: controllers/, middleware/, models/, routes/, utils/
-      * General: src/, tests/, docs/, public/, config/
-    - Group related files together in feature folders
-    - Separate concerns clearly (UI components, business logic, utilities, types)
-    - Use index files for clean imports and barrel exports
-    - Place shared/common code in dedicated folders (shared/, common/, core/)
-    - Keep configuration files in the root or config/ directory
-    - Create dedicated folders for assets, styles, and static files
-    - Use kebab-case for folder names and file names (except React components)
-    - Follow naming patterns:
-      * Components: PascalCase.tsx/jsx
-      * Utilities: camelCase.ts/js
-      * Types: camelCase.types.ts
-      * Hooks: useCamelCase.ts
-      * Constants: UPPER_SNAKE_CASE or camelCase.constants.ts
-    - Maintain consistent depth levels - avoid overly nested structures
-    - Create README.md files for complex features explaining their purpose and usage
-  </project_structure_standards>`;
+  getPriority(_category: ProviderCategory): number {
+    // High priority - framework patterns are critical for correctness
+    return 2;
   }
 }
 
@@ -429,7 +372,7 @@ class SupabaseInstructionsSection extends PromptSection {
     const normalized = normalizeSupabaseConnectionState(connectionInput);
     const workflowContext = analyzeSupabaseContext(normalized);
 
-    const verbosity: VerbosityLevel = config.promptOptimizations.simplifyLanguage
+    const verbosity: VerbosityLevel = config.prefersConcisePrompts
       ? 'minimal'
       : category === 'high-context' || category === 'coding-specialized'
         ? 'detailed'
@@ -448,57 +391,13 @@ class DesignInstructionsSection extends PromptSection {
   }
 
   getContent(options: ProviderOptimizedPromptOptions, category: ProviderCategory): string {
-    if (options.chatMode === 'discuss') {
-      return '';
-    }
-
-    const config = getCategoryConfig(category);
-
-    if (config.promptOptimizations.simplifyLanguage) {
-      return `<design_instructions>
-  Design Standards:
-  - Create polished, professional designs
-  - Use modern UI patterns and responsive layouts
-  - Apply consistent color schemes and typography
-  - Ensure accessibility (4.5:1 contrast ratio)
-  - Use 8px grid system for spacing
-</design_instructions>`;
-    }
-
-    return `<design_instructions>
-  CRITICAL Design Standards:
-  - Create breathtaking, immersive designs that feel like bespoke masterpieces, rivaling the polish of Apple, Stripe, or luxury brands
-  - Designs must be production-ready, fully featured, with no placeholders unless explicitly requested
-  - Avoid generic or templated aesthetics; every design must have a unique, brand-specific visual signature
-  - Headers must be dynamic, immersive, and storytelling-driven using layered visuals and motion
-  - Incorporate purposeful, lightweight animations for scroll reveals and micro-interactions
-
-  Design Principles:
-  - Achieve Apple-level refinement with meticulous attention to detail
-  - Deliver fully functional interactive components with intuitive feedback states
-  - Use custom illustrations or symbolic visuals instead of generic stock imagery
-  - Ensure designs feel alive and modern with dynamic elements like gradients and glows
-  - Before finalizing, ask: "Would this design make Apple or Stripe designers pause and take notice?"
-
-  Technical Requirements:
-  - Curated color palette (3-5 evocative colors + neutrals)
-  - Minimum 4.5:1 contrast ratio for accessibility
-  - Expressive, readable fonts (18px+ body, 40px+ headlines)
-  - Full responsiveness across all screen sizes
-  - WCAG 2.1 AA guidelines compliance
-  - 8px grid system for consistent spacing
-  - Subtle shadows, gradients, and rounded corners (16px radius)
-
-  User Design Scheme:
-  ${
-    options.designScheme
-      ? `
-  FONT: ${JSON.stringify(options.designScheme.font)}
-  PALETTE: ${JSON.stringify(options.designScheme.palette)}
-  FEATURES: ${JSON.stringify(options.designScheme.features)}`
-      : 'None provided. Create a bespoke palette, font selection, and feature set that aligns with the brand identity.'
-  }
-</design_instructions>`;
+    return getDesignInstructions(
+      {
+        chatMode: options.chatMode,
+        designScheme: options.designScheme,
+      },
+      category,
+    );
   }
 }
 
@@ -517,7 +416,7 @@ class MobileAppInstructionsSection extends PromptSection {
 
     const config = getCategoryConfig(category);
 
-    if (config.promptOptimizations.simplifyLanguage) {
+    if (config.prefersConcisePrompts) {
       return `<mobile_app_instructions>
   React Native and Expo only supported.
 
@@ -642,8 +541,9 @@ class BuildModeInstructionsSection extends PromptSection {
 
   getContent(options: ProviderOptimizedPromptOptions, category: ProviderCategory): string {
     const config = getCategoryConfig(category);
+    const isZAI = options.providerName === 'ZAI';
 
-    if (config.promptOptimizations.simplifyLanguage) {
+    if (config.prefersConcisePrompts) {
       return `<build_mode_instructions>
   Build mode: Implement solutions using artifacts.
 
@@ -653,6 +553,7 @@ class BuildModeInstructionsSection extends PromptSection {
   3. Use valid markdown for responses
   4. Focus on user's request without deviation
   5. Create professional, production-worthy designs
+${isZAI ? '  6. ALWAYS use <boltArtifact> format for code - NEVER write code directly in chat' : ''}
 </build_mode_instructions>`;
     }
 
@@ -673,6 +574,14 @@ class BuildModeInstructionsSection extends PromptSection {
   4. For design requests, ensure they are professional, beautiful, unique, and production-worthy
   5. Provide brief implementation outline (2-4 lines) before creating artifacts
   6. Be concise - explain only when explicitly requested
+${
+  isZAI
+    ? `
+  ZAI-SPECIFIC REQUIREMENT:
+  When implementing ANY code changes, you MUST use the <boltArtifact> XML format.
+  Do NOT write code blocks directly in markdown - use artifacts for ALL code generation.`
+    : ''
+}
 </build_mode_instructions>`;
   }
 }
@@ -692,6 +601,7 @@ class ProviderOptimizedPromptBuilder {
     new MobileAppInstructionsSection(),
     new CodeQualityStandardsSection(),
     new ProjectStructureStandardsSection(),
+    new FrameworkStandardsSection(),
     new CodeFixTriageSection(),
     new BuildModeInstructionsSection(),
     new RunningCommandsInfoSection(),
@@ -786,7 +696,7 @@ class ProviderOptimizedPromptBuilder {
     // Log optimization info for debugging
     const finalTokens = estimateTokenCount(prompt);
     logger.info(`Generated prompt for ${this._options.providerName} (${this._category})`);
-    logger.info(`Token reduction: ${config.promptOptimizations.tokenReduction}%`);
+    logger.info(`Token reduction: ${config.tokenReduction}%`);
     logger.info(`Sections included: ${finalSections.map((s) => s.name).join(', ')}`);
 
     if (tokenConfig && optimalSize) {

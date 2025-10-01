@@ -716,6 +716,7 @@ export class ActionRunner {
           description: `Create migration file: ${filePath}`,
           content,
           source: 'supabase',
+          operation: 'migration',
         });
 
         // Only create the migration file
