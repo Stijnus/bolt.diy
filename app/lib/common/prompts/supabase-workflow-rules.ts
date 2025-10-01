@@ -178,73 +178,261 @@ Inform the user: "Please connect your Supabase account in the chat interface bef
 }
 
 function getProjectCreationInstructions(connectionState: SupabaseConnectionState, verbosity: VerbosityLevel): string {
-  const sampleProject = connectionState.stats?.projects?.[0];
-  const organizationId = sampleProject?.organization_id || connectionState.project?.organization_id || 'org-id';
-  const passwordGuidance =
-    'Generate a secure 16+ character password using crypto.randomUUID() or a similar secure random generator.';
+  /*
+   * Try to get organization ID from multiple sources, in order of preference:
+   * 1. Organization ID from existing projects (keeps projects together)
+   * 2. Organization ID from selected project
+   * 3. First available organization from organizations list (fallback)
+   */
+  const organizationId =
+    connectionState.stats?.projects?.[0]?.organization_id ||
+    connectionState.project?.organization_id ||
+    connectionState.organizations?.[0]?.id;
+
+  if (!organizationId) {
+    // If no organization ID is available, instruct to reconnect
+    return `<supabase_organization_missing>
+CRITICAL: No Supabase organization available for project creation.
+
+The user needs to reconnect to Supabase to fetch their organization information.
+
+ACTION REQUIRED:
+Inform the user: "I need you to reconnect your Supabase account to fetch your organization details. Please disconnect and reconnect Supabase in the settings."
+
+DO NOT proceed with project creation until organization information is available.
+</supabase_organization_missing>`;
+  }
 
   switch (verbosity) {
     case 'minimal':
-      return `Connected to Supabase but no project. Use <boltAction type="supabase" operation="project-create" name="project-name" organizationId="${organizationId}" dbPassword="(secure 16+ char password)"> and follow setup.`;
+      return `Connected to Supabase but no project. If user explicitly says "create Supabase project", infer name from context and create immediately. Otherwise ask user for project name, then use <boltAction type="supabase" operation="project-create" name="project-name" organizationId="${organizationId}" dbPassword="[auto-generated-24-char-password]"> with auto-generated secure password.`;
 
     case 'detailed':
       return `<supabase_project_creation>
-SUPABASE PROJECT CREATION WORKFLOW
+SUPABASE PROJECT CREATION WORKFLOW - INTERACTIVE MODE
 
 Current State: Authenticated but no projects exist yet
 Organization ID: ${organizationId}
 
-Project Creation Process:
-1. Collect project requirements from user
-2. Generate secure database password
-3. Create project via API
-4. Monitor initialization progress
-5. Configure environment once ready
+CRITICAL: Detect user intent FIRST before asking questions!
 
-Project Creation Action:
-<boltAction type="supabase" operation="project-create" name="project-name" organizationId="${organizationId}" dbPassword="(secure 16+ char password)">
+INTENT DETECTION - USER EXPLICITLY REQUESTS PROJECT CREATION:
+If the user's message contains ANY of these explicit phrases:
+- "create a new Supabase project"
+- "create a Supabase project"
+- "set up a new Supabase project"
+- "make a new Supabase project"
+- "spin up a Supabase project"
+- "initialize a Supabase project"
 
-Required Parameters:
-- name: 2-63 chars, lowercase, alphanumeric and hyphens only
-- organizationId: ${organizationId !== 'org-id' ? organizationId : 'Provided by user'}
-- dbPassword: ${passwordGuidance}
+ACTION: Skip the question and create the project IMMEDIATELY!
+1. Infer project name from the user's context (e.g., "kanban board" → "kanban-board")
+2. If no clear name, use a generic descriptive name based on their request
+3. Generate password automatically
+4. Create the boltAction in your FIRST response
+
+EXAMPLE - EXPLICIT CREATION REQUEST:
+User: "Make a kanban board with drag and drop with Supabase real-time sync, create a new Supabase project and execute the SQL"
+
+Your response (NO QUESTIONS - complete workflow in ONE artifact):
+"I'll create a kanban board with drag-and-drop and Supabase real-time sync. Setting up a new Supabase project 'kanban-board' with the database schema..."
+
+<boltArtifact id="kanban-board-supabase" title="Kanban Board with Supabase">
+<boltAction type="supabase" operation="project-create" name="kanban-board" organizationId="${organizationId}" dbPassword="Xy9$mK2@pLqR8#nV4wT7jF3h">
+</boltAction>
+
+<boltAction type="supabase" operation="migration" filePath="/supabase/migrations/001_kanban_schema.sql">
+-- Kanban board schema
+CREATE TABLE boards (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  title text NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE tasks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  board_id uuid REFERENCES boards(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  status text NOT NULL,
+  position integer NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Enable Row Level Security
+ALTER TABLE boards ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+
+-- Policies (public access for demo)
+CREATE POLICY "Enable read access for all users" ON boards FOR SELECT USING (true);
+CREATE POLICY "Enable read access for all users" ON tasks FOR SELECT USING (true);
+</boltAction>
+
+<boltAction type="file" filePath="package.json">
+{
+  "name": "kanban-board",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "react": "^18.2.0",
+    "react-beautiful-dnd": "^13.1.1"
+  }
+}
+</boltAction>
+
+<boltAction type="shell">
+npm install
+</boltAction>
+
+<boltAction type="start">
+npm run dev
+</boltAction>
+</boltArtifact>
+
+"Your Supabase project is being created (1-2 min). The schema will be applied automatically once ready, then the app will start!"
+
+---
+
+STANDARD WORKFLOW - USER DOESN'T EXPLICITLY REQUEST PROJECT:
+If user's message is ambiguous (e.g., "Build a task manager with Supabase"), follow interactive flow:
+
+STEP 1: ASK FOR PROJECT NAME
+Ask the user ONE simple question: "What would you like to name your Supabase project?"
+- Explain naming rules: lowercase letters, numbers, hyphens only (2-63 chars)
+- Example: "task-manager" or "my-app"
+- If they provide invalid name, suggest sanitized version
+
+STEP 2: GENERATE SECURE PASSWORD AUTOMATICALLY
+DO NOT ask user for password. Instead, generate it programmatically:
+\`\`\`javascript
+// Generate secure 24-character password
+const generatePassword = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+  return Array.from(crypto.getRandomValues(new Uint8Array(24)))
+    .map(x => chars[x % chars.length]).join('');
+};
+const dbPassword = generatePassword();
+\`\`\`
+
+STEP 3: CREATE PROJECT IMMEDIATELY
+Once you have the name and generated password, create the boltAction in the SAME response:
+
+<boltAction type="supabase" operation="project-create" name="user-provided-name" organizationId="${organizationId}" dbPassword="[generated-password]">
+
+EXAMPLE STANDARD WORKFLOW:
+User: "Build a task manager with Supabase"
+
+Your response:
+"I'll create a Supabase project for your task manager. What would you like to name it? (e.g., 'task-manager', 'my-tasks')"
+
+User: "task-manager"
+
+Your response:
+"Perfect! Creating Supabase project 'task-manager' with a secure auto-generated database password..."
+
+<boltArtifact id="supabase-project-setup" title="Supabase Project Setup">
+<boltAction type="supabase" operation="project-create" name="task-manager" organizationId="${organizationId}" dbPassword="Xy9$mK2@pLqR8#nV4wT7jF3h">
+</boltAction>
+</boltArtifact>
+
+"Your project is being created. This typically takes 1-2 minutes. I'll automatically configure the environment once it's ready."
+
+REQUIRED PARAMETERS:
+- name: User-provided name (sanitized to meet requirements)
+- organizationId: "${organizationId}" (auto-detected from connected account)
+- dbPassword: Auto-generated 24-character secure password (NEVER show to user, just mention it's auto-generated)
 - region: (optional, defaults to us-east-1)
 - plan: (optional, defaults to free)
 
-After Creation:
-1. Project initialization takes 1-2 minutes
-2. Wait for ACTIVE_HEALTHY status
-3. Fetch API keys once ready
-4. Set up environment configuration
+POST-CREATION WORKFLOW (FULLY AUTOMATIC):
+1. ✅ Project creation initiated via API
+2. ✅ System polls status until ACTIVE_HEALTHY (1-2 minutes)
+3. ✅ API keys fetched automatically
+4. ✅ .env file created with credentials
+5. ✅ Project auto-selected in connection state
+6. ✅ Ready for database operations immediately!
 
-Error Handling:
-- Name conflicts: Suggest alternative names
-- Subscription limits: Guide to upgrade plans
-- Invalid parameters: Provide format requirements
+IMPORTANT: After creating the project, the system handles EVERYTHING automatically:
+- Waiting for project to be ready
+- Fetching and configuring API keys
+- Setting up environment variables
+- Selecting the new project
+
+YOU DON'T NEED TO:
+❌ Ask user to manually copy environment variables
+❌ Tell them to wait or check Supabase dashboard
+❌ Instruct them to configure anything manually
+❌ Wait for user confirmation to continue
+
+AFTER PROJECT CREATION:
+The project will be automatically configured. You can IMMEDIATELY continue with:
+
+<boltAction type="supabase" operation="migration" filePath="/supabase/migrations/001_init.sql">
+CREATE TABLE your_table (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE your_table ENABLE ROW LEVEL SECURITY;
+</boltAction>
+
+Then continue building the application as if the project was already set up!
+
+ERROR HANDLING:
+- Name conflicts: Suggest appending random suffix (e.g., "task-manager-xyz")
+- Subscription limits: Explain user needs Supabase Pro plan
+- Timeout: If initialization takes >5 minutes, show error
+- Invalid parameters: Show corrected format and retry
+
+EXAMPLE FLOW:
+User: "Create project task-manager"
+You: [Create boltAction]
+System: [Automatically initializes project]
+You: "Great! Now creating the database schema..."
+     [Create migration boltAction]
+     [Continue building app]
 </supabase_project_creation>`;
 
     default:
       return `<supabase_project_setup>
-SUPABASE PROJECT REQUIRED
+SUPABASE PROJECT CREATION REQUIRED
 
 Connected to Supabase but no project available for database operations.
 
-Options:
-1. Create New Project:
-   <boltAction type="supabase" operation="project-create" name="project-name" organizationId="${organizationId}" dbPassword="${passwordGuidance}">
+CRITICAL: Detect explicit project creation intent!
 
-2. Select Existing Project (if available):
-   Guide user to select project in chat interface
+IF USER EXPLICITLY SAYS "create a Supabase project", "create new Supabase project", "set up Supabase project", etc.:
+→ SKIP QUESTIONS! Create project immediately with inferred name from context.
+→ Include migrations, app files, npm install, and start in the SAME artifact
+→ Example: "kanban board app, create Supabase project" → create "kanban-board" + schema + app
 
-Project Creation Requirements:
-- Unique project name (2-63 chars, lowercase, alphanumeric/hyphens)
-- Secure database password
-- Organization selection
+IF USER REQUEST IS AMBIGUOUS (just mentions "with Supabase"):
+→ Follow interactive workflow below.
 
-Post-Creation:
-- Wait for project initialization (1-2 minutes)
-- Configure API keys automatically
-- Set up environment variables
+INTERACTIVE WORKFLOW:
+1. Ask user: "What would you like to name your Supabase project?"
+2. Generate secure 24-char password automatically using crypto APIs
+3. Create project immediately:
+   <boltAction type="supabase" operation="project-create" name="[user-name]" organizationId="${organizationId}" dbPassword="[auto-generated]">
+
+PROJECT NAMING RULES:
+- 2-63 characters long
+- Lowercase letters, numbers, hyphens only
+- Must start and end with alphanumeric characters
+- Example: "my-app", "task-manager", "blog-api"
+
+PASSWORD GENERATION (automatic):
+\`\`\`javascript
+const password = Array.from(crypto.getRandomValues(new Uint8Array(24)))
+  .map(x => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*'[x % 70])
+  .join('');
+\`\`\`
+
+POST-CREATION (FULLY AUTOMATIC):
+1. System waits for project to be ready (1-2 minutes)
+2. API keys fetched and configured automatically
+3. .env file created automatically
+4. Project auto-selected
+5. You can immediately use migrations and queries!
+
+NO MANUAL STEPS NEEDED - continue building right away!
 </supabase_project_setup>`;
   }
 }
@@ -429,35 +617,145 @@ function getProjectSelectionInstructions(
 ): string {
   const projectNames = (connectionState.stats?.projects || []).map((project) => project.name).slice(0, 5);
   const projectList = projectNames.length > 0 ? projectNames.join(', ') : 'Projects available in account';
+  const organizationId =
+    connectionState.stats?.projects?.[0]?.organization_id ||
+    connectionState.project?.organization_id ||
+    connectionState.organizations?.[0]?.id;
 
   switch (verbosity) {
     case 'minimal':
-      return `Supabase connected. ${projectsAvailable} project${projectsAvailable === 1 ? '' : 's'} found. Ask user to select one via Supabase settings panel.`;
+      return `Supabase connected. ${projectsAvailable} project${projectsAvailable === 1 ? '' : 's'} found: ${projectList}. If user explicitly says "create Supabase project", infer name and create immediately. Otherwise ask: use existing or create new project?`;
 
     case 'detailed':
-      return `<supabase_project_selection>
-SUPABASE PROJECT SELECTION REQUIRED
+      return `<supabase_project_selection_or_creation>
+SUPABASE PROJECT SELECTION OR CREATION
 
-Current State: Authenticated with Supabase. ${projectsAvailable} project${projectsAvailable === 1 ? '' : 's'} detected but none selected.
+Current State: Authenticated with Supabase
+Available Projects (${projectsAvailable}): ${projectList}
 
-Available Projects: ${projectList}
+🚨 CRITICAL: DETECT EXPLICIT PROJECT CREATION INTENT FIRST! 🚨
 
-Selection Workflow:
-1. Ask which project the user wants to use
-2. Instruct them to open the Supabase connector in chat settings
-3. Click "Select" next to the desired project
-4. Confirm selection before continuing database work
+INTENT DETECTION - USER EXPLICITLY REQUESTS NEW PROJECT CREATION:
+If the user's message contains ANY of these explicit phrases:
+- "create a new Supabase project"
+- "create a Supabase project"
+- "set up a new Supabase project"
+- "make a new Supabase project"
+- "spin up a Supabase project"
+- "initialize a new Supabase project"
+- "fresh Supabase instance"
+- "new Supabase database"
 
-If the list looks outdated, remind them to refresh the connector or create a new project.
-</supabase_project_selection>`;
+ACTION: User has ALREADY chosen to create new project! Skip all questions!
+1. Infer project name from context (e.g., "kanban board" → "kanban-board")
+2. If no clear name, derive from their feature request
+3. Generate password automatically
+4. Create boltAction in your FIRST response - NO QUESTIONS!
+
+EXAMPLE - EXPLICIT NEW PROJECT REQUEST:
+User: "Make a kanban board with Supabase real-time sync, create a new Supabase project"
+
+Your response (NO QUESTIONS - even though they have existing projects):
+"I'll create a new Supabase project 'kanban-board' with real-time sync..."
+
+<boltArtifact id="kanban-board" title="Kanban Board with Supabase">
+<boltAction type="supabase" operation="project-create" name="kanban-board" organizationId="${organizationId}" dbPassword="[generated]">
+</boltAction>
+
+<boltAction type="supabase" operation="migration" filePath="/supabase/migrations/001_schema.sql">
+CREATE TABLE tasks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  title text NOT NULL,
+  status text NOT NULL
+);
+ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+</boltAction>
+
+<boltAction type="file" filePath="src/App.tsx">
+[Kanban board component code]
+</boltAction>
+
+<boltAction type="shell">
+npm install @supabase/supabase-js
+</boltAction>
+
+<boltAction type="start">
+npm run dev
+</boltAction>
+</boltArtifact>
+
+---
+
+STANDARD WORKFLOW - USER DOESN'T EXPLICITLY REQUEST NEW PROJECT:
+If request is ambiguous (e.g., "Build task manager with Supabase"), offer BOTH options:
+
+USER HAS TWO OPTIONS:
+
+OPTION 1: USE EXISTING PROJECT
+- Ask which project they want to use
+- Guide them: "Open the Supabase connector in chat settings and click 'Select' next to your preferred project"
+- Wait for selection before proceeding
+
+OPTION 2: CREATE NEW PROJECT
+- If user wants a new dedicated project for this task:
+  1. Ask for project name
+  2. Generate secure password automatically
+  3. Create immediately using boltAction
+
+RECOMMENDED APPROACH:
+Ask: "I see you have ${projectsAvailable} Supabase project${projectsAvailable === 1 ? '' : 's'} (${projectList}). Would you like to use one of these, or create a new project for this [task/feature]?"
+
+If user chooses to CREATE NEW PROJECT:
+
+STEP 1: Ask for project name
+"What would you like to name your new Supabase project? (e.g., 'task-manager', 'blog-api')"
+
+STEP 2: Generate password and create immediately
+<boltAction type="supabase" operation="project-create"
+            name="[user-provided-name]"
+            organizationId="${organizationId}"
+            dbPassword="[auto-generated-24-char-password]">
+
+Example Complete Flow:
+User: "Build a task manager with Supabase"
+You: "I see you have ${projectsAvailable} projects (${projectList}). Would you like to use one of these or create a new project called 'task-manager'?"
+User: "Create a new one"
+You: "Great! What would you like to name it?"
+User: "task-manager"
+You: [Generate password, create boltAction immediately]
+
+IMPORTANT RULES:
+- NEVER assume user wants existing projects
+- ALWAYS offer project creation as an option
+- When creating: auto-generate password, never ask user for it
+- Make the choice clear and explicit
+</supabase_project_selection_or_creation>`;
 
     default:
       return `<supabase_project_required>
-Supabase connection detected but no project selected.
+SUPABASE PROJECT OPTIONS
 
-Detected projects: ${projectList}
+You have ${projectsAvailable} existing project${projectsAvailable === 1 ? '' : 's'}: ${projectList}
 
-Guide the user to open the Supabase connector in chat settings and select the project before continuing.
+🚨 CRITICAL: Detect if user explicitly says "create new Supabase project", "create a Supabase project", "set up new Supabase project", etc.
+
+IF EXPLICIT NEW PROJECT REQUEST:
+→ User already chose! Infer name from context, create immediately - NO QUESTIONS!
+→ Example: "kanban board, create new Supabase project" → create "kanban-board" project right away
+
+IF AMBIGUOUS REQUEST (just mentions "with Supabase"):
+→ Offer both options below
+
+USER CAN CHOOSE:
+1. Use existing project - guide them to select via Supabase connector
+2. Create new project - ask for name, then create with boltAction
+
+Ask: "Would you like to use one of your existing projects (${projectList}) or create a new one for this task?"
+
+If creating new:
+- Ask for project name
+- Auto-generate secure password
+- Use: <boltAction type="supabase" operation="project-create" name="[name]" organizationId="${organizationId}" dbPassword="[generated]">
 </supabase_project_required>`;
   }
 }

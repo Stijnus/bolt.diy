@@ -77,20 +77,131 @@ The year is 2025.`;
   }
 
   private _getSupabaseInstructions(): string {
-    const connectionInput: SupabaseConnectionState | LegacySupabaseConnectionState | undefined =
-      this._options.supabaseConnection ||
-      (this._options.supabase
-        ? {
-            isConnected: this._options.supabase.isConnected,
-            hasSelectedProject: this._options.supabase.hasSelectedProject,
-            credentials: this._options.supabase.credentials,
-          }
-        : undefined);
-
-    const normalized = normalizeSupabaseConnectionState(connectionInput);
+    // Use the full connection state directly (no legacy support needed)
+    const normalized = normalizeSupabaseConnectionState(this._options.supabaseConnection);
     const workflowContext = analyzeSupabaseContext(normalized);
 
-    return getSupabaseWorkflowInstructions(workflowContext, 'detailed');
+    // Get the workflow-specific instructions
+    const workflowInstructions = getSupabaseWorkflowInstructions(workflowContext, 'detailed');
+
+    // Add additional context for project scenarios
+    if (workflowContext.needsProject && workflowContext.projectsAvailable === 0) {
+      return `${workflowInstructions}
+
+<supabase_project_creation_guidance>
+🚨 CRITICAL: Detect explicit project creation intent FIRST!
+
+IF USER EXPLICITLY SAYS "create a Supabase project", "create new Supabase project", etc.:
+→ SKIP THE QUESTION! User already decided to create!
+→ Infer project name from their request context
+→ Example: "kanban board, create Supabase project" → name it "kanban-board"
+→ Generate boltAction IMMEDIATELY in first response
+
+EXAMPLE - EXPLICIT REQUEST:
+User: "Make a kanban board with Supabase, create a new Supabase project and execute the SQL"
+You: "I'll create a kanban board with Supabase. Setting up project 'kanban-board' with database schema..."
+
+<boltArtifact id="kanban-board" title="Kanban Board">
+<boltAction type="supabase" operation="project-create" ...>
+<boltAction type="supabase" operation="migration" filePath="/supabase/migrations/001_schema.sql">
+  CREATE TABLE tasks (...);
+</boltAction>
+<boltAction type="file" filePath="src/App.tsx">
+  [App code]
+</boltAction>
+<boltAction type="shell">npm install @supabase/supabase-js</boltAction>
+<boltAction type="start">npm run dev</boltAction>
+</boltArtifact>
+
+Complete workflow in ONE artifact: project → schema → app → install → start
+
+IF REQUEST IS AMBIGUOUS (just mentions "with Supabase"):
+1. Acknowledge the request
+2. Ask ONE question: "What would you like to name your Supabase project?"
+3. When user provides name, IMMEDIATELY generate the boltAction with:
+   - User's project name (sanitized)
+   - Auto-generated 24-character secure password
+   - Organization ID from connection state
+
+EXAMPLE - AMBIGUOUS REQUEST:
+User: "Build a task manager with Supabase real-time sync"
+You: "I'll build a task manager with Supabase. What would you like to name the project? (e.g., 'task-manager', 'my-tasks')"
+
+User: "task-manager"
+You: "Perfect! Creating your Supabase project 'task-manager'..."
+[Generate boltAction with auto-generated password]
+
+DO NOT:
+- Ask multiple questions in sequence
+- Request password from user
+- Wait for confirmation after getting the name
+- Explain technical details unless asked
+</supabase_project_creation_guidance>`;
+    }
+
+    // Add guidance when user has projects but none selected
+    if (workflowContext.needsProjectSelection && workflowContext.projectsAvailable > 0) {
+      return `${workflowInstructions}
+
+<project_creation_always_available>
+🚨 CRITICAL: User has ${workflowContext.projectsAvailable} existing projects, but can ALWAYS create new ones!
+
+DETECT EXPLICIT PROJECT CREATION INTENT FIRST:
+If user explicitly says "create a Supabase project", "create new Supabase project", etc.:
+→ User ALREADY chose to create new! Skip all questions!
+→ Infer project name from context
+→ Generate boltAction IMMEDIATELY - even though they have existing projects
+
+EXAMPLE - EXPLICIT NEW PROJECT:
+User: "Build kanban board with Supabase, create a new Supabase project and execute the SQL"
+You: "I'll create a new Supabase project 'kanban-board'..."
+
+<boltArtifact id="kanban-board" title="Kanban Board">
+<boltAction type="supabase" operation="project-create" ...>
+<boltAction type="supabase" operation="migration" filePath="/supabase/migrations/001_schema.sql">
+  CREATE TABLE tasks (...);
+</boltAction>
+<boltAction type="file" filePath="src/App.tsx">[App code]</boltAction>
+<boltAction type="shell">npm install</boltAction>
+<boltAction type="start">npm run dev</boltAction>
+</boltArtifact>
+
+Complete workflow - NO QUESTIONS about existing projects!
+
+IF REQUEST IS AMBIGUOUS (just mentions "with Supabase"):
+1. ALWAYS offer both options: use existing OR create new
+2. Be explicit and clear about the choice
+3. Don't assume they want to use existing projects
+
+RECOMMENDED APPROACH:
+"I see you have ${workflowContext.projectsAvailable} Supabase project(s). Would you like to:
+1. Use one of your existing projects
+2. Create a new dedicated project for this [feature]?"
+
+If they choose EXISTING:
+- Ask which one they want
+- Guide to Supabase connector to select
+
+If they choose NEW PROJECT:
+- Ask for project name
+- Generate secure password automatically
+- Create immediately with boltAction
+
+EXAMPLE - AMBIGUOUS:
+User: "Build a task manager with Supabase"
+You: "I see you have 2 Supabase projects. Would you like to use an existing project or create a new one for this?"
+User: "Create new"
+You: "Great! What name would you like?" → [User responds] → [Create boltAction]
+
+NEVER:
+- Skip offering project creation option
+- Assume user wants existing projects
+- Ask for passwords manually
+- Ask about existing projects when user explicitly requests new project
+</project_creation_always_available>`;
+    }
+
+    return workflowInstructions;
   }
 
   private _getArtifactInstructions(): string {
