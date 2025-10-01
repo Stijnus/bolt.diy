@@ -34,13 +34,8 @@ export interface ProviderOptimizedPromptOptions {
   designScheme?: DesignScheme;
   chatMode?: 'discuss' | 'build';
   contextOptimization?: boolean;
-  supabase?: {
-    isConnected: boolean;
-    hasSelectedProject: boolean;
-    credentials?: { anonKey?: string; supabaseUrl?: string };
-  };
-  projectType?: 'web' | 'mobile' | 'node' | 'auto';
   supabaseConnection?: SupabaseConnectionState;
+  projectType?: 'web' | 'mobile' | 'node' | 'auto';
 
   // Provider-specific options
   providerName: string;
@@ -359,17 +354,9 @@ class SupabaseInstructionsSection extends PromptSection {
 
   getContent(options: ProviderOptimizedPromptOptions, category: ProviderCategory): string {
     const config = getCategoryConfig(category);
-    const connectionInput: SupabaseConnectionState | LegacySupabaseConnectionState | undefined =
-      (options as any).supabaseConnection ||
-      (options.supabase
-        ? {
-            isConnected: options.supabase.isConnected,
-            hasSelectedProject: options.supabase.hasSelectedProject,
-            credentials: options.supabase.credentials,
-          }
-        : undefined);
 
-    const normalized = normalizeSupabaseConnectionState(connectionInput);
+    // Use the full connection state directly
+    const normalized = normalizeSupabaseConnectionState(options.supabaseConnection);
     const workflowContext = analyzeSupabaseContext(normalized);
 
     const verbosity: VerbosityLevel = config.prefersConcisePrompts

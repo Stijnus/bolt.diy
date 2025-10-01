@@ -6,6 +6,8 @@ import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROVIDER_LIST } from '~/utils/constant
 import { createFilesContext, extractCurrentContext, extractPropertiesFromMessage, simplifyBoltActions } from './utils';
 import { createScopedLogger } from '~/utils/logger';
 import { LLMManager } from '~/lib/modules/llm/manager';
+import { getCache, CACHE_KEYS, simpleHash, hashFileMap } from './cache';
+import { selectFilesSemantically } from './file-index';
 
 // Common patterns to ignore, similar to .gitignore
 
@@ -20,10 +22,40 @@ export async function selectContext(props: {
   providerSettings?: Record<string, IProviderSetting>;
   promptId?: string;
   contextOptimization?: boolean;
-  summary: string;
+  summary?: string; // Made optional to support parallel execution
   onFinish?: (resp: GenerateTextResult<Record<string, CoreTool<any, any>>, never>) => void;
 }) {
   const { messages, env: serverEnv, apiKeys, files, providerSettings, summary, onFinish } = props;
+  const cache = getCache();
+
+  /*
+   * OPTIMIZATION: Check cache before selecting context
+   * Create cache key from last user message + file map hash
+   */
+  const lastUserMessage = messages.filter((x) => x.role === 'user').pop();
+
+  if (!lastUserMessage) {
+    throw new Error('No user message found');
+  }
+
+  const messageText =
+    typeof lastUserMessage.content === 'string' ? lastUserMessage.content : JSON.stringify(lastUserMessage.content);
+  const messageHash = simpleHash(messageText);
+  const fileListHash = hashFileMap(files);
+  const cacheKey = CACHE_KEYS.contextSelection(messageHash, fileListHash);
+
+  // Check cache
+  const cachedContext = cache.get<FileMap>(cacheKey);
+
+  if (cachedContext) {
+    logger.info(
+      `Using CACHED context selection (${Object.keys(cachedContext).length} files) for message hash ${messageHash}`,
+    );
+    return cachedContext;
+  }
+
+  logger.info(`Generating NEW context selection for message hash ${messageHash}, file list hash ${fileListHash}`);
+
   let currentModel = DEFAULT_MODEL;
   let currentProvider = DEFAULT_PROVIDER.name;
   const processedMessages: Message[] = messages.map((message) => {
@@ -86,6 +118,77 @@ export async function selectContext(props: {
     return !ig.ignores(relPath);
   });
 
+  /*
+   * OPTIMIZATION: Semantic file pre-filtering (Phase 3)
+   * Uses semantic index with keyword extraction + import/export analysis
+   * Reduces from 500+ files to top 15-20 most relevant candidates
+   */
+  const MAX_FILES_TO_SEND_LLM = 20; // Final candidates sent to LLM
+
+  // Extract recently changed files from previous messages
+  const recentlyChanged: string[] = [];
+
+  for (let i = processedMessages.length - 1; i >= Math.max(0, processedMessages.length - 5); i--) {
+    const msg = processedMessages[i];
+
+    if (msg.annotations && Array.isArray(msg.annotations)) {
+      for (const annotation of msg.annotations) {
+        if (annotation && typeof annotation === 'object' && (annotation as any).type === 'fileChanges') {
+          const fileChanges = annotation as any;
+
+          if (fileChanges.changes && Array.isArray(fileChanges.changes)) {
+            for (const change of fileChanges.changes) {
+              if (change.operation !== 'delete') {
+                const fullPath = change.path.startsWith('/home/project/')
+                  ? change.path
+                  : `/home/project/${change.path}`;
+                recentlyChanged.push(fullPath);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (recentlyChanged.length > 0) {
+    logger.info(`Found ${recentlyChanged.length} recently changed files`);
+  }
+
+  // If we have many files, use semantic index for intelligent pre-filtering
+  if (filePaths.length > MAX_FILES_TO_SEND_LLM) {
+    logger.info(
+      `Using SEMANTIC INDEX to pre-filter from ${filePaths.length} to top ${MAX_FILES_TO_SEND_LLM} candidates`,
+    );
+
+    try {
+      // Use semantic index to get top candidates
+      const semanticCandidates = selectFilesSemantically(
+        messageText,
+        files,
+        fileListHash,
+        MAX_FILES_TO_SEND_LLM,
+        recentlyChanged,
+      );
+
+      if (semanticCandidates.length > 0) {
+        filePaths = semanticCandidates;
+        logger.info(
+          `Semantic index selected ${filePaths.length} files (removed ${filePaths.length - semanticCandidates.length} low-relevance files)`,
+        );
+      } else {
+        // Fallback to basic heuristic filtering if semantic index returns nothing
+        logger.warn('Semantic index returned no results, falling back to basic filtering');
+        filePaths = basicFileFiltering(filePaths, 50);
+      }
+    } catch (error) {
+      logger.error('Semantic index failed, falling back to basic filtering:', error);
+      filePaths = basicFileFiltering(filePaths, 50);
+    }
+  } else {
+    logger.info(`File count (${filePaths.length}) below threshold, skipping semantic pre-filtering`);
+  }
+
   let context = '';
   const currrentFiles: string[] = [];
   const contextFiles: FileMap = {};
@@ -107,16 +210,16 @@ export async function selectContext(props: {
     context = createFilesContext(contextFiles);
   }
 
-  const summaryText = `Here is the summary of the chat till now: ${summary}`;
+  const summaryText = summary ? `Here is the summary of the chat till now: ${summary}` : '';
 
   const extractTextContent = (message: Message) =>
     Array.isArray(message.content)
       ? (message.content.find((item) => item.type === 'text')?.text as string) || ''
       : message.content;
 
-  const lastUserMessage = processedMessages.filter((x) => x.role == 'user').pop();
+  const lastProcessedUserMessage = processedMessages.filter((x) => x.role == 'user').pop();
 
-  if (!lastUserMessage) {
+  if (!lastProcessedUserMessage) {
     throw new Error('No user message found');
   }
 
@@ -157,7 +260,7 @@ export async function selectContext(props: {
     prompt: `
         ${summaryText}
 
-        Users Question: ${extractTextContent(lastUserMessage)}
+        Users Question: ${extractTextContent(lastProcessedUserMessage)}
 
         update the context buffer with the files that are relevant to the task from the list of files above.
 
@@ -224,11 +327,19 @@ export async function selectContext(props: {
   }
 
   const totalFiles = Object.keys(filteredFiles).length;
-  logger.info(`Total files: ${totalFiles}`);
+  logger.info(`Total files selected: ${totalFiles}`);
 
   if (totalFiles == 0) {
     throw new Error(`Bolt failed to select files`);
   }
+
+  /*
+   * OPTIMIZATION: Cache the selected context
+   * Use 3 minute TTL - shorter than summary since context changes more frequently
+   */
+  const ttl = 3 * 60 * 1000; // 3 minutes
+  cache.set(cacheKey, filteredFiles, ttl);
+  logger.info(`Cached context selection (${totalFiles} files) with TTL ${ttl}ms`);
 
   return filteredFiles;
 
@@ -243,4 +354,44 @@ export function getFilePaths(files: FileMap) {
   });
 
   return filePaths;
+}
+
+/**
+ * Basic heuristic file filtering (fallback when semantic index fails)
+ */
+function basicFileFiltering(filePaths: string[], maxFiles: number): string[] {
+  const priorityExtensions = ['.ts', '.tsx', '.js', '.jsx', '.vue', '.svelte'];
+
+  const scoredFiles = filePaths.map((path) => {
+    let score = 0;
+    const relativePath = path.replace('/home/project/', '').toLowerCase();
+
+    // Boost source code files
+    for (const ext of priorityExtensions) {
+      if (relativePath.endsWith(ext)) {
+        score += 10;
+        break;
+      }
+    }
+
+    // Boost files in key directories
+    if (relativePath.includes('/src/') || relativePath.startsWith('src/')) {
+      score += 5;
+    }
+
+    if (relativePath.includes('/app/') || relativePath.startsWith('app/')) {
+      score += 5;
+    }
+
+    // Penalize test files
+    if (relativePath.includes('test') || relativePath.includes('spec')) {
+      score -= 5;
+    }
+
+    return { path, score };
+  });
+
+  scoredFiles.sort((a, b) => b.score - a.score);
+
+  return scoredFiles.slice(0, maxFiles).map((f) => f.path);
 }

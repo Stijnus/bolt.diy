@@ -93,14 +93,15 @@ export const action: ActionFunction = async ({ request }) => {
         host: string;
         version: string;
         postgres_engine: string;
-        status: string;
+        status?: string;
       };
     };
     logger.debug('Project status retrieved:', project);
 
     // Determine if project is ready for use
-    const isActive = project.status === 'ACTIVE_HEALTHY';
-    const hasDatabase = project.database && project.database.status === 'HEALTHY';
+    const normalizedStatus = project.status?.toUpperCase() ?? 'UNKNOWN';
+    const isActive = ['ACTIVE_HEALTHY', 'ACTIVE', 'READY'].includes(normalizedStatus);
+    const hasDatabase = project.database?.status ? project.database.status === 'HEALTHY' : true;
 
     // Check various service readiness
     const setupSteps = {
@@ -110,7 +111,7 @@ export const action: ActionFunction = async ({ request }) => {
       storage: isActive, // Storage is ready when project is active
     };
 
-    const allReady = Object.values(setupSteps).every(Boolean);
+    const allReady = isActive && hasDatabase;
 
     // Calculate retry timing based on status
     let retryAfter = 10; // Default 10 seconds

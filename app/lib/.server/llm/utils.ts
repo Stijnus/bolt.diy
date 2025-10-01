@@ -3,6 +3,10 @@ import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODEL_REGEX, PROVIDER_REGEX } from '~/
 import { IGNORE_PATTERNS, type FileMap } from './constants';
 import ignore from 'ignore';
 import type { ContextAnnotation } from '~/types/context';
+import { estimateTokenCount, truncateToTokenLimit } from '~/lib/common/prompts/token-optimizer';
+import { createScopedLogger } from '~/utils/logger';
+
+const logger = createScopedLogger('llm-utils');
 
 export function extractPropertiesFromMessage(message: Omit<Message, 'id'>): {
   model: string;
@@ -47,7 +51,7 @@ export function simplifyBoltActions(input: string): string {
   });
 }
 
-export function createFilesContext(files: FileMap, useRelativePath?: boolean) {
+export function createFilesContext(files: FileMap, useRelativePath?: boolean, maxTokens: number = 20000) {
   const ig = ignore().add(IGNORE_PATTERNS);
   let filePaths = Object.keys(files);
   filePaths = filePaths.filter((x) => {
@@ -55,28 +59,57 @@ export function createFilesContext(files: FileMap, useRelativePath?: boolean) {
     return !ig.ignores(relPath);
   });
 
-  const fileContexts = filePaths
-    .filter((x) => files[x] && files[x].type == 'file')
-    .map((path) => {
-      const dirent = files[path];
+  const fileContexts: string[] = [];
+  let currentTokens = 0;
+  const overhead = 100; // Tokens for XML wrapper tags
+  const maxFileTokens = 5000; // Max tokens per individual file
 
-      if (!dirent || dirent.type == 'folder') {
-        return '';
-      }
+  logger.info(`Creating file context with budget of ${maxTokens} tokens for ${filePaths.length} files`);
 
-      const codeWithLinesNumbers = dirent.content
-        .split('\n')
-        // .map((v, i) => `${i + 1}|${v}`)
-        .join('\n');
+  for (const path of filePaths) {
+    const dirent = files[path];
 
-      let filePath = path;
+    if (!dirent || dirent.type !== 'file') {
+      continue;
+    }
 
-      if (useRelativePath) {
-        filePath = path.replace('/home/project/', '');
-      }
+    // Check if we've exceeded our token budget
+    if (currentTokens >= maxTokens - overhead) {
+      logger.warn(`Token budget exceeded after ${fileContexts.length} files (${currentTokens}/${maxTokens} tokens)`);
+      break;
+    }
 
-      return `<boltAction type="file" filePath="${filePath}">${codeWithLinesNumbers}</boltAction>`;
-    });
+    let fileContent = dirent.content;
+    const fileTokens = estimateTokenCount(fileContent);
+
+    // Truncate large files
+    if (fileTokens > maxFileTokens) {
+      logger.debug(`Truncating large file ${path} from ${fileTokens} to ${maxFileTokens} tokens`);
+      fileContent = truncateToTokenLimit(fileContent, maxFileTokens);
+    }
+
+    let filePath = path;
+
+    if (useRelativePath) {
+      filePath = path.replace('/home/project/', '');
+    }
+
+    const fileContext = `<boltAction type="file" filePath="${filePath}">${fileContent}</boltAction>`;
+    const contextTokens = estimateTokenCount(fileContext);
+
+    // Check if adding this file would exceed budget
+    if (currentTokens + contextTokens > maxTokens - overhead) {
+      logger.warn(
+        `Skipping file ${path} (${contextTokens} tokens) - would exceed budget (${currentTokens + contextTokens}/${maxTokens})`,
+      );
+      break;
+    }
+
+    fileContexts.push(fileContext);
+    currentTokens += contextTokens;
+  }
+
+  logger.info(`Created context with ${fileContexts.length} files using ${currentTokens} tokens`);
 
   return `<boltArtifact id="code-content" title="Code Content" >\n${fileContexts.join('\n')}\n</boltArtifact>`;
 }

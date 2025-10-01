@@ -14,14 +14,6 @@ export interface PromptOptions {
   designScheme?: DesignScheme;
   chatMode?: 'discuss' | 'build';
   contextOptimization?: boolean;
-  supabase?: {
-    isConnected: boolean;
-    hasSelectedProject: boolean;
-    credentials?: {
-      anonKey?: string;
-      supabaseUrl?: string;
-    };
-  };
   supabaseConnection?: SupabaseConnectionState;
   projectType?: 'web' | 'mobile' | 'node' | 'auto';
 }
@@ -51,7 +43,6 @@ export class PromptLibrary {
           designScheme: options.designScheme,
           chatMode: options.chatMode,
           contextOptimization: options.contextOptimization,
-          supabase: options.supabase,
           supabaseConnection: options.supabaseConnection,
           projectType: options.projectType,
         }),
@@ -75,7 +66,6 @@ export class PromptLibrary {
           designScheme: options.designScheme,
           chatMode: options.chatMode,
           contextOptimization: options.contextOptimization,
-          supabase: options.supabase,
           supabaseConnection: options.supabaseConnection,
           projectType: options.projectType,
           providerName: providerOptions.providerName,

@@ -4,6 +4,7 @@ import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROVIDER_LIST } from '~/utils/constant
 import { extractCurrentContext, extractPropertiesFromMessage, simplifyBoltActions } from './utils';
 import { createScopedLogger } from '~/utils/logger';
 import { LLMManager } from '~/lib/modules/llm/manager';
+import { getCache, CACHE_KEYS, simpleHash, SummaryCheckpoint } from './cache';
 
 const logger = createScopedLogger('create-summary');
 
@@ -14,9 +15,30 @@ export async function createSummary(props: {
   providerSettings?: Record<string, IProviderSetting>;
   promptId?: string;
   contextOptimization?: boolean;
+  chatId?: string; // Optional chat ID for better caching
   onFinish?: (resp: GenerateTextResult<Record<string, CoreTool<any, any>>, never>) => void;
 }) {
   const { messages, env: serverEnv, apiKeys, providerSettings, onFinish } = props;
+  const cache = getCache();
+
+  /*
+   * OPTIMIZATION: Check cache before generating summary
+   * Use chat ID (if available) + message count as cache key
+   */
+  const messageCount = messages.length;
+  const chatIdForCache = props.chatId || simpleHash(JSON.stringify(messages.slice(0, 3))); // Use first 3 messages as fallback ID
+  const cacheKey = CACHE_KEYS.summary(chatIdForCache, messageCount);
+
+  // Check if we have a cached summary
+  const cachedSummary = cache.get<string>(cacheKey);
+
+  if (cachedSummary) {
+    logger.info(`Using CACHED summary for chat ${chatIdForCache} (${messageCount} messages)`);
+    return cachedSummary;
+  }
+
+  logger.info(`Generating NEW summary for chat ${chatIdForCache} (${messageCount} messages)`);
+
   let currentModel = DEFAULT_MODEL;
   let currentProvider = DEFAULT_PROVIDER.name;
   const processedMessages = messages.map((message) => {
@@ -70,15 +92,21 @@ export async function createSummary(props: {
     }
   }
 
-  let slicedMessages = processedMessages;
   const { summary } = extractCurrentContext(processedMessages);
   let summaryText: string | undefined = undefined;
   let chatId: string | undefined = undefined;
+  let slicedMessages = processedMessages;
+
+  /*
+   * OPTIMIZATION: Only use last 10 messages for incremental summary generation
+   * This prevents exponential growth in token usage as conversations get longer
+   */
+  const MAX_MESSAGES_FOR_SUMMARY = 10;
 
   if (summary && summary.type === 'chatSummary') {
     chatId = summary.chatId;
-    summaryText = `Below is the Chat Summary till now, this is chat summary before the conversation provided by the user 
-you should also use this as historical message while providing the response to the user.        
+    summaryText = `Below is the Chat Summary till now, this is chat summary before the conversation provided by the user
+you should also use this as historical message while providing the response to the user.
 ${summary.summary}`;
 
     if (chatId) {
@@ -90,11 +118,26 @@ ${summary.summary}`;
           break;
         }
       }
+
+      // Only take messages after the last summary checkpoint
       slicedMessages = processedMessages.slice(index + 1);
     }
   }
 
-  logger.debug('Sliced Messages:', slicedMessages.length);
+  /*
+   * If we have a previous summary, only send recent messages (incremental update)
+   * If no previous summary, send more messages for initial summary
+   */
+  const messageLimit = summaryText ? MAX_MESSAGES_FOR_SUMMARY : Math.min(processedMessages.length, 20);
+
+  if (slicedMessages.length > messageLimit) {
+    logger.info(
+      `Limiting summary messages from ${slicedMessages.length} to ${messageLimit} (${summaryText ? 'incremental' : 'initial'} summary)`,
+    );
+    slicedMessages = slicedMessages.slice(-messageLimit);
+  }
+
+  logger.debug('Messages for summary:', slicedMessages.length);
 
   const extractTextContent = (message: Message) =>
     Array.isArray(message.content)
@@ -194,6 +237,18 @@ Please provide a summary of the chat till now including the hitorical summary of
   if (onFinish) {
     onFinish(resp);
   }
+
+  /*
+   * OPTIMIZATION: Cache the generated summary
+   * Use longer TTL for checkpoint summaries (10+ messages)
+   */
+  const isCheckpoint = SummaryCheckpoint.shouldCreateCheckpoint(messageCount);
+  const ttl = isCheckpoint ? 15 * 60 * 1000 : 5 * 60 * 1000; // 15 min for checkpoints, 5 min for others
+
+  cache.set(cacheKey, response, ttl);
+  logger.info(
+    `Cached summary for chat ${chatIdForCache} (${messageCount} messages)${isCheckpoint ? ' [CHECKPOINT]' : ''} with TTL ${ttl}ms`,
+  );
 
   return response;
 }

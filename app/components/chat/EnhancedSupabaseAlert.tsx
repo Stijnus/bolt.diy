@@ -4,6 +4,7 @@ import { classNames } from '~/utils/classNames';
 import { supabaseConnection } from '~/lib/stores/supabase';
 import { useStore } from '@nanostores/react';
 import { useState, useEffect } from 'react';
+import { generateSecurePassword, validateSupabaseProjectName, sanitizeSupabaseProjectName } from '~/utils/crypto';
 
 interface Props {
   alert: SupabaseAlert;
@@ -40,6 +41,12 @@ export function EnhancedSupabaseChatAlert({ alert, clearAlert, postMessage }: Pr
   const [isExecuting, setIsExecuting] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [countdown, setCountdown] = useState(estimatedTime || 0);
+
+  // Project creation form state
+  const [showProjectForm, setShowProjectForm] = useState(false);
+  const [projectName, setProjectName] = useState('');
+  const [projectNameError, setProjectNameError] = useState('');
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
 
   // Countdown timer for estimated completion
   useEffect(() => {
@@ -112,8 +119,8 @@ export function EnhancedSupabaseChatAlert({ alert, clearAlert, postMessage }: Pr
   const handleProjectAction = async (actionType: string) => {
     switch (actionType) {
       case 'create-project':
-        // Trigger project creation workflow
-        postMessage('Please create a new Supabase project with a suitable name and database password.');
+        // Show the project creation form
+        setShowProjectForm(true);
         break;
       case 'setup-project':
         if (connection.selectedProjectId) {
@@ -133,6 +140,63 @@ export function EnhancedSupabaseChatAlert({ alert, clearAlert, postMessage }: Pr
         }
 
         break;
+    }
+  };
+
+  const handleProjectNameChange = (value: string) => {
+    setProjectName(value);
+
+    // Validate on change
+    const validation = validateSupabaseProjectName(value);
+
+    if (!validation.valid && value.length > 0) {
+      setProjectNameError(validation.error || 'Invalid project name');
+    } else {
+      setProjectNameError('');
+    }
+  };
+
+  const handleCreateProject = async () => {
+    // Validate project name
+    const sanitized = sanitizeSupabaseProjectName(projectName);
+    const validation = validateSupabaseProjectName(sanitized);
+
+    if (!validation.valid) {
+      setProjectNameError(validation.error || 'Invalid project name');
+      return;
+    }
+
+    setIsCreatingProject(true);
+
+    try {
+      // Generate secure password
+      const dbPassword = generateSecurePassword(24);
+
+      /*
+       * Get organization ID from multiple sources
+       * Priority: existing projects > selected project > first organization
+       */
+      const organizationId =
+        connection.stats?.projects?.[0]?.organization_id ||
+        connection.project?.organization_id ||
+        connection.organizations?.[0]?.id;
+
+      if (!organizationId) {
+        throw new Error('No organization ID available. Please reconnect to Supabase to fetch organization details.');
+      }
+
+      // Send message to LLM to create the project
+      const message = `Create a Supabase project with name "${sanitized}", organization ID "${organizationId}", and database password "${dbPassword}".`;
+      postMessage(message);
+
+      // Close the form
+      setShowProjectForm(false);
+      setProjectName('');
+    } catch (error) {
+      console.error('Failed to initiate project creation:', error);
+      setProjectNameError(error instanceof Error ? error.message : 'Failed to create project');
+    } finally {
+      setIsCreatingProject(false);
     }
   };
 
@@ -410,6 +474,94 @@ export function EnhancedSupabaseChatAlert({ alert, clearAlert, postMessage }: Pr
           </div>
         )}
 
+        {/* Project Creation Form */}
+        {showProjectForm && hasToken && !hasProjects && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="px-4 py-3 border-t border-bolt-elements-borderColor"
+          >
+            <div className="bg-bolt-elements-background-depth-3 rounded-md p-4 border border-bolt-elements-borderColor">
+              <h4 className="text-sm font-medium text-bolt-elements-textPrimary mb-3 flex items-center gap-2">
+                <div className="i-ph:database"></div>
+                Create Supabase Project
+              </h4>
+
+              <div className="space-y-3">
+                {/* Project Name Input */}
+                <div>
+                  <label htmlFor="project-name" className="block text-xs text-bolt-elements-textSecondary mb-1">
+                    Project Name
+                  </label>
+                  <input
+                    id="project-name"
+                    type="text"
+                    value={projectName}
+                    onChange={(e) => handleProjectNameChange(e.target.value)}
+                    placeholder="e.g., task-manager, my-app"
+                    className={classNames(
+                      'w-full px-3 py-2 text-sm bg-bolt-elements-background-depth-4 border rounded-md',
+                      'text-bolt-elements-textPrimary placeholder-bolt-elements-textTertiary',
+                      'focus:outline-none focus:ring-2 focus:ring-[#3DCB8F]',
+                      projectNameError ? 'border-red-500' : 'border-bolt-elements-borderColor focus:border-[#3DCB8F]',
+                    )}
+                  />
+                  {projectNameError && (
+                    <p className="mt-1 text-xs text-red-500 flex items-center gap-1">
+                      <div className="i-ph:warning-circle"></div>
+                      {projectNameError}
+                    </p>
+                  )}
+                  <p className="mt-1 text-xs text-bolt-elements-textTertiary">
+                    Lowercase letters, numbers, and hyphens only (2-63 characters)
+                  </p>
+                </div>
+
+                {/* Info about password */}
+                <div className="bg-bolt-elements-background-depth-4 rounded-md p-2 border border-bolt-elements-borderColor">
+                  <p className="text-xs text-bolt-elements-textSecondary flex items-start gap-2">
+                    <div className="i-ph:info mt-0.5 flex-shrink-0"></div>
+                    <span>A secure 24-character database password will be generated automatically.</span>
+                  </p>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleCreateProject}
+                    disabled={isCreatingProject || !projectName || !!projectNameError}
+                    className="flex items-center gap-2 px-3 py-2 bg-[#3DCB8F] text-white rounded-md hover:bg-[#2BAE73] disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                  >
+                    {isCreatingProject ? (
+                      <>
+                        <div className="i-svg-spinners:ring-resize"></div>
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <div className="i-ph:rocket-launch"></div>
+                        Create Project
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowProjectForm(false);
+                      setProjectName('');
+                      setProjectNameError('');
+                    }}
+                    disabled={isCreatingProject}
+                    className="px-3 py-2 bg-bolt-elements-background-depth-4 text-bolt-elements-textSecondary rounded-md hover:bg-bolt-elements-background-depth-2 transition-colors text-sm border border-bolt-elements-borderColor"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {/* Action Buttons */}
         <div className="px-4 pb-4">
           <div className="flex items-center gap-2 mt-3">
@@ -424,14 +576,14 @@ export function EnhancedSupabaseChatAlert({ alert, clearAlert, postMessage }: Pr
               </button>
             )}
 
-            {/* Project Creation */}
-            {hasToken && !hasProjects && (
+            {/* Project Creation Button (show when connected, even if projects exist) */}
+            {hasToken && !showProjectForm && (
               <button
                 onClick={() => handleProjectAction('create-project')}
                 className="flex items-center gap-2 px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors text-sm"
               >
                 <div className="i-ph:plus"></div>
-                Create Project
+                {hasProjects ? 'Create New Project' : 'Create Project'}
               </button>
             )}
 

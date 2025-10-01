@@ -346,12 +346,15 @@ export class StreamingMessageParser {
     };
 
     if (actionType === 'supabase') {
-      const operation = this.#extractAttribute(actionTag, 'operation');
+      const rawOperation = this.#extractAttribute(actionTag, 'operation');
+      const allowedOperations = ['migration', 'query', 'project-create', 'setup', 'validate', 'seed', 'sql-execute'];
 
-      if (!operation || !['migration', 'query', 'project-create', 'setup', 'validate', 'seed'].includes(operation)) {
-        logger.warn(`Invalid or missing operation for Supabase action: ${operation}`);
-        throw new Error(`Invalid Supabase operation: ${operation}`);
+      if (!rawOperation || !allowedOperations.includes(rawOperation)) {
+        logger.warn(`Invalid or missing operation for Supabase action: ${rawOperation}`);
+        throw new Error(`Invalid Supabase operation: ${rawOperation}`);
       }
+
+      const operation = rawOperation === 'sql-execute' ? 'query' : rawOperation;
 
       (actionAttributes as SupabaseAction).operation = operation as
         | 'migration'

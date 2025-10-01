@@ -1,5 +1,11 @@
 import { atom } from 'nanostores';
-import type { SupabaseUser, SupabaseStats, SupabaseApiKey, SupabaseCredentials } from '~/types/supabase';
+import type {
+  SupabaseUser,
+  SupabaseStats,
+  SupabaseApiKey,
+  SupabaseCredentials,
+  SupabaseOrganization,
+} from '~/types/supabase';
 
 export interface SupabaseProject {
   id: string;
@@ -45,6 +51,7 @@ export interface SupabaseConnectionState {
   user: SupabaseUser | null;
   token: string;
   stats?: SupabaseStats;
+  organizations?: SupabaseOrganization[];
   selectedProjectId?: string;
   isConnected?: boolean;
   project?: SupabaseProject;
@@ -150,32 +157,68 @@ export async function fetchSupabaseStats(token: string) {
   isFetchingStats.set(true);
 
   try {
-    // Use the internal API route instead of direct Supabase API call
-    const response = await fetch('/api/supabase', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        token,
+    // Fetch both projects and organizations in parallel
+    const [projectsResponse, organizationsResponse] = await Promise.all([
+      fetch('/api/supabase', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ token }),
       }),
-    });
+      fetch('/api/supabase/organizations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ token }),
+      }),
+    ]);
 
-    if (!response.ok) {
+    if (!projectsResponse.ok) {
       throw new Error('Failed to fetch projects');
     }
 
-    const data = (await response.json()) as any;
+    const projectsData = (await projectsResponse.json()) as any;
+    const organizationsData = organizationsResponse.ok ? ((await organizationsResponse.json()) as any) : null;
 
     updateSupabaseConnection({
-      user: data.user,
-      stats: data.stats,
+      user: projectsData.user,
+      stats: projectsData.stats,
+      organizations: organizationsData?.organizations || [],
     });
   } catch (error) {
     console.error('Failed to fetch Supabase stats:', error);
     throw error;
   } finally {
     isFetchingStats.set(false);
+  }
+}
+
+export async function fetchSupabaseOrganizations(token: string) {
+  try {
+    const response = await fetch('/api/supabase/organizations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ token }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch organizations');
+    }
+
+    const data = (await response.json()) as { organizations: SupabaseOrganization[] };
+
+    updateSupabaseConnection({
+      organizations: data.organizations,
+    });
+
+    return data.organizations;
+  } catch (error) {
+    console.error('Failed to fetch Supabase organizations:', error);
+    throw error;
   }
 }
 

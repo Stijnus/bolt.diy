@@ -141,13 +141,15 @@ export const ChatImpl = memo(
         contextOptimization: contextOptimizationEnabled,
         chatMode,
         designScheme,
-        supabase: {
+        supabaseConnection: {
+          user: supabaseConn.user,
+          token: supabaseConn.token,
+          stats: supabaseConn.stats,
+          organizations: supabaseConn.organizations,
+          selectedProjectId: supabaseConn.selectedProjectId,
           isConnected: supabaseConn.isConnected,
-          hasSelectedProject: !!selectedProject,
-          credentials: {
-            supabaseUrl: supabaseConn?.credentials?.supabaseUrl,
-            anonKey: supabaseConn?.credentials?.anonKey,
-          },
+          project: supabaseConn.project,
+          credentials: supabaseConn.credentials,
         },
         maxLLMSteps: mcpSettings.maxLLMSteps,
       },

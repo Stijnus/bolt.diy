@@ -9,7 +9,7 @@ import type { BoltShell } from '~/utils/shell';
 
 import { fileChangeOptimizer } from './file-change-optimizer';
 import type { FileMap } from '~/lib/stores/files';
-import { supabaseConnection, updateSupabaseConnection } from '~/lib/stores/supabase';
+import { supabaseConnection, updateSupabaseConnection, fetchSupabaseStats } from '~/lib/stores/supabase';
 
 const logger = createScopedLogger('ActionRunner');
 
@@ -913,6 +913,16 @@ export class ActionRunner {
     const { name, organizationId, region, plan, dbPassword } = action;
     const connection = supabaseConnection.get();
 
+    // Debug logging for organization selection
+    logger.debug('Creating project with organization context:', {
+      projectName: name,
+      requestedOrgId: organizationId,
+      availableOrgs: connection.organizations?.map((o) => ({ id: o.id, name: o.name })),
+      existingProjectsOrgId: connection.stats?.projects?.[0]?.organization_id,
+      selectedProjectOrgId: connection.project?.organization_id,
+      totalProjects: connection.stats?.projects?.length || 0,
+    });
+
     if (!connection.token) {
       this.onSupabaseAlert?.({
         type: 'error',
@@ -979,28 +989,115 @@ export class ActionRunner {
       const result = (await response.json()) as SupabaseProjectCreateResponse;
       logger.debug('Project creation initiated:', result);
 
+      const projectId = result.project?.id;
+
+      if (!projectId) {
+        throw new Error('Project ID not returned from creation API');
+      }
+
       // Show project creation in progress
       this.onSupabaseAlert?.({
         type: 'success',
         title: 'Project Creation Started',
         description: `Project ${name} is being created`,
-        content: `Your Supabase project is initializing. You can monitor progress in your Supabase dashboard.`,
+        content: `Your Supabase project is initializing. Waiting for it to become active...`,
         source: 'supabase',
         stage: 'creating',
         projectStatus: 'creating',
         operation: 'project-create',
-        projectId: result.project?.id,
-        projectUrl: result.project?.id ? `https://supabase.com/dashboard/project/${result.project.id}` : undefined,
+        projectId,
+        projectUrl: `https://supabase.com/dashboard/project/${projectId}`,
         estimatedTime: result.estimatedTime || 120,
         progress: 25,
         nextSteps: [
-          'Wait for project to finish initializing',
-          'Set up API keys once project is ready',
-          'Configure your application environment',
+          'Waiting for project to initialize (1-2 minutes)',
+          'Fetching API keys automatically',
+          'Configuring environment variables',
         ],
       });
 
-      return { success: true, project: result.project };
+      // Wait for project to become ACTIVE_HEALTHY
+      logger.info('Polling project status...');
+
+      const isReady = await this.#pollProjectStatus(projectId, connection.token);
+
+      if (!isReady) {
+        throw new Error('Project creation timed out after 5 minutes. Please check your Supabase dashboard.');
+      }
+
+      // Initialize project (fetch keys, configure environment)
+      logger.info('Project is ready, initializing...');
+
+      this.onSupabaseAlert?.({
+        type: 'info',
+        title: 'Project Ready',
+        description: 'Configuring environment and fetching API keys',
+        content: 'Your Supabase project is active. Setting up credentials...',
+        source: 'supabase',
+        stage: 'creating',
+        projectStatus: 'ready',
+        operation: 'project-create',
+        progress: 90,
+      });
+
+      const initResult = await this.#initializeProject(projectId, connection.token);
+
+      // Write .env file
+      if (initResult.envContent) {
+        try {
+          await this.webcontainer.fs.writeFile('.env', initResult.envContent);
+          logger.info('.env file created');
+        } catch (error) {
+          logger.error('Failed to write .env file:', error);
+        }
+      }
+
+      // Update connection store with new project
+      updateSupabaseConnection({
+        selectedProjectId: projectId,
+        project: {
+          id: projectId,
+          name: initResult.project.name || name,
+          status: 'ACTIVE_HEALTHY',
+          organization_id: organizationId,
+          region: region || 'us-east-1',
+          created_at: new Date().toISOString(),
+        },
+        credentials: {
+          supabaseUrl: initResult.project.supabaseUrl || `https://${projectId}.supabase.co`,
+          anonKey: initResult.project.anonKey,
+        },
+      });
+
+      // Refresh projects list
+      try {
+        await fetchSupabaseStats(connection.token);
+        logger.info('Projects list refreshed');
+      } catch (error) {
+        logger.error('Failed to refresh projects list:', error);
+      }
+
+      // Show completion
+      this.onSupabaseAlert?.({
+        type: 'success',
+        title: 'Project Ready',
+        description: `Project ${name} is configured and ready`,
+        content: 'Your Supabase project is fully configured! Environment variables have been set up automatically.',
+        source: 'supabase',
+        stage: 'complete',
+        projectStatus: 'ready',
+        operation: 'project-create',
+        projectId,
+        projectUrl: `https://supabase.com/dashboard/project/${projectId}`,
+        progress: 100,
+        nextSteps: [
+          'Create database tables using migrations',
+          'Set up authentication if needed',
+          'Start building your application',
+        ],
+      });
+
+      return { success: true, project: initResult.project };
     } catch (error: any) {
       logger.error('Project creation failed:', error);
 
@@ -1017,6 +1114,110 @@ export class ActionRunner {
 
       throw error;
     }
+  }
+
+  async #pollProjectStatus(projectId: string, token: string, maxAttempts: number = 60): Promise<boolean> {
+    logger.debug('Starting to poll project status:', { projectId, maxAttempts });
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const response = await fetch('/api/supabase/projects/status', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ token, projectId }),
+        });
+
+        if (response.ok) {
+          const data = (await response.json()) as {
+            success: boolean;
+            project?: {
+              ready: boolean;
+              status: string;
+            };
+          };
+
+          logger.debug('Poll attempt:', { attempt, ready: data.project?.ready, status: data.project?.status });
+
+          if (data.success && data.project?.ready && data.project?.status === 'ACTIVE_HEALTHY') {
+            logger.info('Project is ready!');
+            return true;
+          }
+        }
+
+        // Update progress alert
+        const progressPercent = 30 + Math.floor((attempt / maxAttempts) * 60);
+
+        this.onSupabaseAlert?.({
+          type: 'info',
+          title: 'Project Initializing',
+          description: `Waiting for project to become active (${attempt + 1}/${maxAttempts})`,
+          content: 'Supabase is setting up your project infrastructure. This typically takes 1-2 minutes.',
+          source: 'supabase',
+          stage: 'creating',
+          projectStatus: 'creating',
+          operation: 'project-create',
+          progress: progressPercent,
+          estimatedTime: (maxAttempts - attempt) * 5,
+        });
+
+        // Wait 5 seconds before next attempt
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      } catch (error) {
+        logger.error('Error polling project status:', error);
+      }
+    }
+
+    logger.warn('Project polling timed out');
+
+    return false;
+  }
+
+  async #initializeProject(
+    projectId: string,
+    token: string,
+  ): Promise<{ project: SupabaseProjectSummary; envContent?: string }> {
+    logger.debug('Initializing project:', { projectId });
+
+    const response = await fetch('/api/supabase/projects/initialize', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        token,
+        projectId,
+        setupOptions: {
+          generateEnvFile: true,
+          enableRLS: true,
+          createExampleTable: false,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = (await response.json()) as { error?: string };
+      throw new Error(error.error || 'Failed to initialize project');
+    }
+
+    const result = (await response.json()) as {
+      success: boolean;
+      project?: SupabaseProjectSummary;
+      envContent?: string;
+      error?: string;
+    };
+
+    if (!result.success || !result.project) {
+      throw new Error(result.error || 'Project initialization failed');
+    }
+
+    logger.info('Project initialized successfully');
+
+    return {
+      project: result.project,
+      envContent: result.envContent,
+    };
   }
 
   async #handleProjectSetup(action: SupabaseAction) {

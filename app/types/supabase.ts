@@ -6,6 +6,13 @@ export interface SupabaseUser {
   last_sign_in_at: string;
 }
 
+export interface SupabaseOrganization {
+  id: string;
+  name: string;
+  billing_email?: string;
+  created_at?: string;
+}
+
 export interface SupabaseProject {
   id: string;
   name: string;

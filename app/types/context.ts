@@ -7,6 +7,14 @@ export type ContextAnnotation =
       type: 'chatSummary';
       summary: string;
       chatId: string;
+    }
+  | {
+      type: 'fileChanges';
+      changes: Array<{
+        path: string;
+        operation: 'create' | 'update' | 'delete';
+        timestamp: number;
+      }>;
     };
 
 export type ProgressAnnotation = {

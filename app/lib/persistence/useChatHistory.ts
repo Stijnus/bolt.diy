@@ -5,6 +5,7 @@ import { generateId, type JSONValue, type Message } from 'ai';
 import { toast } from 'react-toastify';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { logStore } from '~/lib/stores/logs'; // Import logStore
+import { supabaseConnection, updateSupabaseConnection } from '~/lib/stores/supabase';
 import {
   getMessages,
   getNextId,
@@ -193,6 +194,12 @@ ${value.content}
         });
     } else {
       // Handle case where there is no mixedId (e.g., new chat)
+      const currentSupabaseState = supabaseConnection.get();
+
+      if (currentSupabaseState.selectedProjectId) {
+        updateSupabaseConnection({ selectedProjectId: '', project: undefined, credentials: undefined });
+      }
+
       setReady(true);
     }
   }, [mixedId, db, navigate, searchParams]); // Added db, navigate, searchParams dependencies
