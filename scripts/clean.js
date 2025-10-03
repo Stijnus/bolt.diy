@@ -103,8 +103,8 @@ async function main() {
     
     // Build verification
     console.log('\n🏗️  Building and verifying project...');
-    runCommand('pnpm typecheck', '🔍 Type checking...');
     runCommand('pnpm build', '🏗️  Building project...');
+    runCommand('pnpm typecheck', '🔍 Type checking...');
     
     // Success message
     console.log('\n✨ Comprehensive cleanup completed successfully!');
