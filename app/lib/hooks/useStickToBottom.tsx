@@ -182,6 +182,8 @@ export const useStickToBottom = (options: StickToBottomOptions = {}) => {
   // biome-ignore lint/correctness/useExhaustiveDependencies: not needed
   const state = useMemo<StickToBottomState>(() => {
     let lastCalculation: { targetScrollTop: number; calculatedScrollTop: number } | undefined;
+    let cachedDimensions: { scrollTop: number; scrollHeight: number; clientHeight: number } | undefined;
+    let dimensionsCacheFrame: number | undefined;
 
     return {
       escapedFromLock,
@@ -192,18 +194,42 @@ export const useStickToBottom = (options: StickToBottomOptions = {}) => {
       listeners: new Set(),
 
       get scrollTop() {
-        return scrollRef.current?.scrollTop ?? 0;
+        // Cache dimensions for the current animation frame to prevent layout thrashing
+        if (dimensionsCacheFrame !== requestAnimationFrame(() => {})) {
+          dimensionsCacheFrame = requestAnimationFrame(() => {
+            cachedDimensions = undefined;
+            dimensionsCacheFrame = undefined;
+          });
+
+          if (scrollRef.current) {
+            cachedDimensions = {
+              scrollTop: scrollRef.current.scrollTop,
+              scrollHeight: scrollRef.current.scrollHeight,
+              clientHeight: scrollRef.current.clientHeight,
+            };
+          }
+        }
+
+        return cachedDimensions?.scrollTop ?? scrollRef.current?.scrollTop ?? 0;
       },
       set scrollTop(scrollTop: number) {
         if (scrollRef.current) {
           scrollRef.current.scrollTop = scrollTop;
           state.ignoreScrollToTop = scrollRef.current.scrollTop;
+
+          // Invalidate cache when we write
+          cachedDimensions = undefined;
         }
       },
 
       get targetScrollTop() {
         if (!scrollRef.current || !contentRef.current) {
           return 0;
+        }
+
+        // Reuse cached dimensions if available
+        if (cachedDimensions) {
+          return cachedDimensions.scrollHeight - 1 - cachedDimensions.clientHeight;
         }
 
         return scrollRef.current.scrollHeight - 1 - scrollRef.current.clientHeight;

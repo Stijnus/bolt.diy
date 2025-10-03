@@ -42,8 +42,20 @@ export const links: LinksFunction = () => [
     crossOrigin: 'anonymous',
   },
   {
+    rel: 'preload',
+    as: 'style',
+    href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
+
+    // @ts-ignore - onload is valid for preload
+    onLoad: "this.onload=null;this.rel='stylesheet'",
+  },
+  {
     rel: 'stylesheet',
     href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
+    media: 'print',
+
+    // @ts-ignore - onload is valid
+    onLoad: "this.media='all'",
   },
 ];
 
