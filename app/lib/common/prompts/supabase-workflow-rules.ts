@@ -273,7 +273,9 @@ CREATE POLICY "Enable read access for all users" ON tasks FOR SELECT USING (true
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
     "react": "^18.2.0",
-    "react-beautiful-dnd": "^13.1.1"
+    "@dnd-kit/core": "^6.1.0",
+    "@dnd-kit/sortable": "^8.0.0",
+    "@dnd-kit/utilities": "^3.2.2"
   }
 }
 </boltAction>

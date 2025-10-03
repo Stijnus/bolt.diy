@@ -1045,7 +1045,8 @@ export class ActionRunner {
       // Write .env file
       if (initResult.envContent) {
         try {
-          await this.webcontainer.fs.writeFile('.env', initResult.envContent);
+          const webcontainer = await this.#webcontainer;
+          await webcontainer.fs.writeFile('.env', initResult.envContent);
           logger.info('.env file created');
         } catch (error) {
           logger.error('Failed to write .env file:', error);

@@ -4,3 +4,6 @@ compatibility_flags = ["nodejs_compat"]
 compatibility_date = "2025-03-28"
 pages_build_output_dir = "./build/client"
 send_metrics = false
+
+[vars]
+RUNNING_IN_DOCKER = "false"

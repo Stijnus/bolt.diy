@@ -16,7 +16,6 @@ import {
   getSupabaseWorkflowInstructions,
   analyzeSupabaseContext,
   normalizeSupabaseConnectionState,
-  type LegacySupabaseConnectionState,
 } from './supabase-workflow-rules';
 import type { SupabaseConnectionState } from '~/lib/stores/supabase';
 import { getDesignInstructions } from './shared-design-instructions';
