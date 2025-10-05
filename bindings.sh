@@ -30,4 +30,4 @@ fi
 
 bindings=$(echo $bindings | sed 's/[[:space:]]*$//')
 
-echo $bindings
+echo "$bindings"

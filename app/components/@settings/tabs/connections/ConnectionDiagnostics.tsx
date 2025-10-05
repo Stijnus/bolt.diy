@@ -378,7 +378,7 @@ export default function ConnectionDiagnostics() {
         {/* Vercel Connection Card */}
         <div className="p-4 rounded-lg bg-bolt-elements-background dark:bg-bolt-elements-background-depth-2 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor hover:border-bolt-elements-borderColorActive/70 dark:hover:border-bolt-elements-borderColorActive/70 transition-all duration-200 h-[180px] flex flex-col">
           <div className="flex items-center gap-2">
-            <div className="i-si:vercel text-bolt-elements-item-contentAccent dark:text-bolt-elements-item-contentAccent w-4 h-4" />
+            <div className="i-simple-icons:vercel text-bolt-elements-item-contentAccent dark:text-bolt-elements-item-contentAccent w-4 h-4" />
             <div className="text-sm font-medium text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary">
               Vercel Connection
             </div>
@@ -443,7 +443,7 @@ export default function ConnectionDiagnostics() {
         {/* Supabase Connection Card */}
         <div className="p-4 rounded-lg bg-bolt-elements-background dark:bg-bolt-elements-background-depth-2 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor hover:border-bolt-elements-borderColorActive/70 dark:hover:border-bolt-elements-borderColorActive/70 transition-all duration-200 h-[180px] flex flex-col">
           <div className="flex items-center gap-2">
-            <div className="i-si:supabase text-bolt-elements-item-contentAccent dark:text-bolt-elements-item-contentAccent w-4 h-4" />
+            <div className="i-simple-icons:supabase text-bolt-elements-item-contentAccent dark:text-bolt-elements-item-contentAccent w-4 h-4" />
             <div className="text-sm font-medium text-bolt-elements-textPrimary dark:text-bolt-elements-textPrimary">
               Supabase Connection
             </div>
@@ -535,7 +535,7 @@ export default function ConnectionDiagnostics() {
           variant="outline"
           className="flex items-center gap-2 hover:bg-bolt-elements-item-backgroundActive/10 hover:text-bolt-elements-textPrimary dark:hover:bg-bolt-elements-item-backgroundActive/10 dark:hover:text-bolt-elements-textPrimary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <div className="i-si:netlify w-4 h-4" />
+          <div className="i-simple-icons:netlify w-4 h-4" />
           Reset Netlify
         </Button>
 
@@ -545,7 +545,7 @@ export default function ConnectionDiagnostics() {
           variant="outline"
           className="flex items-center gap-2 hover:bg-bolt-elements-item-backgroundActive/10 hover:text-bolt-elements-textPrimary dark:hover:bg-bolt-elements-item-backgroundActive/10 dark:hover:text-bolt-elements-textPrimary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <div className="i-si:vercel w-4 h-4" />
+          <div className="i-simple-icons:vercel w-4 h-4" />
           Reset Vercel
         </Button>
 
@@ -555,7 +555,7 @@ export default function ConnectionDiagnostics() {
           variant="outline"
           className="flex items-center gap-2 hover:bg-bolt-elements-item-backgroundActive/10 hover:text-bolt-elements-textPrimary dark:hover:bg-bolt-elements-item-backgroundActive/10 dark:hover:text-bolt-elements-textPrimary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <div className="i-si:supabase w-4 h-4" />
+          <div className="i-simple-icons:supabase w-4 h-4" />
           Reset Supabase
         </Button>
       </div>

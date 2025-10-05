@@ -1,6 +1,9 @@
 import { globSync } from 'fast-glob';
 import fs from 'node:fs/promises';
 import { basename } from 'node:path';
+import { icons as simpleIcons } from '@iconify-json/simple-icons';
+import { icons as phIcons } from '@iconify-json/ph';
+import { icons as svgSpinnerIcons } from '@iconify-json/svg-spinners';
 import { defineConfig, presetIcons, presetUno, transformerDirectives } from 'unocss';
 
 const iconPaths = globSync('./icons/*.svg');
@@ -239,9 +242,12 @@ export default defineConfig({
     }),
     presetIcons({
       warn: true,
-      collections: {
-        ...customIconCollection,
-      },
+        collections: {
+          ...customIconCollection,
+          ph: () => phIcons,
+          'simple-icons': () => simpleIcons,
+          'svg-spinners': () => svgSpinnerIcons,
+        },
       unit: 'em',
     }),
   ],

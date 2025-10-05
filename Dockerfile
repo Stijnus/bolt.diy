@@ -1,15 +1,16 @@
-ARG BASE=node:20.18.0
-FROM ${BASE} AS base
+ARG NODE_VERSION=20.18.0
+FROM node:${NODE_VERSION} AS base
 
 WORKDIR /app
 
-# Install dependencies (this step is cached as long as the dependencies don't change)
+# Enable the project-pinned pnpm version provided via the `packageManager` field
+ENV PNPM_HOME="/root/.local/share/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
+
+# Install dependencies (this step is cached as long as the dependency manifests don't change)
 COPY package.json pnpm-lock.yaml ./
-
-#RUN npm install -g corepack@latest
-
-#RUN corepack enable pnpm && pnpm install
-RUN npm install -g pnpm && pnpm install
+RUN pnpm install --frozen-lockfile
 
 # Copy the rest of your app's source code
 COPY . .

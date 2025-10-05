@@ -169,28 +169,63 @@ You have two options for running Bolt.DIY: directly on your machine or using Doc
    
 ### Option 2: Using Docker
 
-This option requires some familiarity with Docker but provides a more isolated environment.
+This option requires some familiarity with Docker but provides a reproducible, isolated environment that mirrors how the application is deployed in production.
 
-#### Additional Prerequisite
+#### Additional Prerequisites
 
-- Install Docker: [Download Docker](https://www.docker.com/)
+- Install [Docker Engine or Docker Desktop](https://www.docker.com/)
+- Ensure Docker Compose is available (bundled with Docker Desktop or installable separately)
 
-#### Steps:
+#### 1. Create an environment file
 
-1. **Build the Docker Image**:
+Copy the example configuration so the container has the API keys it needs:
 
-   ```bash
-   # Using npm script:
-   npm run dockerbuild
+```bash
+cp .env.example .env.local
+# edit .env.local and add the providers you plan to use
+```
 
-   # OR using direct Docker command:
-   docker build . --target bolt-ai-development
-   ```
+> The file is optional, but without it most providers will be disabled inside the container.
 
-2. **Run the Container**:
-   ```bash
-   docker compose --profile development up
-   ```
+#### 2. Build an image
+
+Choose the target that matches your workflow:
+
+```bash
+# Development image with hot reloading
+docker build --target bolt-ai-development -t bolt-ai:development .
+
+# Production-like image that pre-builds the Remix app
+docker build --target bolt-ai-production -t bolt-ai:production .
+
+# Equivalent pnpm helpers are also available:
+pnpm dockerbuild     # development
+pnpm dockerbuild:prod  # production
+```
+
+#### 3. Start the stack
+
+Run the container with Docker Compose to expose the Remix dev server on port 5173:
+
+```bash
+# Development profile (bind-mounts the repository for live editing)
+docker compose up --build app-dev
+
+# Production profile (serves the pre-built app)
+docker compose --profile production up --build app-prod
+```
+
+By default the UI is available at `http://localhost:5173`. Pass `-d` to run the containers in the background.
+
+#### 4. (Optional) Use the prebuilt image
+
+If you don't want to build locally, you can run the image published to GitHub Container Registry:
+
+```bash
+docker compose --profile prebuilt up app-prebuild
+```
+
+This pulls `ghcr.io/stackblitz-labs/bolt.diy:latest` and launches it with the same environment variables.
 
 ## Configuring API Keys and Providers
 
