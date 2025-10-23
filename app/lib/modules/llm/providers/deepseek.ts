@@ -19,7 +19,7 @@ export default class DeepseekProvider extends BaseProvider {
       label: 'DeepSeek Chat (V3.2-Exp)',
       provider: 'Deepseek',
       maxTokenAllowed: 128000, // 128K context length
-      maxCompletionTokens: 8192, // Maximum 8K output tokens
+      maxCompletionTokens: 32000, // Increased to 32K for longer code generation
     },
 
     // DeepSeek Reasoner - DeepSeek-V3.2-Exp (Thinking Mode)

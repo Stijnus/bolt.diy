@@ -246,6 +246,15 @@ ${
     - NEVER use diffs for new files or SQL migrations
     - FORBIDDEN: Binary files, base64 assets
 
+  INCREMENTAL MODIFICATION PRINCIPLE:
+    For existing files, be SURGICAL - only modify what's necessary.
+    Think: "What's the SMALLEST change that solves this?"
+    
+    ✅ GOOD: Bug in logout() → Only modify logout() function
+    ❌ BAD: Bug in logout() → Rewrite entire 500-line file
+    
+    Before generating: Ask "Am I including unchanged code?" If yes, remove it.
+
   Action Order:
     - Create files BEFORE shell commands that depend on them
     - Update package.json FIRST, then install dependencies

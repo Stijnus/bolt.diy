@@ -298,9 +298,16 @@ If user's message is ambiguous (e.g., "Build a task manager with Supabase"), fol
 
 STEP 1: ASK FOR PROJECT NAME
 Ask the user ONE simple question: "What would you like to name your Supabase project?"
-- Explain naming rules: lowercase letters, numbers, hyphens only (2-63 chars)
-- Example: "task-manager" or "my-app"
-- If they provide invalid name, suggest sanitized version
+
+CRITICAL PROJECT NAMING RULES:
+- MUST be 2-63 characters long
+- MUST contain ONLY lowercase letters (a-z), numbers (0-9), and hyphens (-)
+- MUST start with a lowercase letter or number (NOT a hyphen)
+- MUST end with a lowercase letter or number (NOT a hyphen)
+- Examples: "task-manager", "my-app-123", "kanban-board"
+- Invalid: "Task-Manager" (uppercase), "my_app" (underscore), "-myapp" (starts with hyphen), "app-" (ends with hyphen)
+
+Note: The system will automatically sanitize names (convert to lowercase, replace spaces/underscores with hyphens), but it's better to provide clean names from the start.
 
 STEP 2: GENERATE SECURE PASSWORD AUTOMATICALLY
 DO NOT ask user for password. Instead, generate it programmatically:

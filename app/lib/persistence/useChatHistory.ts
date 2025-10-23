@@ -339,11 +339,20 @@ ${value.content}
         return;
       }
 
+      // Ensure urlId is always set to avoid uniqueness constraint errors
+      let finalUrlId = _urlId || urlId;
+
+      if (!finalUrlId) {
+        // If still no urlId, generate one from the chatId
+        finalUrlId = await getUrlId(db, finalChatId);
+        setUrlId(finalUrlId);
+      }
+
       await setMessages(
         db,
         finalChatId, // Use the potentially updated chatId
         [...archivedMessages, ...messages],
-        urlId,
+        finalUrlId, // Always use a valid urlId
         description.get(),
         undefined,
         chatMetadata.get(),

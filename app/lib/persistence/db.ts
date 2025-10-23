@@ -19,7 +19,7 @@ export async function openDatabase(): Promise<IDBDatabase | undefined> {
   }
 
   return new Promise((resolve) => {
-    const request = indexedDB.open('boltHistory', 2);
+    const request = indexedDB.open('boltHistory', 3); // Bumped version to fix urlId index
 
     request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
       const db = (event.target as IDBOpenDBRequest).result;
@@ -36,6 +36,24 @@ export async function openDatabase(): Promise<IDBDatabase | undefined> {
       if (oldVersion < 2) {
         if (!db.objectStoreNames.contains('snapshots')) {
           db.createObjectStore('snapshots', { keyPath: 'chatId' });
+        }
+      }
+
+      // Version 3: Recreate urlId index to allow non-unique values
+      if (oldVersion < 3) {
+        const transaction = (event.target as IDBOpenDBRequest).transaction;
+
+        if (transaction && db.objectStoreNames.contains('chats')) {
+          const store = transaction.objectStore('chats');
+
+          // Delete old unique index if it exists
+          if (store.indexNames.contains('urlId')) {
+            store.deleteIndex('urlId');
+          }
+
+          // Recreate as non-unique index
+          store.createIndex('urlId', 'urlId', { unique: false });
+          logger.info('Migrated urlId index to non-unique');
         }
       }
     };

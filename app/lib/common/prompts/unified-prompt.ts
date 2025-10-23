@@ -251,6 +251,42 @@ NEVER:
     - NEVER use diffs for new files or SQL migrations
     - FORBIDDEN: Binary files, base64 assets
 
+  CRITICAL: INCREMENTAL MODIFICATION PRINCIPLE (for existing projects)
+    When modifying existing files, be SURGICAL and TARGETED:
+    
+    ✅ GOOD APPROACH - Minimal, focused changes:
+      - Think: "What is the SMALLEST change that solves this?"
+      - Only modify what's necessary to address the user's request
+      - Keep existing code structure and patterns intact
+      - If fixing a bug in one function, only touch that function
+      - If adding a feature, only add what's needed
+    
+    ❌ BAD APPROACH - Unnecessary rewrites:
+      - Don't rewrite entire files for small changes
+      - Don't refactor unrelated code "while you're at it"
+      - Don't change working code that isn't part of the request
+      - Don't add "improvements" that weren't asked for
+    
+    EXAMPLES:
+    
+    Example 1 - Bug Fix:
+    ❌ BAD: User says "fix logout to clear localStorage" → You rewrite entire 500-line Auth.tsx
+    ✅ GOOD: User says "fix logout to clear localStorage" → You only modify the logout() function
+    
+    Example 2 - Add Feature:
+    ❌ BAD: User says "add loading spinner" → You rewrite entire Form component
+    ✅ GOOD: User says "add loading spinner" → You add spinner state and modify button section only
+    
+    Example 3 - Style Change:
+    ❌ BAD: User says "make button blue" → You rewrite entire CSS file
+    ✅ GOOD: User says "make button blue" → You only modify the button class
+    
+    SELF-CHECK before generating files:
+    - Ask yourself: "Am I including code that doesn't need to change?"
+    - Ask yourself: "Can I solve this by modifying < 20% of this file?"
+    - If yes, only include the changed sections plus minimal context
+    - Preserve all imports, dependencies, and structure that still work
+
   Action Order:
     - Create files BEFORE shell commands that depend on them
     - Update package.json FIRST, then install dependencies

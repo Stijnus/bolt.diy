@@ -17,7 +17,7 @@ export const PROVIDER_COMPLETION_LIMITS: Record<string, number> = {
   Cerebras: 8192, // Cerebras ultra-fast inference models (Llama, Qwen) with 128k context
   Cloudflare: 8192, // Cloudflare Workers AI models (varies by model, supports OpenAI GPT, Llama, Mistral)
   Cohere: 4000,
-  DeepSeek: 8192, // Conservative default for V2.5 models, V3 models support 128k+ context
+  DeepSeek: 64000, // Increased to match DeepSeek V3.2 Reasoner capabilities (up to 64K output)
   Groq: 8192, // Uses API-provided completion limits (no artificial caps)
   HuggingFace: 4096,
   Mistral: 8192, // Updated with dynamic discovery, models support 32k-256k context
@@ -35,8 +35,11 @@ export const PROVIDER_COMPLETION_LIMITS: Record<string, number> = {
 // Re-export isReasoningModel from shared utilities for backward compatibility
 export { isReasoningModel } from '~/lib/common/model-utils';
 
-// limits the number of model responses that can be returned in a single request
-export const MAX_RESPONSE_SEGMENTS = 2;
+/*
+ * Limits the number of model responses that can be returned in a single request
+ * Increased to allow longer code generation sessions
+ */
+export const MAX_RESPONSE_SEGMENTS = 5;
 
 export interface File {
   type: 'file';

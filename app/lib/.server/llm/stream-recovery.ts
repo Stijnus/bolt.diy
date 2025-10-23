@@ -18,7 +18,7 @@ export class StreamRecoveryManager {
   constructor(private _options: StreamRecoveryOptions = {}) {
     this._options = {
       maxRetries: 3,
-      timeout: 30000, // 30 seconds default
+      timeout: 120000, // 120 seconds (2 minutes) - increased for longer code generation
       ..._options,
     };
   }

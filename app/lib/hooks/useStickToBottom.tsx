@@ -195,7 +195,7 @@ export const useStickToBottom = (options: StickToBottomOptions = {}) => {
 
       get scrollTop() {
         // Cache dimensions for the current animation frame to prevent layout thrashing
-        if (dimensionsCacheFrame !== requestAnimationFrame(() => {})) {
+        if (dimensionsCacheFrame === undefined) {
           dimensionsCacheFrame = requestAnimationFrame(() => {
             cachedDimensions = undefined;
             dimensionsCacheFrame = undefined;

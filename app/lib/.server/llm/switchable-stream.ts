@@ -47,7 +47,17 @@ export default class SwitchableStream extends TransformStream {
         this._controller.enqueue(value);
       }
     } catch (error) {
-      console.log(error);
+      console.error('[SwitchableStream] Stream error:', error);
+
+      // Log more details about the error
+      if (error instanceof Error) {
+        console.error('[SwitchableStream] Error details:', {
+          message: error.message,
+          name: error.name,
+          stack: error.stack,
+        });
+      }
+
       this._controller.error(error);
     }
   }

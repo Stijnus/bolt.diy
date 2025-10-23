@@ -910,12 +910,12 @@ export class ActionRunner {
   }
 
   async #handleProjectCreate(action: SupabaseAction) {
-    const { name, organizationId, region, plan, dbPassword } = action;
+    const { name: rawName, organizationId, region, plan, dbPassword } = action;
     const connection = supabaseConnection.get();
 
     // Debug logging for organization selection
     logger.debug('Creating project with organization context:', {
-      projectName: name,
+      projectName: rawName,
       requestedOrgId: organizationId,
       availableOrgs: connection.organizations?.map((o) => ({ id: o.id, name: o.name })),
       existingProjectsOrgId: connection.stats?.projects?.[0]?.organization_id,
@@ -935,7 +935,7 @@ export class ActionRunner {
       throw new Error('Supabase authentication required');
     }
 
-    if (!name || !organizationId || !dbPassword) {
+    if (!rawName || !organizationId || !dbPassword) {
       this.onSupabaseAlert?.({
         type: 'error',
         title: 'Missing Project Details',
@@ -945,6 +945,32 @@ export class ActionRunner {
         operation: 'project-create',
       });
       throw new Error('Missing required project details');
+    }
+
+    /*
+     * Sanitize project name to meet Supabase requirements
+     * Converts to lowercase, replaces spaces/underscores with hyphens, and removes invalid characters
+     */
+
+    const name = this.#sanitizeProjectName(rawName);
+
+    // Validate the sanitized name
+    const validation = this.#validateProjectName(name);
+
+    if (!validation.valid) {
+      this.onSupabaseAlert?.({
+        type: 'error',
+        title: 'Invalid Project Name',
+        description: validation.error || 'Project name does not meet requirements',
+        content: `Original name: "${rawName}"\nSanitized to: "${name}"\n\nRequirements:\n- 2-63 characters\n- Lowercase letters, numbers, and hyphens only\n- Must start and end with alphanumeric characters`,
+        source: 'supabase',
+        operation: 'project-create',
+      });
+      throw new Error(validation.error || 'Invalid project name');
+    }
+
+    if (rawName !== name) {
+      logger.info(`Project name sanitized: "${rawName}" -> "${name}"`);
     }
 
     // Show project creation started alert
@@ -1554,6 +1580,68 @@ export class ActionRunner {
       deployStatus: deployStatus as any,
       source: details?.source || 'netlify',
     });
+  }
+
+  /**
+   * Sanitizes a project name to meet Supabase requirements
+   * - Converts to lowercase
+   * - Replaces spaces and underscores with hyphens
+   * - Removes invalid characters
+   * - Ensures starts/ends with alphanumeric
+   */
+  #sanitizeProjectName(name: string): string {
+    // Convert to lowercase
+    let sanitized = name.toLowerCase();
+
+    // Replace spaces and underscores with hyphens
+    sanitized = sanitized.replace(/[\s_]+/g, '-');
+
+    // Remove invalid characters (keep only lowercase letters, numbers, hyphens)
+    sanitized = sanitized.replace(/[^a-z0-9-]/g, '');
+
+    // Remove leading/trailing hyphens
+    sanitized = sanitized.replace(/^-+|-+$/g, '');
+
+    // Remove consecutive hyphens
+    sanitized = sanitized.replace(/-+/g, '-');
+
+    // Ensure minimum length (if too short, generate a valid name)
+    if (sanitized.length < 2) {
+      sanitized = 'project-' + Math.random().toString(36).substring(2, 8);
+    }
+
+    // Ensure maximum length
+    if (sanitized.length > 63) {
+      sanitized = sanitized.substring(0, 63);
+
+      // Make sure it doesn't end with a hyphen after truncation
+      sanitized = sanitized.replace(/-+$/, '');
+    }
+
+    return sanitized;
+  }
+
+  /**
+   * Validates a project name against Supabase requirements
+   */
+  #validateProjectName(name: string): { valid: boolean; error?: string } {
+    if (!name || name.length < 2) {
+      return { valid: false, error: 'Project name must be at least 2 characters long' };
+    }
+
+    if (name.length > 63) {
+      return { valid: false, error: 'Project name must be at most 63 characters long' };
+    }
+
+    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(name)) {
+      return {
+        valid: false,
+        error:
+          'Project name must start and end with lowercase letters or numbers, and only contain lowercase letters, numbers, and hyphens',
+      };
+    }
+
+    return { valid: true };
   }
 
   async #validateShellCommand(command: string): Promise<{
