@@ -58,8 +58,15 @@ export interface SupabaseConnectionState {
   credentials?: SupabaseCredentials;
 }
 
-const savedConnection = typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_connection') : null;
-const savedCredentials = typeof localStorage !== 'undefined' ? localStorage.getItem('supabaseCredentials') : null;
+const storage =
+  typeof globalThis !== 'undefined' &&
+  typeof globalThis.localStorage !== 'undefined' &&
+  typeof globalThis.localStorage.getItem === 'function'
+    ? globalThis.localStorage
+    : null;
+
+const savedConnection = storage ? storage.getItem('supabase_connection') : null;
+const savedCredentials = storage ? storage.getItem('supabaseCredentials') : null;
 
 const initialState: SupabaseConnectionState = savedConnection
   ? JSON.parse(savedConnection)
@@ -82,13 +89,13 @@ if (savedCredentials && !initialState.credentials) {
 
 export const supabaseConnection = atom<SupabaseConnectionState>(initialState);
 
-if (initialState.token && !initialState.stats) {
-  fetchSupabaseStats(initialState.token).catch(console.error);
-}
-
 export const isConnecting = atom(false);
 export const isFetchingStats = atom(false);
 export const isFetchingApiKeys = atom(false);
+
+if (initialState.token && !initialState.stats) {
+  fetchSupabaseStats(initialState.token).catch(console.error);
+}
 
 export function updateSupabaseConnection(connection: Partial<SupabaseConnectionState>) {
   const currentState = supabaseConnection.get();
@@ -130,16 +137,16 @@ export function updateSupabaseConnection(connection: Partial<SupabaseConnectionS
    * Always save the connection state to localStorage to persist across chats
    */
   if (connection.user || connection.token || connection.selectedProjectId !== undefined || connection.credentials) {
-    localStorage.setItem('supabase_connection', JSON.stringify(newState));
+    storage?.setItem('supabase_connection', JSON.stringify(newState));
 
     if (newState.credentials) {
-      localStorage.setItem('supabaseCredentials', JSON.stringify(newState.credentials));
+      storage?.setItem('supabaseCredentials', JSON.stringify(newState.credentials));
     } else {
-      localStorage.removeItem('supabaseCredentials');
+      storage?.removeItem('supabaseCredentials');
     }
   } else {
-    localStorage.removeItem('supabase_connection');
-    localStorage.removeItem('supabaseCredentials');
+    storage?.removeItem('supabase_connection');
+    storage?.removeItem('supabaseCredentials');
   }
 }
 
