@@ -22,6 +22,16 @@ import { Cpu, Server, BookOpen, Activity, PackageOpen, Monitor, Loader2, RotateC
 // Type definitions
 type ViewMode = 'dashboard' | 'guide' | 'status';
 
+/**
+ * LocalProvidersTab manages local AI model providers (Ollama, LM Studio, OpenAI-like).
+ *
+ * Key distinctions:
+ * - Local Ollama: Runs on localhost/127.0.0.1, doesn't require authentication
+ * - Cloud Ollama: Remote Ollama Cloud service, requires API key authentication
+ * - LM Studio: Local inference server, no authentication typically needed
+ * - OpenAI-like: Compatible API endpoints, may require authentication
+ */
+
 export default function LocalProvidersTab() {
   const { providers, updateProviderSettings } = useSettings();
   const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
@@ -30,6 +40,8 @@ export default function LocalProvidersTab() {
   const [lmStudioModels, setLMStudioModels] = useState<LMStudioModel[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [isLoadingLMStudioModels, setIsLoadingLMStudioModels] = useState(false);
+  const [ollamaError, setOllamaError] = useState<string | null>(null);
+  const [lmStudioError, setLMStudioError] = useState<string | null>(null);
   const { toast } = useToast();
   const { startMonitoring, stopMonitoring } = useLocalModelHealth();
 
@@ -113,11 +125,30 @@ export default function LocalProvidersTab() {
   const fetchOllamaModels = async () => {
     try {
       setIsLoadingModels(true);
+      setOllamaError(null);
 
-      const response = await fetch(`${OLLAMA_API_URL}/api/tags`);
+      const ollamaProvider = filteredProviders.find((p) => p.name === 'Ollama');
+      const baseUrl = ollamaProvider?.settings.baseUrl || OLLAMA_API_URL;
+
+      const isLocalOllama = baseUrl?.includes('localhost') || baseUrl?.includes('127.0.0.1');
+      const isCloudOllama = !isLocalOllama;
+
+      const response = await fetch(`${baseUrl}/api/tags`);
 
       if (!response.ok) {
-        throw new Error('Failed to fetch models');
+        let errorMsg = `Failed to fetch models (${response.status})`;
+
+        if (response.status === 401 || response.status === 403) {
+          errorMsg = isCloudOllama
+            ? 'Authentication failed. Please verify your Ollama Cloud API key.'
+            : "Authentication failed. Local Ollama typically doesn't require authentication.";
+        } else if (response.status === 404) {
+          errorMsg = isCloudOllama
+            ? 'Ollama Cloud service not found. Please verify the API endpoint.'
+            : 'Ollama service not found. Make sure Ollama is running at the specified endpoint.';
+        }
+
+        throw new Error(errorMsg);
       }
 
       const data = (await response.json()) as { models: OllamaModel[] };
@@ -127,8 +158,11 @@ export default function LocalProvidersTab() {
           status: 'idle' as const,
         })),
       );
-    } catch {
-      console.error('Error fetching Ollama models');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch Ollama models';
+      setOllamaError(errorMessage);
+      console.error('Error fetching Ollama models:', error);
+      toast(errorMessage, { type: 'error' });
     } finally {
       setIsLoadingModels(false);
     }
@@ -137,18 +171,25 @@ export default function LocalProvidersTab() {
   const fetchLMStudioModels = async (baseUrl: string) => {
     try {
       setIsLoadingLMStudioModels(true);
+      setLMStudioError(null);
 
       const response = await fetch(`${baseUrl}/v1/models`);
 
       if (!response.ok) {
-        throw new Error('Failed to fetch LM Studio models');
+        const errorMsg =
+          response.status === 404
+            ? 'LM Studio service not found. Make sure LM Studio is running and the server is started.'
+            : `Failed to fetch LM Studio models (${response.status})`;
+        throw new Error(errorMsg);
       }
 
       const data = (await response.json()) as { data: LMStudioModel[] };
       setLMStudioModels(data.data || []);
-    } catch {
-      console.error('Error fetching LM Studio models');
-      setLMStudioModels([]);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch LM Studio models';
+      setLMStudioError(errorMessage);
+      console.error('Error fetching LM Studio models:', error);
+      toast(errorMessage, { type: 'error' });
     } finally {
       setIsLoadingLMStudioModels(false);
     }
@@ -390,6 +431,29 @@ export default function LocalProvidersTab() {
                           <ModelCardSkeleton key={i} />
                         ))}
                       </div>
+                    ) : ollamaError ? (
+                      <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 mt-0.5">
+                            <div className="flex items-center justify-center h-5 w-5 rounded-full bg-red-500/20">
+                              <span className="text-red-500 text-xs font-bold">!</span>
+                            </div>
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-red-500 mb-1">Failed to load models</p>
+                            <p className="text-xs text-red-400 mb-3">{ollamaError}</p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={fetchOllamaModels}
+                              disabled={isLoadingModels}
+                              className="bg-red-500/10 hover:bg-red-500/20 border-red-500/30 text-red-500 text-xs"
+                            >
+                              Retry
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
                     ) : ollamaModels.length === 0 ? (
                       <div className="text-center py-8">
                         <PackageOpen className="w-16 h-16 mx-auto text-bolt-elements-textTertiary mb-4" />
@@ -471,6 +535,29 @@ export default function LocalProvidersTab() {
                         {Array.from({ length: 3 }).map((_, i) => (
                           <ModelCardSkeleton key={i} />
                         ))}
+                      </div>
+                    ) : lmStudioError ? (
+                      <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 mt-0.5">
+                            <div className="flex items-center justify-center h-5 w-5 rounded-full bg-red-500/20">
+                              <span className="text-red-500 text-xs font-bold">!</span>
+                            </div>
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-red-500 mb-1">Failed to load models</p>
+                            <p className="text-xs text-red-400 mb-3">{lmStudioError}</p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => fetchLMStudioModels(provider.settings.baseUrl!)}
+                              disabled={isLoadingLMStudioModels}
+                              className="bg-red-500/10 hover:bg-red-500/20 border-red-500/30 text-red-500 text-xs"
+                            >
+                              Retry
+                            </Button>
+                          </div>
+                        </div>
                       </div>
                     ) : lmStudioModels.length === 0 ? (
                       <div className="text-center py-8">

@@ -119,7 +119,7 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
               />
               {(props.providerList || []).length > 0 &&
                 props.provider &&
-                !LOCAL_PROVIDERS.includes(props.provider.name) && (
+                (!LOCAL_PROVIDERS.includes(props.provider.name) || props.provider.name === 'Ollama') && (
                   <APIKeyManager
                     provider={props.provider}
                     apiKey={props.apiKeys[props.provider.name] || ''}

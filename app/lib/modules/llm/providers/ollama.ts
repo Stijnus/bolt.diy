@@ -29,12 +29,13 @@ export interface OllamaApiResponse {
 
 export default class OllamaProvider extends BaseProvider {
   name = 'Ollama';
-  getApiKeyLink = 'https://ollama.com/download';
-  labelForGetApiKey = 'Download Ollama';
-  icon = 'i-ph:cloud-arrow-down';
+  getApiKeyLink = 'https://ollama.com/blog/ollama-cloud';
+  labelForGetApiKey = 'Get Cloud API Key';
+  icon = 'i-ph:cloud';
 
   config = {
     baseUrlKey: 'OLLAMA_API_BASE_URL',
+    apiTokenKey: 'OLLAMA_API_KEY',
   };
 
   staticModels: ModelInfo[] = [];
@@ -54,6 +55,30 @@ export default class OllamaProvider extends BaseProvider {
     );
   }
 
+  private _buildAuthHeaders(apiKey?: string): Record<string, string> | undefined {
+    if (!apiKey) {
+      return undefined;
+    }
+
+    return {
+      Authorization: `Bearer ${apiKey}`,
+    };
+  }
+
+  private _resolveApiBaseUrl(baseUrl: string): string {
+    let normalizedBaseUrl = baseUrl.trim();
+
+    if (normalizedBaseUrl.endsWith('/')) {
+      normalizedBaseUrl = normalizedBaseUrl.slice(0, -1);
+    }
+
+    if (!normalizedBaseUrl.endsWith('/api')) {
+      normalizedBaseUrl = `${normalizedBaseUrl}/api`;
+    }
+
+    return normalizedBaseUrl;
+  }
+
   getDefaultNumCtx(serverEnv?: Env): number {
     const envRecord = this._convertEnvToRecord(serverEnv);
     return envRecord.DEFAULT_NUM_CTX ? parseInt(envRecord.DEFAULT_NUM_CTX, 10) : 32768;
@@ -64,17 +89,19 @@ export default class OllamaProvider extends BaseProvider {
     settings?: IProviderSetting,
     serverEnv: Record<string, string> = {},
   ): Promise<ModelInfo[]> {
-    let { baseUrl } = this.getProviderBaseUrlAndKey({
+    const { baseUrl: initialBaseUrl, apiKey } = this.getProviderBaseUrlAndKey({
       apiKeys,
       providerSettings: settings,
       serverEnv,
       defaultBaseUrlKey: 'OLLAMA_API_BASE_URL',
-      defaultApiTokenKey: '',
+      defaultApiTokenKey: 'OLLAMA_API_KEY',
     });
 
-    if (!baseUrl) {
+    if (!initialBaseUrl) {
       throw new Error('No baseUrl found for OLLAMA provider');
     }
+
+    let baseUrl = initialBaseUrl;
 
     if (typeof window === 'undefined') {
       /*
@@ -87,7 +114,16 @@ export default class OllamaProvider extends BaseProvider {
       baseUrl = isDocker ? baseUrl.replace('127.0.0.1', 'host.docker.internal') : baseUrl;
     }
 
-    const response = await fetch(`${baseUrl}/api/tags`);
+    const apiBaseUrl = this._resolveApiBaseUrl(baseUrl);
+
+    const response = await fetch(`${apiBaseUrl}/tags`, {
+      headers: this._buildAuthHeaders(apiKey),
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Failed to authenticate with Ollama. Please verify your API key and permissions.');
+    }
+
     const data = (await response.json()) as OllamaApiResponse;
 
     // console.log({ ollamamodels: data.models });
@@ -145,19 +181,20 @@ export default class OllamaProvider extends BaseProvider {
     const { apiKeys, providerSettings, serverEnv, model } = options;
     const envRecord = this._convertEnvToRecord(serverEnv);
 
-    let { baseUrl } = this.getProviderBaseUrlAndKey({
+    const { baseUrl: initialBaseUrl, apiKey } = this.getProviderBaseUrlAndKey({
       apiKeys,
       providerSettings: providerSettings?.[this.name],
       serverEnv: envRecord,
       defaultBaseUrlKey: 'OLLAMA_API_BASE_URL',
-      defaultApiTokenKey: '',
+      defaultApiTokenKey: 'OLLAMA_API_KEY',
     });
 
     // Backend: Check if we're running in Docker
-    if (!baseUrl) {
+    if (!initialBaseUrl) {
       throw new Error('No baseUrl found for OLLAMA provider');
     }
 
+    let baseUrl = initialBaseUrl;
     const isDocker = process?.env?.RUNNING_IN_DOCKER === 'true' || envRecord.RUNNING_IN_DOCKER === 'true';
     baseUrl = isDocker ? baseUrl.replace('localhost', 'host.docker.internal') : baseUrl;
     baseUrl = isDocker ? baseUrl.replace('127.0.0.1', 'host.docker.internal') : baseUrl;
@@ -168,7 +205,23 @@ export default class OllamaProvider extends BaseProvider {
       numCtx: this.getDefaultNumCtx(serverEnv),
     }) as LanguageModelV1 & { config: any };
 
-    ollamaInstance.config.baseURL = `${baseUrl}/api`;
+    const apiBaseUrl = this._resolveApiBaseUrl(baseUrl);
+    ollamaInstance.config.baseURL = apiBaseUrl;
+
+    if (apiKey) {
+      const existingHeadersFn =
+        typeof ollamaInstance.config.headers === 'function'
+          ? (ollamaInstance.config.headers as () => Record<string, string | undefined>)
+          : undefined;
+
+      const existingHeaders = existingHeadersFn ? existingHeadersFn() : {};
+      const authHeaders = this._buildAuthHeaders(apiKey) ?? {};
+
+      ollamaInstance.config.headers = () => ({
+        ...existingHeaders,
+        ...authHeaders,
+      });
+    }
 
     return ollamaInstance;
   };
