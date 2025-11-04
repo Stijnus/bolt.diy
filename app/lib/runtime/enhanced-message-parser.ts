@@ -11,6 +11,8 @@ const logger = createScopedLogger('EnhancedMessageParser');
 export class EnhancedStreamingMessageParser extends StreamingMessageParser {
   private _processedCodeBlocks = new Map<string, Set<string>>();
   private _artifactCounter = 0;
+  private _enhancedMessages = new Map<string, string>(); // Stores enhanced versions of messages
+  private _messagesToReplace = new Set<string>();
 
   // Optimized command pattern lookup
   private _commandPatternMap = new Map<string, RegExp>([
@@ -32,22 +34,34 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
     super(options);
   }
 
-  parse(messageId: string, input: string): string {
-    // First try the normal parsing
-    let output = super.parse(messageId, input);
+  parse(messageId: string, input: string, isStreaming: boolean = true): string {
+    // If artifacts are already present, parse normally
+    if (this._hasDetectedArtifacts(input)) {
+      return super.parse(messageId, input);
+    }
 
-    // If no artifacts were detected, check for code blocks that should be files
-    if (!this._hasDetectedArtifacts(input)) {
+    // When streaming completes, try to enhance if we haven't already
+    if (!isStreaming && !this._enhancedMessages.has(messageId)) {
       const enhancedInput = this._detectAndWrapCodeBlocks(messageId, input);
 
       if (enhancedInput !== input) {
-        // Reset and reparse with enhanced input
-        this.reset();
-        output = super.parse(messageId, enhancedInput);
+        this._enhancedMessages.set(messageId, enhancedInput);
+        this.resetMessageState(messageId);
+        this._messagesToReplace.add(messageId);
+        logger.debug(`Enhanced message ${messageId} with auto-detected artifacts`);
+
+        /*
+         * Parse the enhanced version
+         * Note: This only works if called when isStreaming switches from true to false
+         * We can't reparse a message that's been partially parsed
+         */
+        return super.parse(messageId, enhancedInput);
       }
     }
 
-    return output;
+    // Default: parse original input
+
+    return super.parse(messageId, input);
   }
 
   private _hasDetectedArtifacts(input: string): boolean {
@@ -78,19 +92,40 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
       // Pattern 2: Explicit file creation mentions
       {
         regex:
-          /(?:create|update|modify|edit|write|add|generate|here'?s?|file:?)\s+(?:a\s+)?(?:new\s+)?(?:file\s+)?(?:called\s+)?[`'"]*([\/\w\-\.]+\.\w+)[`'"]*:?\s*\n+```(\w*)\n([\s\S]*?)```/gi,
+          /(?:create|update|modify|edit|write|add|generate|here'?s?|file:?|save)\s+(?:a\s+)?(?:new\s+)?(?:file\s+)?(?:called\s+)?(?:named\s+)?[`'"]*([\/\w\-\.]+\.\w+)[`'"]*:?(?:\s+with)?(?:\s+the)?(?:\s+following)?(?:\s+code)?:?\s*\n+```(\w*)\n([\s\S]*?)```/gi,
+        type: 'explicit_create',
+      },
+
+      // Pattern 2b: "let's/I'll" patterns common in conversational models
+      {
+        regex:
+          /(?:let'?s|i'?ll|we'?ll)\s+(?:create|add|write|make)\s+(?:a\s+)?(?:new\s+)?(?:file\s+)?(?:called\s+)?(?:named\s+)?[`'"]*([\/\w\-\.]+\.\w+)[`'"]*:?(?:\s+with)?(?:\s+the)?(?:\s+following)?(?:\s+code)?:?\s*\n+```(\w*)\n([\s\S]*?)```/gi,
+        type: 'explicit_create',
+      },
+
+      // Pattern 2c: Conversational "I'll/let's add X to filename" patterns
+      {
+        regex:
+          /(?:let'?s|i'?ll|we'?ll)\s+(?:add|write|save|put)(?:\s+the)?(?:\s+following)?(?:\s+code)?\s+(?:to|in|into)\s+[`'"]*([\/\w\-\.]+\.\w+)[`'"]*:?\s*\n+```(\w*)\n([\s\S]*?)```/gi,
         type: 'explicit_create',
       },
 
       // Pattern 3: Code blocks with filename comments
       {
-        regex: /```(\w*)\n(?:\/\/|#|<!--)\s*(?:file:?|filename:?)\s*([\/\w\-\.]+\.\w+).*?\n([\s\S]*?)```/gi,
+        regex: /```(\w*)\n(?:\/\/|#|<!--)\s*(?:file:?|filename:?|path:?)\s*([\/\w\-\.]+\.\w+).*?\n([\s\S]*?)```/gi,
         type: 'comment_filename',
       },
 
       // Pattern 4: Code block with "in <filename>" context
       {
-        regex: /(?:in|for|update)\s+[`'"]*([\/\w\-\.]+\.\w+)[`'"]*:?\s*\n+```(\w*)\n([\s\S]*?)```/gi,
+        regex: /(?:in|for|update|inside|within|at)\s+[`'"]*([\/\w\-\.]+\.\w+)[`'"]*:?\s*\n+```(\w*)\n([\s\S]*?)```/gi,
+        type: 'in_filename',
+      },
+
+      // Pattern 4b: "add/write to <filename>" patterns
+      {
+        regex:
+          /(?:add|write|save|put)(?:\s+the)?(?:\s+following)?(?:\s+code)?\s+(?:to|in|into)\s+[`'"]*([\/\w\-\.]+\.\w+)[`'"]*:?\s*\n+```(\w*)\n([\s\S]*?)```/gi,
         type: 'in_filename',
       },
 
@@ -99,6 +134,13 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
         regex:
           /```(?:json|jsx?|tsx?|html?|vue|svelte)\n(\{[\s\S]*?"(?:name|version|scripts|dependencies|devDependencies)"[\s\S]*?\}|<\w+[^>]*>[\s\S]*?<\/\w+>[\s\S]*?)```/gi,
         type: 'structured_file',
+      },
+
+      // Pattern 6: Code blocks preceded by generic action words (more aggressive for local models)
+      {
+        regex:
+          /(?:replace|change|use this|try this|here is|this is)(?:\s+the)?(?:\s+code)?(?:\s+for)?\s+[`'"]?([\/\w\-\.]+\.\w+)[`'"]?:?\s*\n+```(\w*)\n([\s\S]*?)```/gi,
+        type: 'action_word',
       },
     ];
 
@@ -148,7 +190,10 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
         if (!this._hasFileContext(enhanced, match)) {
           // If no clear file context, skip unless it's an explicit file pattern
           const isExplicitFilePattern =
-            pattern.type === 'explicit_create' || pattern.type === 'comment_filename' || pattern.type === 'file_path';
+            pattern.type === 'explicit_create' ||
+            pattern.type === 'comment_filename' ||
+            pattern.type === 'file_path' ||
+            pattern.type === 'action_word';
 
           if (!isExplicitFilePattern) {
             return match; // Return original if no context
@@ -519,9 +564,20 @@ ${content.trim()}
     });
   }
 
+  shouldReplaceOutput(messageId: string): boolean {
+    if (this._messagesToReplace.has(messageId)) {
+      this._messagesToReplace.delete(messageId);
+      return true;
+    }
+
+    return false;
+  }
+
   reset() {
     super.reset();
     this._processedCodeBlocks.clear();
+    this._enhancedMessages.clear();
     this._artifactCounter = 0;
+    this._messagesToReplace.clear();
   }
 }

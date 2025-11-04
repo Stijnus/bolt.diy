@@ -160,6 +160,7 @@ class ArtifactInstructionsSection extends PromptSection {
   getContent(options: ProviderOptimizedPromptOptions, category: ProviderCategory): string {
     const config = getCategoryConfig(category);
     const isZAI = options.providerName === 'ZAI';
+    const isLocalModel = category === 'local-models';
 
     if (category === 'reasoning') {
       // Simplified for reasoning models - they figure out the details
@@ -179,6 +180,34 @@ class ArtifactInstructionsSection extends PromptSection {
     }
 
     if (config.prefersConcisePrompts) {
+      // Special handling for local models - be more explicit about artifact usage
+      if (isLocalModel) {
+        return `<artifact_instructions>
+  MANDATORY: ALL code, file creations, and commands MUST be in <boltArtifact> tags.
+  NEVER write code directly in chat - ALWAYS use artifacts.
+
+  Format:
+  <boltArtifact id="unique-id" title="Title">
+    <boltAction type="file" filePath="/path/to/file.js">
+    // file content here
+    </boltAction>
+    <boltAction type="shell">
+    npm install package
+    </boltAction>
+  </boltArtifact>
+
+  CRITICAL RULES:
+  1. Check existing project structure first
+  2. Add to existing projects, don't recreate
+  3. One <boltArtifact> per response
+  4. Directory: ${options.cwd || WORK_DIR}
+  5. Use latest package versions
+
+  Types: shell (commands), file (create/update), start (project startup)
+  Order: Files first → Dependencies → Start last
+</artifact_instructions>`;
+      }
+
       return `<artifact_instructions>
   Create artifacts containing files and shell commands.
 

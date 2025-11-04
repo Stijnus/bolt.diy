@@ -7,10 +7,62 @@ on:
 
 permissions:
   contents: write
+  checks: read
 
 jobs:
+  check-ci-status:
+    name: Check CI Status
+    runs-on: ubuntu-latest
+    outputs:
+      ci-passed: ${{ steps.check-status.outputs.passed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check latest CI run status
+        id: check-status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: runs } = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'ci.yaml',
+              branch: 'main',
+              per_page: 1,
+              status: 'completed'
+            });
+            
+            if (runs.workflow_runs.length === 0) {
+              console.log('❌ No completed CI runs found');
+              core.setOutput('passed', 'false');
+              return;
+            }
+            
+            const latestRun = runs.workflow_runs[0];
+            const commitSha = context.sha;
+            
+            if (latestRun.head_sha !== commitSha) {
+              console.log(`❌ Latest CI run (${latestRun.head_sha.substring(0, 7)}) does not match current commit (${commitSha.substring(0, 7)})`);
+              core.setOutput('passed', 'false');
+              return;
+            }
+            
+            if (latestRun.conclusion !== 'success') {
+              console.log(`❌ Latest CI run failed with status: ${latestRun.conclusion}`);
+              core.setOutput('passed', 'false');
+              return;
+            }
+            
+            console.log('✅ Latest CI run passed');
+            core.setOutput('passed', 'true');
+
   prepare-release:
-    if: contains(github.event.head_commit.message, '#release')
+    name: Prepare Release
+    needs: check-ci-status
+    if: |
+      contains(github.event.head_commit.message, '#release') &&
+      needs.check-ci-status.outputs.ci-passed == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -88,8 +140,17 @@ jobs:
         env:
           NEW_VERSION: ${{ steps.bump_version.outputs.new_version }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-        run: .github/scripts/generate-changelog.sh
+        run: |
+          set -e
+          if ! .github/scripts/generate-changelog.sh; then
+            echo "❌ Changelog generation failed"
+            exit 1
+          fi
+          if [ ! -f "changelog.md" ]; then
+            echo "❌ changelog.md was not created"
+            exit 1
+          fi
+          echo "✅ Changelog generated successfully"
 
       - name: Get the latest commit hash and version tag
         run: |
@@ -98,30 +159,122 @@ jobs:
 
       - name: Commit and Tag Release
         run: |
+          set -e
+          echo "✅ Pulling latest changes..."
           git pull
+          
+          echo "✅ Verifying files to commit..."
+          for file in package.json pnpm-lock.yaml changelog.md; do
+            if [ ! -f "$file" ]; then
+              echo "❌ Required file missing: $file"
+              exit 1
+            fi
+          done
+          
+          echo "✅ Adding files..."
           git add package.json pnpm-lock.yaml changelog.md
+          
+          echo "✅ Committing..."
           git commit -m "chore: release version ${{ steps.bump_version.outputs.new_version }}"
+          
+          echo "✅ Creating tag..."
           git tag "v${{ steps.bump_version.outputs.new_version }}"
+          
+          echo "✅ Pushing commits..."
           git push
+          
+          echo "✅ Pushing tags..."
           git push --tags
 
       - name: Update Stable Branch
         run: |
+          set -e
           if ! git checkout stable 2>/dev/null; then
-            echo "Creating new stable branch..."
+            echo "✅ Creating new stable branch..."
             git checkout -b stable
+          else
+            echo "✅ Switched to existing stable branch"
           fi
+          
+          echo "✅ Merging main into stable..."
           git merge main --no-ff -m "chore: release version ${{ steps.bump_version.outputs.new_version }}"
-          git push --set-upstream origin stable --force
+          
+          echo "✅ Pushing stable branch..."
+          git push --set-upstream origin stable
 
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -e
           VERSION="v${{ steps.bump_version.outputs.new_version }}"
-          # Save changelog to a file
+          
+          echo "✅ Preparing release notes..."
           echo "${{ steps.changelog.outputs.content }}" > release_notes.md
-          gh release create "$VERSION" \
-            --title "Release $VERSION" \
-            --notes-file release_notes.md \
-            --target stable
+          
+          if [ ! -s "release_notes.md" ]; then
+            echo "❌ Release notes are empty"
+            exit 1
+          fi
+          
+          echo "✅ Creating GitHub release..."
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "⚠️ Release $VERSION already exists, updating..."
+            gh release edit "$VERSION" \
+              --title "Release $VERSION" \
+              --notes-file release_notes.md
+          else
+            gh release create "$VERSION" \
+              --title "Release $VERSION" \
+              --notes-file release_notes.md \
+              --target stable
+          fi
+          
+          echo "✅ GitHub release created successfully"
+
+  notify-failure:
+    name: Notify Release Failure
+    runs-on: ubuntu-latest
+    if: |
+      always() &&
+      (contains(github.event.head_commit.message, '#release') &&
+       (needs.check-ci-status.result == 'failure' ||
+        needs.prepare-release.result == 'failure'))
+    needs: [check-ci-status, prepare-release]
+    
+    steps:
+      - name: Notify about release failure
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const ciStatus = '${{ needs.check-ci-status.outputs.ci-passed }}';
+            const releaseResult = '${{ needs.prepare-release.result }}';
+            
+            let reason = "Unknown failure";
+            if (ciStatus === 'false') {
+              reason = "CI checks failed or are not complete for this commit";
+            } else if (releaseResult === 'failure') {
+              reason = "Release preparation failed (check workflow logs)";
+            }
+            
+            const issueBody = `
+            ## ❌ Release Failed
+            
+            **Commit**: ${context.sha.substring(0, 7)}
+            **Branch**: ${context.ref.replace('refs/heads/', '')}
+            **Reason**: ${reason}
+            **Workflow**: [${context.runId}](${context.payload.repository.html_url}/actions/runs/${context.runId})
+            
+            Please check the workflow logs and ensure:
+            - All CI checks are passing
+            - The commit message contains a valid release tag (#release, #release:minor, or #release:major)
+            - All required files are present
+            `;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 Release failed for commit ${context.sha.substring(0, 7)}`,
+              body: issueBody,
+              labels: ['release-failure', 'bug']
+            });

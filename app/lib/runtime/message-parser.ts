@@ -335,6 +335,10 @@ export class StreamingMessageParser {
     this.#messages.clear();
   }
 
+  protected resetMessageState(messageId: string) {
+    this.#messages.delete(messageId);
+  }
+
   #parseActionTag(input: string, actionOpenIndex: number, actionEndIndex: number) {
     const actionTag = input.slice(actionOpenIndex, actionEndIndex + 1);
 

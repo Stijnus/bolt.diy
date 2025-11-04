@@ -67,10 +67,12 @@ export function useMessageParser() {
 
     for (const [index, message] of messages.entries()) {
       if (message.role === 'assistant' || message.role === 'user') {
-        const newParsedContent = messageParser.parse(message.id, extractTextContent(message));
+        // Pass isLoading to parser - when false (streaming complete), parser can enhance code blocks
+        const newParsedContent = messageParser.parse(message.id, extractTextContent(message), isLoading);
+        const shouldReplace = reset || messageParser.shouldReplaceOutput(message.id);
         setParsedMessages((prevParsed) => ({
           ...prevParsed,
-          [index]: !reset ? (prevParsed[index] || '') + newParsedContent : newParsedContent,
+          [index]: !shouldReplace ? (prevParsed[index] || '') + newParsedContent : newParsedContent,
         }));
       }
     }

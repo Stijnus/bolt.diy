@@ -173,7 +173,7 @@ describe('EnhancedStreamingMessageParser', () => {
     });
 
     const input = '```bash\nnpm install && npm run dev\n```';
-    parser.parse('test_id', input);
+    parser.parse('test_id', input, false); // isStreaming = false to trigger enhancement
 
     expect(callbacks.onActionOpen).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -199,7 +199,7 @@ describe('EnhancedStreamingMessageParser', () => {
 
     const input =
       'Create a new file called index.js:\n\n```javascript\nfunction hello() {\n  console.log("Hello World");\n}\n```';
-    parser.parse('test_id', input);
+    parser.parse('test_id', input, false);
 
     expect(callbacks.onArtifactOpen).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -222,10 +222,54 @@ describe('EnhancedStreamingMessageParser', () => {
     });
 
     const input = 'Here is some code:\n\n```javascript\nfunction test() {}\n```';
-    parser.parse('test_id', input);
+    parser.parse('test_id', input, false);
 
     expect(callbacks.onArtifactOpen).not.toHaveBeenCalled();
     expect(callbacks.onActionOpen).not.toHaveBeenCalled();
+  });
+
+  it('should enhance previously streamed content when stream completes', () => {
+    const callbacks = {
+      onArtifactOpen: vi.fn(),
+      onArtifactClose: vi.fn(),
+      onActionOpen: vi.fn(),
+      onActionClose: vi.fn(),
+    };
+
+    const parser = new EnhancedStreamingMessageParser({ callbacks });
+
+    const input = `Let's add the React component to src/App.tsx.
+
+src/App.tsx:
+
+\`\`\`tsx
+import React from 'react';
+
+export function App() {
+  return <div>Hello</div>;
+}
+\`\`\``;
+
+    parser.parse('streaming_test', input, true);
+
+    expect(callbacks.onArtifactOpen).not.toHaveBeenCalled();
+
+    const finalOutput = parser.parse('streaming_test', input, false);
+
+    expect(callbacks.onArtifactOpen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'App.tsx',
+      }),
+    );
+    expect(callbacks.onActionOpen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: expect.objectContaining({
+          type: 'file',
+          filePath: '/src/App.tsx',
+        }),
+      }),
+    );
+    expect(finalOutput).toContain('__boltArtifact__');
   });
 
   describe('AI Model Output Patterns Integration Tests', () => {
@@ -270,7 +314,7 @@ export const Button: React.FC<ButtonProps> = ({ children, onClick }) => {
 };
 \`\`\``;
 
-        parser.parse('test_gpt4_1', input);
+        parser.parse('test_gpt4_1', input, false);
 
         expect(callbacks.onArtifactOpen).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -306,7 +350,7 @@ package.json:
 }
 \`\`\``;
 
-        parser.parse('test_gpt4_2', input);
+        parser.parse('test_gpt4_2', input, false);
 
         expect(callbacks.onArtifactOpen).toHaveBeenCalled();
         expect(callbacks.onActionOpen).toHaveBeenCalledWith(
@@ -333,7 +377,7 @@ export const config = {
 };
 \`\`\``;
 
-        parser.parse('test_claude_1', input);
+        parser.parse('test_claude_1', input, false);
 
         expect(callbacks.onArtifactOpen).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -367,7 +411,7 @@ export const config = {
 }
 \`\`\``;
 
-        parser.parse('test_claude_2', input);
+        parser.parse('test_claude_2', input, false);
 
         expect(callbacks.onArtifactOpen).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -402,7 +446,7 @@ function debounce(func, wait) {
 export { formatDate, debounce };
 \`\`\``;
 
-        parser.parse('test_gemini_1', input);
+        parser.parse('test_gemini_1', input, false);
 
         expect(callbacks.onArtifactOpen).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -435,7 +479,7 @@ app.listen(3000, () => {
 });
 \`\`\``;
 
-        parser.parse('test_gemini_2', input);
+        parser.parse('test_gemini_2', input, false);
 
         expect(callbacks.onArtifactOpen).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -454,7 +498,7 @@ npm install express cors
 npm run dev
 \`\`\``;
 
-        parser.parse('test_shell_1', input);
+        parser.parse('test_shell_1', input, false);
 
         expect(callbacks.onActionOpen).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -475,7 +519,7 @@ git add .
 git commit -m "Initial commit"
 \`\`\``;
 
-        parser.parse('test_shell_2', input);
+        parser.parse('test_shell_2', input, false);
 
         expect(callbacks.onActionOpen).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -495,7 +539,7 @@ docker build -t myapp .
 docker run -p 3000:3000 myapp
 \`\`\``;
 
-        parser.parse('test_shell_3', input);
+        parser.parse('test_shell_3', input, false);
 
         expect(callbacks.onActionOpen).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -516,7 +560,7 @@ cat package.json
 mkdir src
 \`\`\``;
 
-        parser.parse('test_shell_4', input);
+        parser.parse('test_shell_4', input, false);
 
         expect(callbacks.onActionOpen).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -539,7 +583,7 @@ function example() {
 }
 \`\`\``;
 
-        parser.parse('test_edge_1', input);
+        parser.parse('test_edge_1', input, false);
 
         expect(callbacks.onArtifactOpen).not.toHaveBeenCalled();
         expect(callbacks.onActionOpen).not.toHaveBeenCalled();
@@ -552,7 +596,7 @@ function example() {
 console.log("temporary test");
 \`\`\``;
 
-        parser.parse('test_edge_2', input);
+        parser.parse('test_edge_2', input, false);
 
         expect(callbacks.onArtifactOpen).not.toHaveBeenCalled();
         expect(callbacks.onActionOpen).not.toHaveBeenCalled();
@@ -582,7 +626,7 @@ function usage() {
 }
 \`\`\``;
 
-        parser.parse('test_edge_3', input);
+        parser.parse('test_edge_3', input, false);
 
         // Should create artifact for Header.tsx
         expect(callbacks.onArtifactOpen).toHaveBeenCalledWith(
@@ -614,7 +658,7 @@ function usage() {
 console.log("no extension");
 \`\`\``;
 
-        parser.parse('test_edge_4', input);
+        parser.parse('test_edge_4', input, false);
 
         expect(callbacks.onArtifactOpen).not.toHaveBeenCalled();
         expect(callbacks.onActionOpen).not.toHaveBeenCalled();
@@ -630,7 +674,7 @@ import React from 'react';
 export { Button } from './Button';
 \`\`\``;
 
-        parser.parse('test_edge_5', input);
+        parser.parse('test_edge_5', input, false);
 
         expect(callbacks.onActionOpen).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -644,17 +688,13 @@ export { Button } from './Button';
     });
 
     describe('Performance and Deduplication', () => {
-      it('should handle incremental parsing correctly', () => {
-        // Parse incrementally (simulating streaming)
-        const chunks = ['Create config.js:\n\n\`\`\`javascript\n', "const config = { api: 'test' };\n\`\`\`"];
-        let fullInput = '';
+      it('should handle non-streaming complete messages', () => {
+        // When a complete message arrives (not streamed), enhancement should work
+        const input = "Create config.js:\n\n\`\`\`javascript\nconst config = { api: 'test' };\n\`\`\`";
 
-        for (const chunk of chunks) {
-          fullInput += chunk;
-          parser.parse('test_perf_1', fullInput);
-        }
+        parser.parse('test_perf_1', input, false); // Complete message, not streaming
 
-        // Should create artifact when complete
+        // Should create artifact
         expect(callbacks.onArtifactOpen).toHaveBeenCalledWith(
           expect.objectContaining({
             title: 'config.js',
@@ -662,22 +702,22 @@ export { Button } from './Button';
         );
       });
 
-      it('should handle streaming input correctly', () => {
-        const chunks = [
-          'Create the file:\n\n',
-          'app.js:\n\n',
-          '\`\`\`javascript\n',
-          'const app = ',
-          'express();\n',
-          'app.listen(3000);\n',
-          '\`\`\`',
-        ];
+      it('should handle messages with proper artifact tags during streaming', () => {
+        /*
+         * When streaming, models should use proper artifact tags
+         * Enhancement only works for complete non-streaming messages
+         */
+        const input =
+          '<boltArtifact id="test" title="app.js" type="bundled"><boltAction type="file" filePath="/app.js">const app = express();\napp.listen(3000);</boltAction></boltArtifact>';
 
-        let fullInput = '';
+        // Simulate streaming with proper tags
+        let partial = '';
 
-        for (const chunk of chunks) {
-          fullInput += chunk;
-          parser.parse('test_stream_1', fullInput);
+        for (let i = 0; i < input.length; i += 50) {
+          partial = input.substring(0, Math.min(i + 50, input.length));
+
+          const isComplete = partial.length === input.length;
+          parser.parse('test_stream_1', partial, !isComplete);
         }
 
         expect(callbacks.onArtifactOpen).toHaveBeenCalledWith(
@@ -685,6 +725,121 @@ export { Button } from './Button';
             title: 'app.js',
           }),
         );
+      });
+    });
+
+    describe('Ollama/Local Model Patterns', () => {
+      it('should detect code blocks with "here is" pattern', () => {
+        const input = `Here is the code for index.js:
+
+\`\`\`javascript
+const express = require('express');
+const app = express();
+
+app.get('/', (req, res) => {
+  res.send('Hello World');
+});
+
+app.listen(3000);
+\`\`\``;
+
+        parser.parse('test_ollama_1', input, false);
+
+        expect(callbacks.onArtifactOpen).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: 'index.js',
+          }),
+        );
+        expect(callbacks.onActionOpen).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: expect.objectContaining({
+              type: 'file',
+              filePath: '/index.js',
+            }),
+          }),
+        );
+      });
+
+      it('should detect "let\'s create" pattern common in Ollama responses', () => {
+        const input = `Let's create app.tsx with the following code:
+
+\`\`\`tsx
+import React from 'react';
+
+export function App() {
+  return <div>Hello from Ollama</div>;
+}
+\`\`\``;
+
+        parser.parse('test_ollama_2', input, false);
+
+        expect(callbacks.onArtifactOpen).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: 'app.tsx',
+          }),
+        );
+        expect(callbacks.onActionOpen).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: expect.objectContaining({
+              type: 'file',
+              filePath: '/app.tsx',
+            }),
+          }),
+        );
+      });
+
+      it('should handle code without explicit artifact tags', () => {
+        const input = `I'll add the following to server.js:
+
+\`\`\`javascript
+const http = require('http');
+
+const server = http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end('Server running');
+});
+
+server.listen(8080);
+\`\`\``;
+
+        parser.parse('test_ollama_3', input, false);
+
+        expect(callbacks.onArtifactOpen).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: 'server.js',
+          }),
+        );
+      });
+
+      it('should detect multiple file patterns in a single response', () => {
+        const input = `I'll create two files for you.
+
+First, here is index.html:
+
+\`\`\`html
+<!DOCTYPE html>
+<html>
+  <head><title>Test</title></head>
+  <body><h1>Hello</h1></body>
+</html>
+\`\`\`
+
+Now create styles.css:
+
+\`\`\`css
+body {
+  margin: 0;
+  padding: 20px;
+}
+\`\`\``;
+
+        parser.parse('test_ollama_4', input, false);
+
+        // Should detect both files
+        const artifactCalls = callbacks.onArtifactOpen.mock.calls.filter(
+          (call: any) => call[0].title === 'index.html' || call[0].title === 'styles.css',
+        );
+        expect(artifactCalls).toHaveLength(2);
       });
     });
 
@@ -714,7 +869,7 @@ export { Button } from './Button';
 
         for (let i = 0; i < iterations; i++) {
           testInputs.forEach((input, index) => {
-            enhancedParser.parse(`perf_test_${i}_${index}`, input);
+            enhancedParser.parse(`perf_test_${i}_${index}`, input, false);
           });
           enhancedParser.reset();
         }
